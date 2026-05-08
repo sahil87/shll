@@ -33,7 +33,7 @@ brew install sahil87/tap/all   # installs every sahil87 tool, including shll
 ```sh
 git clone https://github.com/sahil87/shll.git
 cd shll
-just local-install
+just install
 ```
 
 Builds the binary and copies it to `~/.local/bin/shll`. Make sure that directory is on your `$PATH`.

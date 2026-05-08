@@ -2,13 +2,13 @@
 
 `shll update` — composes `brew update` and per-tool `brew upgrade` calls to refresh every installed sahil87 tool.
 
-Source: `cmd/shll/update.go`, with shared brew helpers in `cmd/shll/brew.go`.
+Source: `src/cmd/shll/update.go`, with shared brew helpers in `src/cmd/shll/brew.go`.
 
 ## Behavior contract
 
-The full happy/unhappy paths, in the order `runUpdate` evaluates them (`update.go:32`):
+The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/shll/update.go:32`):
 
-1. **Brew missing.** If `hasBrew(ctx)` returns false, write `shll update requires Homebrew. Install from https://brew.sh` to stderr and return `errSilent`. Exit code: 1. The literal hint string is `brewMissingHint` in `brew.go:15` — do not edit one without the other (the spec scenario asserts it verbatim).
+1. **Brew missing.** If `hasBrew(ctx)` returns false, write `shll update requires Homebrew. Install from https://brew.sh` to stderr and return `errSilent`. Exit code: 1. The literal hint string is `brewMissingHint` in `src/cmd/shll/brew.go:15` — do not edit one without the other (the spec scenario asserts it verbatim).
 
 2. **Filter installed roster.** Iterate `Roster` (in order) calling `isInstalled(ctx, t.Formula)`; collect the matches into a local `installed` slice.
 
@@ -29,7 +29,7 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`update.g
 
 ## Detection
 
-`isInstalled(ctx, formula)` in `brew.go:39` is the single source of truth for "is this brew formula installed":
+`isInstalled(ctx, formula)` in `src/cmd/shll/brew.go:39` is the single source of truth for "is this brew formula installed":
 
 - Calls `brew list --formula --versions <formula>` via `proc.Run` (capture transport).
 - Returns `err == nil` — `brew list --versions <formula>` exits 0 when installed (with the version on stdout) and 1 when not. We don't parse stdout; the exit code is sufficient.
@@ -40,7 +40,7 @@ Constraints (Design Decision #2):
 - **No symlink-target inspection** (hop's `/Cellar/` trick). That works for the running binary only; we are querying *other* tools' install status.
 - **No hardcoded `/opt/homebrew` or `/usr/local`** paths anywhere — the brew CLI is always invoked through PATH lookup via `exec`.
 
-`hasBrew(ctx)` in `brew.go:20` runs `brew --version` via `proc.Run` and returns true unless the error wraps `proc.ErrNotFound`. Any other brew failure (e.g. brew exits non-zero) still implies brew is installed — graceful degradation: only `ErrNotFound` is the "missing" signal.
+`hasBrew(ctx)` in `src/cmd/shll/brew.go:20` runs `brew --version` via `proc.Run` and returns true unless the error wraps `proc.ErrNotFound`. Any other brew failure (e.g. brew exits non-zero) still implies brew is installed — graceful degradation: only `ErrNotFound` is the "missing" signal.
 
 ## Foreground vs capture
 
@@ -84,9 +84,9 @@ This is the reason for the early short-circuit in step 3 above. Tests assert `br
 
 ## Test seam
 
-All `update_test.go` tests inject a fake via `proc.Runner` (`installFakeRunner` t.Cleanup helper at `update_test.go:33`). No real brew subprocess is ever spawned. The fake records every `proc.Request` so tests assert: which formulas were queried, which upgrades ran, the order of operations, the exit code, and the captured stdout/stderr writers.
+All `update_test.go` tests inject a fake via `proc.Runner` (`installFakeRunner` t.Cleanup helper at `src/cmd/shll/update_test.go:33`). No real brew subprocess is ever spawned. The fake records every `proc.Request` so tests assert: which formulas were queried, which upgrades ran, the order of operations, the exit code, and the captured stdout/stderr writers.
 
-Covered scenarios (`update_test.go`):
+Covered scenarios (`src/cmd/shll/update_test.go`):
 
 - `TestUpdate_BrewMissing` — `proc.Run("brew", "--version")` returns `ErrNotFound` → stderr hint, exit 1.
 - `TestUpdate_HappyPath` — full roster installed → six `brew upgrade` calls, all succeed, exit 0.

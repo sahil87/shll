@@ -4,14 +4,14 @@ Top-level command surface for the `shll` binary — the cobra root, the three su
 
 ## Binary entry point
 
-`shll` is a single Go binary. The entry point is `cmd/shll/main.go:20`:
+`shll` is a single Go binary. The entry point is `src/cmd/shll/main.go:20`:
 
-- The package-level `version = "dev"` (`main.go:18`) is overridden via `-ldflags "-X main.version=<v>"` at build time. The literal default is `dev` (covers `go run` and unstamped local builds).
+- The package-level `version = "dev"` (`src/cmd/shll/main.go:18`) is overridden via `-ldflags "-X main.version=<v>"` at build time. The literal default is `dev` (covers `go run` and unstamped local builds).
 - `main()` builds the cobra root via `newRootCmd()`, sets `rootCmd.Version = version`, executes, and translates any `RunE` error to an exit code via `translateExit`.
 
 ## Cobra root
 
-`newRootCmd()` (`cmd/shll/root.go:19`) returns the cobra command with:
+`newRootCmd()` (`src/cmd/shll/root.go:19`) returns the cobra command with:
 
 - `Use: "shll"`
 - `Short: "meta-CLI for the sahil87 toolkit"`
@@ -31,10 +31,10 @@ These were locked in at spec time (Design Decision #1) and are reproduced here:
 
 ## Exit-code translation
 
-`translateExit(err error) int` in `main.go:38` is the single mapping from `RunE` errors to OS exit codes. It uses two error sentinels defined in `main.go`:
+`translateExit(err error) int` in `src/cmd/shll/main.go:38` is the single mapping from `RunE` errors to OS exit codes. It uses two error sentinels defined in `src/cmd/shll/main.go`:
 
-- `errSilent = errors.New("shll: silent error")` (`main.go:58`) — returned by subcommands that have already written their own diagnostic to stderr. Maps to exit code 1; `translateExit` does not write anything else.
-- `errExitCode{code, msg}` (`main.go:63`) — used when a subcommand needs an exit code other than 0 or 1. Today only `shll shell-init` uses this, exiting 2 on bad/missing shell argument. If `msg` is non-empty, `translateExit` writes it to stderr.
+- `errSilent = errors.New("shll: silent error")` (`src/cmd/shll/main.go:58`) — returned by subcommands that have already written their own diagnostic to stderr. Maps to exit code 1; `translateExit` does not write anything else.
+- `errExitCode{code, msg}` (`src/cmd/shll/main.go:63`) — used when a subcommand needs an exit code other than 0 or 1. Today only `shll shell-init` uses this, exiting 2 on bad/missing shell argument. If `msg` is non-empty, `translateExit` writes it to stderr.
 
 Default fallback: any other error is printed to stderr and exits 1.
 
@@ -46,7 +46,7 @@ Every subcommand follows `newXxxCmd()` returning `*cobra.Command` (no globals, n
 
 ## Hardcoded tool roster
 
-Defined in `cmd/shll/tools.go`. Constitution III (Tool Roster Source of Truth) requires this to be hardcoded and versioned with the binary — there is NO runtime discovery (no `brew tap` parsing, no filesystem walk).
+Defined in `src/cmd/shll/tools.go`. Constitution III (Tool Roster Source of Truth) requires this to be hardcoded and versioned with the binary — there is NO runtime discovery (no `brew tap` parsing, no filesystem walk).
 
 ```go
 var Roster = []Tool{
@@ -63,10 +63,10 @@ Roster invariants:
 
 - **Order matters.** `shll shell-init` concatenates output in roster order (deterministic for users who reason about init sequencing).
 - **Six tools.** Adding a tool is a `shll` release, not a runtime configuration change.
-- **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `tools.go:31`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. `wt shell-setup` takes no shell arg, so its argv has no placeholder.
-- **`formulaPrefix = "sahil87/tap/"`** (`tools.go:5`) is a named constant — no magic string at the call sites.
+- **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `src/cmd/shll/tools.go:31`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. `wt shell-setup` takes no shell arg, so its argv has no placeholder.
+- **`formulaPrefix = "sahil87/tap/"`** (`src/cmd/shll/tools.go:5`) is a named constant — no magic string at the call sites.
 
-## File layout (cmd/shll/)
+## File layout (src/cmd/shll/)
 
 | File | Role |
 |------|------|

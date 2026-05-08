@@ -1,6 +1,6 @@
 # internal — Memory Index
 
-Shared internal packages used by `cmd/shll/`. Per Constitution I (Security First), every subprocess invocation in shll routes through `internal/proc`; no other package may import `os/exec`.
+Shared internal packages used by `src/cmd/shll/`. Per Constitution I (Security First), every subprocess invocation in shll routes through `src/internal/proc`; no other package may import `os/exec`.
 
 | Memory File | Description |
 |-------------|-------------|

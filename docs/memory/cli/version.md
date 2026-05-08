@@ -2,7 +2,7 @@
 
 `shll version` — prints a column-aligned plain-text table with the version of `shll` itself plus every roster tool.
 
-Source: `cmd/shll/version.go`. Uses the shared brew helpers in `brew.go` and the `Roster` from `tools.go`.
+Source: `src/cmd/shll/version.go`. Uses the shared brew helpers in `src/cmd/shll/brew.go` and the `Roster` from `src/cmd/shll/tools.go`.
 
 ## Output shape
 
@@ -17,19 +17,19 @@ idea      not installed
 ```
 
 - Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`).
-- Column-aligned via `text/tabwriter` (`version.go:46`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
+- Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:46`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 - **Plain text only.** No ANSI escapes, no JSON, no colors. The output is meant to paste cleanly into bug reports.
 
 ## Behavior contract
 
-`runVersion(ctx, stdout)` (`version.go:42`) is the implementation seam:
+`runVersion(ctx, stdout)` (`src/cmd/shll/version.go:42`) is the implementation seam:
 
 1. Construct a `tabwriter.Writer` over stdout.
 2. Write `shll\t<version>\n` first, where `version` is the package-level variable (see Ldflags injection below).
 3. For each tool in `Roster` (in order), write `<tool.Name>\t<toolVersion(ctx, tool)>\n`.
 4. `w.Flush()` — propagates any write error up.
 
-`toolVersion(ctx, tool)` (`version.go:58`) is the per-tool resolver:
+`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:58`) is the per-tool resolver:
 
 1. If `!isInstalled(ctx, tool.Formula)` → return `notInstalledLabel = "not installed"`.
 2. Else create `subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`. Defer cancel.
@@ -41,7 +41,7 @@ idea      not installed
 
 ## Ldflags injection (shll's own version)
 
-The `shll` row's version comes from the package-level `version = "dev"` declared in `main.go:18`. Build behavior:
+The `shll` row's version comes from the package-level `version = "dev"` declared in `src/cmd/shll/main.go:18`. Build behavior:
 
 - Default (uninjected): `dev`. Covers `go run` and unstamped local builds.
 - Stamped: `scripts/build.sh` invokes `go build -ldflags "-X main.version=${VERSION}" ...`, where `VERSION=$(git describe --tags --always 2>/dev/null || echo dev)`.
@@ -50,7 +50,7 @@ Tests override the variable directly (`TestVersion_LdflagsInjection`) — no spe
 
 ## Per-tool timeout
 
-`versionTimeout = 2 * time.Second` (`version.go:19`) — a named constant; magic numbers are forbidden by `code-quality.md`.
+`versionTimeout = 2 * time.Second` (`src/cmd/shll/version.go:19`) — a named constant; magic numbers are forbidden by `code-quality.md`.
 
 Properties (Design Decision #5):
 

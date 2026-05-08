@@ -58,7 +58,10 @@ func isSupportedShell(shell string) bool {
 // runShellInit composes shell-init output from every installed roster tool
 // with a non-empty ShellInit argv. Per spec:
 //   - stdout is eval-safe even when sub-tools are missing (missing → no output).
-//   - stderr receives a single line per sub-tool that fails.
+//   - shll writes a single diagnostic line per sub-tool that fails to its own
+//     stderr. Sub-tool stderr is *also* passed through to the parent stderr
+//     by proc.Run (TransportCapture), so the user sees both shll's note and
+//     any sub-tool error output. Eval-safety only applies to stdout.
 //   - exit code is non-zero if any sub-tool's shell-init failed.
 //
 // Order is roster order (deterministic — spec requirement).

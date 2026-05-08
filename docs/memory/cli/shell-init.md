@@ -2,7 +2,7 @@
 
 `shll shell-init <shell>` — emits a single concatenated shell-init blob composed from every installed roster tool with shell integration.
 
-Source: `cmd/shll/shell_init.go`. Uses the shared brew helpers in `brew.go` and the `Roster` from `tools.go`.
+Source: `src/cmd/shll/shell_init.go`. Uses the shared brew helpers in `src/cmd/shll/brew.go` and the `Roster` from `src/cmd/shll/tools.go`.
 
 ## Usage
 
@@ -15,7 +15,7 @@ A single eval line replaces what would otherwise be N per-tool eval lines (today
 
 ## Behavior contract
 
-`runShellInit(ctx, shell, stdout, stderr)` (`shell_init.go:65`) is the implementation seam. The cobra `RunE` wrapper handles argument validation before delegating:
+`runShellInit(ctx, shell, stdout, stderr)` (`src/cmd/shll/shell_init.go:65`) is the implementation seam. The cobra `RunE` wrapper handles argument validation before delegating:
 
 1. **Missing shell argument.** No positional → return `errExitCode{code: 2, msg: "shll shell-init: missing shell. Supported: zsh, bash"}`. Exit code: **2**. stdout: empty.
 
@@ -51,14 +51,14 @@ Output is concatenated in `Roster` order. This is deterministic (Spec: Compositi
 
 ## Argv substitution
 
-`substituteShell(argv, shell)` (`shell_init.go:98`) replaces every literal `<shell>` token with `shell`, returning a fresh slice (does not mutate the roster):
+`substituteShell(argv, shell)` (`src/cmd/shll/shell_init.go:98`) replaces every literal `<shell>` token with `shell`, returning a fresh slice (does not mutate the roster):
 
 | Tool | Roster argv | After substitution (zsh) |
 |------|-------------|--------------------------|
 | `hop` | `["hop", "shell-init", "<shell>"]` | `["hop", "shell-init", "zsh"]` |
 | `wt`  | `["wt", "shell-setup"]` | `["wt", "shell-setup"]` (unchanged — no placeholder) |
 
-The placeholder constant (`shellPlaceholder = "<shell>"`) lives in `tools.go:31`.
+The placeholder constant (`shellPlaceholder = "<shell>"`) lives in `src/cmd/shll/tools.go:31`.
 
 ## Exit codes
 

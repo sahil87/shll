@@ -53,8 +53,15 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 	}
 
 	// Refresh brew metadata once. Foregrounded so users see progress.
-	if _, err := proc.RunForeground(ctx, brewBinary, "update", "--quiet"); err != nil {
-		fmt.Fprintf(stderr, "shll update: brew update failed: %v\n", err)
+	// proc.RunForeground returns (code, nil) when the subprocess exits non-zero
+	// (it only sets err when exec itself fails before/after spawn), so we must
+	// check both code != 0 and err != nil to treat any non-success as failure.
+	if code, err := proc.RunForeground(ctx, brewBinary, "update", "--quiet"); err != nil || code != 0 {
+		if err != nil {
+			fmt.Fprintf(stderr, "shll update: brew update failed: %v\n", err)
+		} else {
+			fmt.Fprintf(stderr, "shll update: brew update failed: exit code %d\n", code)
+		}
 		return errSilent
 	}
 

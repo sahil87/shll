@@ -168,6 +168,33 @@ func TestUpdate_PartialInstalled(t *testing.T) {
 	}
 }
 
+func TestUpdate_BrewUpdateFails(t *testing.T) {
+	// brew update --quiet exits non-zero (with nil err — see proc.RunForeground
+	// contract). shll must surface this as failure rather than silently
+	// continuing into the upgrade loop.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 1 && req.Args[0] == "update" {
+			return proc.Result{ExitCode: 1}
+		}
+		// Everything else (brew --version, brew list, brew upgrade) succeeds —
+		// keeps the test focused on the brew-update branch.
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), &stdout, &stderr)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent (brew update non-zero exit)", err)
+	}
+	if !strings.Contains(stderr.String(), "brew update failed") {
+		t.Fatalf("stderr = %q, want to contain \"brew update failed\"", stderr.String())
+	}
+	if invocationsContain(f.calls, brewBinary, "upgrade", formulaPrefix+"hop") {
+		t.Fatal("brew upgrade should NOT be invoked after brew update fails")
+	}
+}
+
 func TestUpdate_OneUpgradeFails(t *testing.T) {
 	// All installed; first upgrade fails, second succeeds. Exit non-zero,
 	// continue through the roster.
