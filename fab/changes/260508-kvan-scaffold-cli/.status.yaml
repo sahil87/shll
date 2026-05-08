@@ -1,0 +1,42 @@
+id: kvan
+name: 260508-kvan-scaffold-cli
+created: 2026-05-08T18:33:07Z
+created_by: sahil-weaver
+change_type: feat
+issues: []
+progress:
+    intake: done
+    spec: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
+plan:
+    generated: true
+    task_count: 23
+    acceptance_count: 51
+    acceptance_completed: 51
+confidence:
+    certain: 18
+    confident: 5
+    tentative: 0
+    unresolved: 0
+    score: 3.5
+    fuzzy: true
+    dimensions:
+        signal: 89.3
+        reversibility: 78.7
+        competence: 89.1
+        disambiguation: 85.0
+stage_metrics:
+    intake: {started_at: "2026-05-08T18:33:07Z", driver: fab-new, iterations: 1, completed_at: "2026-05-08T19:22:45Z"}
+    spec: {started_at: "2026-05-08T19:22:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-08T19:22:45Z"}
+    apply: {started_at: "2026-05-08T19:38:49Z", driver: fab-fff, iterations: 2, completed_at: "2026-05-08T19:40:11Z"}
+    review: {started_at: "2026-05-08T19:40:11Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-08T19:41:50Z"}
+    hydrate: {started_at: "2026-05-08T19:41:50Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-08T19:47:20Z"}
+    ship: {started_at: "2026-05-08T19:47:20Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-08T20:10:18Z"}
+    review-pr: {started_at: "2026-05-08T20:10:18Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/1
+last_updated: 2026-05-08T20:10:18Z
