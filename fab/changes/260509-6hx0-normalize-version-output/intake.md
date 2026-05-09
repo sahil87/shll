@@ -57,7 +57,7 @@ Behavior — applied in order:
 
 1. Take the first non-empty line of `raw`, trimmed of leading/trailing whitespace. If the input has no non-empty lines, return `""`.
 2. Search the line for the first token matching the version regex: `v?\d+(\.\d+)*([.-][\w.+-]+)?`. Use `regexp.FindString`.
-   - Token boundaries are whitespace.
+   - The regex is unanchored: `FindString` returns the first version-shaped substring it encounters, which can land inside a larger token (e.g., `go1.22.0` would yield `1.22.0`). This is acceptable for the current roster — every tool emits the version as a separate token — and tightening the boundary is captured as a known follow-up if an adversarial input ever lands in production.
    - At least one numeric component is required (so `1`, `1.2`, `1.2.3`, `v1.2.3`, `1.2.3-rc1`, `1.2.3.dev0` all match).
    - The regex is permissive on suffix (pre-release tags, build metadata) so non-strict-SemVer producers don't regress to the fallback.
 3. If a token was found:

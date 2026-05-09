@@ -18,7 +18,7 @@ idea      not installed
 
 - Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`).
 - Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:56`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
-- Every successfully-probed row carries the same `v<X.Y.Z>` shape, regardless of how the upstream tool formats its raw `--version` output.
+- When the upstream tool's `--version` output contains a SemVer-shaped token, the row is normalized to a `v`-prefixed token (e.g. `v1.9.4`). When no such token is present, the row falls through the prefix-strip and raw-passthrough branches and may emit a non-`v` string (e.g. `dev`, or an unparseable banner verbatim) — see the `normalizeVersion` pipeline below for the full contract.
 - **Plain text only.** No ANSI escapes, no JSON, no colors. The output is meant to paste cleanly into bug reports.
 
 ## Behavior contract
@@ -73,7 +73,7 @@ Properties (Design Decision #5):
 - A timeout is treated as "not installed" — we don't differentiate hung-but-installed from missing in the output. The user gets a usable table either way.
 - The deadline applies only to the `--version` invocation, not to the `brew list` probe. The probe runs against the parent ctx (typically unbounded for the CLI invocation).
 
-`TestVersion_TimeoutHandling` simulates `context.DeadlineExceeded` by having the fake runner block until the sub-context's deadline fires, then asserts the row reads `not installed`.
+`TestVersion_TimeoutHandling` simulates the timeout path by having the fake runner return `context.DeadlineExceeded` immediately for the targeted tool (no real wall-clock wait), then asserts the row reads `not installed` and that the test's elapsed time stays under `versionTimeout`.
 
 ## Spec-locked Design Decisions for this subcommand
 
@@ -97,7 +97,7 @@ Integration scenarios:
 - `TestVersion_SomeMissing` — `idea` not installed → row reads `idea  not installed`.
 - `TestVersion_LdflagsInjection` — overrides `version` package var → `shll` row reflects it (after normalization).
 - `TestVersion_DefaultDev` — leaves `version` at `"dev"` → `shll` row reads `dev`.
-- `TestVersion_TimeoutHandling` — fake blocks until ctx deadline → row reads `not installed`.
+- `TestVersion_TimeoutHandling` — fake returns `context.DeadlineExceeded` immediately for the targeted tool (no real wall-clock wait) → row reads `not installed`. The test also asserts elapsed time stays under `versionTimeout` to confirm the fake short-circuited rather than actually blocking.
 - `TestVersion_NoANSI` — asserts no `\x1b[` escape in output.
 
 Unit scenarios pinning the normalization contract (12 cases, all named `TestNormalizeVersion_*`):

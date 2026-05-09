@@ -2,7 +2,7 @@ id: 6hx0
 name: 260509-6hx0-normalize-version-output
 created: 2026-05-09T04:03:32Z
 created_by: sahil-weaver
-change_type: feat
+change_type: fix
 issues: []
 progress:
     intake: done
@@ -18,17 +18,18 @@ plan:
     acceptance_count: 15
     acceptance_completed: 15
 confidence:
-    certain: 14
-    confident: 2
+    certain: 9
+    confident: 3
     tentative: 0
     unresolved: 0
-    score: 4.4
+    score: 4.1
+    indicative: true
     fuzzy: true
     dimensions:
-        signal: 88.1
+        signal: 87.9
         reversibility: 83.8
-        competence: 90.9
-        disambiguation: 85.9
+        competence: 90.8
+        disambiguation: 85.8
 stage_metrics:
     intake: {started_at: "2026-05-09T04:03:32Z", driver: fab-new, iterations: 1, completed_at: "2026-05-09T04:17:31Z"}
     spec: {started_at: "2026-05-09T04:17:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-09T04:19:48Z"}
@@ -39,4 +40,4 @@ stage_metrics:
     review-pr: {started_at: "2026-05-09T04:30:57Z", driver: fab-fff, iterations: 1}
 prs:
     - https://github.com/sahil87/shll/pull/2
-last_updated: 2026-05-09T04:30:57Z
+last_updated: 2026-05-09T04:38:20Z
