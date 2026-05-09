@@ -66,6 +66,11 @@ func TestVersion_AllInstalled(t *testing.T) {
 		if !strings.Contains(lines[i+1], "v0.1.0") {
 			t.Errorf("line %d = %q, want to contain v0.1.0", i+1, lines[i+1])
 		}
+		// After normalization, the row MUST NOT contain the redundant
+		// `<tool.Name> v0.1.0` substring — only the normalized token.
+		if strings.Contains(lines[i+1], tool.Name+" v0.1.0") {
+			t.Errorf("line %d = %q, must not contain raw %q after normalization", i+1, lines[i+1], tool.Name+" v0.1.0")
+		}
 	}
 }
 
@@ -179,5 +184,101 @@ func TestVersion_TimeoutHandling(t *testing.T) {
 		if strings.HasPrefix(line, "hop") && !strings.Contains(line, notInstalledLabel) {
 			t.Fatalf("hop row = %q, want %q for timeout", line, notInstalledLabel)
 		}
+	}
+}
+
+// --- normalizeVersion unit tests ---------------------------------------------
+
+func TestNormalizeVersion_NamePrefixedBare(t *testing.T) {
+	got := normalizeVersion("fab-kit version 1.9.4\n")
+	if got != "v1.9.4" {
+		t.Fatalf("got %q, want %q", got, "v1.9.4")
+	}
+}
+
+func TestNormalizeVersion_NamePrefixedV(t *testing.T) {
+	got := normalizeVersion("hop version v0.1.5\n")
+	if got != "v0.1.5" {
+		t.Fatalf("got %q, want %q (no doubling)", got, "v0.1.5")
+	}
+}
+
+func TestNormalizeVersion_Bare(t *testing.T) {
+	got := normalizeVersion("0.4.10\n")
+	if got != "v0.4.10" {
+		t.Fatalf("got %q, want %q", got, "v0.4.10")
+	}
+}
+
+func TestNormalizeVersion_BareDev(t *testing.T) {
+	got := normalizeVersion("dev")
+	if got != "dev" {
+		t.Fatalf("got %q, want %q", got, "dev")
+	}
+}
+
+func TestNormalizeVersion_NamePrefixedDev(t *testing.T) {
+	got := normalizeVersion("shll version dev\n")
+	if got != "dev" {
+		t.Fatalf("got %q, want %q (prefix-strip)", got, "dev")
+	}
+}
+
+func TestNormalizeVersion_Unparseable(t *testing.T) {
+	got := normalizeVersion("some unparseable banner")
+	if got != "some unparseable banner" {
+		t.Fatalf("got %q, want raw passthrough", got)
+	}
+}
+
+func TestNormalizeVersion_Empty(t *testing.T) {
+	if got := normalizeVersion(""); got != "" {
+		t.Fatalf("empty: got %q, want \"\"", got)
+	}
+	if got := normalizeVersion("\n\n  \n"); got != "" {
+		t.Fatalf("whitespace-only: got %q, want \"\"", got)
+	}
+}
+
+func TestNormalizeVersion_FirstLineOnly(t *testing.T) {
+	got := normalizeVersion("MyTool — the swiss army knife\n0.4.10\n")
+	if got != "MyTool — the swiss army knife" {
+		t.Fatalf("got %q, want first line verbatim (line 2 must NOT be searched)", got)
+	}
+}
+
+func TestNormalizeVersion_BlankLeadingLines(t *testing.T) {
+	got := normalizeVersion("\n\nfab-kit version 1.9.4\n")
+	if got != "v1.9.4" {
+		t.Fatalf("got %q, want %q", got, "v1.9.4")
+	}
+}
+
+func TestNormalizeVersion_PermissiveSemVer(t *testing.T) {
+	if got := normalizeVersion("mytool version 1.2"); got != "v1.2" {
+		t.Fatalf("2-component: got %q, want %q", got, "v1.2")
+	}
+	if got := normalizeVersion("mytool version 1.2.3-rc1+build.42"); got != "v1.2.3-rc1+build.42" {
+		t.Fatalf("rich suffix: got %q, want %q", got, "v1.2.3-rc1+build.42")
+	}
+}
+
+func TestNormalizeVersion_CaseInsensitiveVersionWord(t *testing.T) {
+	// The version-token regex matches `1.0` first; the prefix-strip path is
+	// not exercised here. This test confirms the version-token branch wins
+	// when both could apply.
+	got := normalizeVersion("MyTool Version 1.0")
+	if got != "v1.0" {
+		t.Fatalf("got %q, want %q", got, "v1.0")
+	}
+}
+
+func TestNormalizeVersion_PrefixStripCase(t *testing.T) {
+	// `dev` has no version-shaped token, so the prefix-strip fallback runs.
+	// The literal word `Version` is capitalized — the regex MUST match it
+	// case-insensitively.
+	got := normalizeVersion("shll Version dev")
+	if got != "dev" {
+		t.Fatalf("got %q, want %q (case-insensitive prefix-strip)", got, "dev")
 	}
 }

@@ -1,0 +1,14 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-05-09T04:03:32Z"}
+{"args":"Normalize shll version output: parse first SemVer-shaped token (regex v?\\d+(\\.\\d+)*([.-][\\w.+-]+)?), prefix with v if absent. Fall back to generic '\u003cword\u003e version \u003crest\u003e' prefix-strip heuristic, else raw first non-empty line. No per-tool logic — shape-based extraction only.","cmd":"fab-new","event":"command","ts":"2026-05-09T04:03:32Z"}
+{"delta":"+4.1","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-05-09T04:05:00Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-05-09T04:05:12Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-05-09T04:14:49Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-05-09T04:15:40Z"}
+{"delta":"+0.3","event":"confidence","score":4.4,"trigger":"calc-score","ts":"2026-05-09T04:17:26Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"spec","ts":"2026-05-09T04:17:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-05-09T04:19:48Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-05-09T04:19:53Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-05-09T04:22:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-05-09T04:26:32Z"}
+{"event":"review","result":"passed","ts":"2026-05-09T04:26:32Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-05-09T04:29:02Z"}

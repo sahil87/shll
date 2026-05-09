@@ -8,49 +8,63 @@ Source: `src/cmd/shll/version.go`. Uses the shared brew helpers in `src/cmd/shll
 
 ```
 shll      v0.1.0
-fab-kit   v0.4.2
-rk        v0.7.1
-tu        v0.2.0
-hop       v0.0.3
-wt        v0.1.5
+fab-kit   v0.1.0
+rk        v0.1.0
+tu        v0.1.0
+hop       v0.1.0
+wt        v0.1.0
 idea      not installed
 ```
 
 - Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`).
-- Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:46`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
+- Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:56`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
+- Every successfully-probed row carries the same `v<X.Y.Z>` shape, regardless of how the upstream tool formats its raw `--version` output.
 - **Plain text only.** No ANSI escapes, no JSON, no colors. The output is meant to paste cleanly into bug reports.
 
 ## Behavior contract
 
-`runVersion(ctx, stdout)` (`src/cmd/shll/version.go:42`) is the implementation seam:
+`runVersion(ctx, stdout)` (`src/cmd/shll/version.go:52`) is the implementation seam:
 
 1. Construct a `tabwriter.Writer` over stdout.
-2. Write `shll\t<version>\n` first, where `version` is the package-level variable (see Ldflags injection below).
+2. Write `shll\t<normalizeVersion(version)>\n` first, where `version` is the package-level variable (see Ldflags injection below). The shll row goes through the same normalizer as roster rows, so the column is uniform.
 3. For each tool in `Roster` (in order), write `<tool.Name>\t<toolVersion(ctx, tool)>\n`.
 4. `w.Flush()` — propagates any write error up.
 
-`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:58`) is the per-tool resolver:
+`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:68`) is the per-tool resolver:
 
 1. If `!isInstalled(ctx, tool.Formula)` → return `notInstalledLabel = "not installed"`.
 2. Else create `subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`. Defer cancel.
 3. Run `proc.Run(subCtx, tool.Name, "--version")` (capture transport).
 4. On any error (transport error, exit non-zero, deadline exceeded) → return `notInstalledLabel`.
-5. On success → return `firstNonEmptyLine(string(out))` — the first non-blank line trimmed of surrounding whitespace.
+5. On success → return `normalizeVersion(string(out))`.
 
-`firstNonEmptyLine` exists because some tools emit multi-line `--version` output (banner + version). The table only shows the first useful line per tool.
+`normalizeVersion(raw string) string` (`src/cmd/shll/version.go:93`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
+
+The normalization pipeline runs in this order on the input:
+
+1. **First non-empty line.** Split on `\n`, find the first line whose `strings.TrimSpace` is non-empty, use that trimmed value. Empty / whitespace-only input returns `""`.
+2. **Version-token regex.** Search the line for the first match of `versionTokenRE = v?\d+(\.\d+)*([.-][\w.+-]+)?` (`src/cmd/shll/version.go:30`). The token requires at least one numeric component; additional `.`-separated numerics and an optional `[.-]<suffix>` (pre-release / build metadata) are accepted, so `1`, `1.2`, `1.2.3`, `v1.2.3`, `1.2.3-rc1`, `1.2.3-rc1+build.42` all match. If a token is found, return it with a `v` prepended when absent (existing `v` is retained, never doubled).
+3. **Generic prefix-strip heuristic.** If no version token was found, match the line against `versionPrefixRE = ^\S+\s+(?i:version)\s+(.+)$` (`src/cmd/shll/version.go:34`). The literal word `version` is case-insensitive (so `<word> Version <rest>` and `<word> version <rest>` are handled identically). On match, return the trimmed `<rest>` capture. The heuristic does NOT reference any tool name — it strips a leading `<word> version ` prefix regardless of what `<word>` is, which collapses `shll version dev` to `dev` without per-tool logic.
+4. **Raw passthrough.** Otherwise, return the trimmed first non-empty line verbatim. This preserves whatever the tool emitted for the bug-report use case — losing information would be worse than displaying an unparseable banner.
+
+The `v` prefix is **always-on**: matched tokens that lack `v` get one prepended; matched tokens that already start with `v` are returned unchanged. This matches SemVer tag convention and yields a uniform column.
+
+The parser is **first-line-only**. It never scans deeper lines for a version token — even when the first non-empty line falls through to the raw-passthrough branch. If a tool puts a banner on line 1 and the version on line 2, the banner wins. The contract is predictable and testable as a single string-equality assertion.
+
+The two regexes are compiled once via `regexp.MustCompile` at package scope; they are not recompiled per call.
 
 ## Ldflags injection (shll's own version)
 
-The `shll` row's version comes from the package-level `version = "dev"` declared in `src/cmd/shll/main.go:18`. Build behavior:
+The `shll` row's version comes from the package-level `version = "dev"` declared in `src/cmd/shll/main.go:18`, then passed through `normalizeVersion`. Build behavior:
 
-- Default (uninjected): `dev`. Covers `go run` and unstamped local builds.
-- Stamped: `scripts/build.sh` invokes `go build -ldflags "-X main.version=${VERSION}" ...`, where `VERSION=$(git describe --tags --always 2>/dev/null || echo dev)`.
+- Default (uninjected): raw `dev` → normalized `dev`. Covers `go run` and unstamped local builds.
+- Stamped: `scripts/build.sh` invokes `go build -ldflags "-X main.version=${VERSION}" ...`, where `VERSION=$(git describe --tags --always 2>/dev/null || echo dev)`. A stamped `v0.0.1` stays `v0.0.1`; a stamped bare `0.0.1` becomes `v0.0.1`.
 
 Tests override the variable directly (`TestVersion_LdflagsInjection`) — no special build hook needed for testing.
 
 ## Per-tool timeout
 
-`versionTimeout = 2 * time.Second` (`src/cmd/shll/version.go:19`) — a named constant; magic numbers are forbidden by `code-quality.md`.
+`versionTimeout = 2 * time.Second` (`src/cmd/shll/version.go:20`) — a named constant; magic numbers are forbidden by `code-quality.md`.
 
 Properties (Design Decision #5):
 
@@ -77,14 +91,21 @@ Properties (Design Decision #5):
 
 `version_test.go` installs a fake via `installFakeRunner(t, f)` and uses helper builders like `versionFake(installed map, versions map)` to canned-respond per-tool.
 
-Covered scenarios:
+Integration scenarios:
 
-- `TestVersion_AllInstalled` — seven rows in roster order, column-aligned.
+- `TestVersion_AllInstalled` — seven rows in roster order, column-aligned, normalized values.
 - `TestVersion_SomeMissing` — `idea` not installed → row reads `idea  not installed`.
-- `TestVersion_LdflagsInjection` — overrides `version` package var → `shll` row reflects it.
+- `TestVersion_LdflagsInjection` — overrides `version` package var → `shll` row reflects it (after normalization).
 - `TestVersion_DefaultDev` — leaves `version` at `"dev"` → `shll` row reads `dev`.
 - `TestVersion_TimeoutHandling` — fake blocks until ctx deadline → row reads `not installed`.
 - `TestVersion_NoANSI` — asserts no `\x1b[` escape in output.
+
+Unit scenarios pinning the normalization contract (12 cases, all named `TestNormalizeVersion_*`):
+
+- `_NamePrefixedBare` (`fab-kit version 1.9.4` → `v1.9.4`), `_NamePrefixedV` (`hop version v0.1.5` → `v0.1.5`, no doubling), `_Bare` (`0.4.10` → `v0.4.10`).
+- `_BareDev` (`dev` → `dev`), `_NamePrefixedDev` (`shll version dev` → `dev` via prefix-strip), `_Unparseable` (raw passthrough).
+- `_Empty` (`""` and whitespace-only → `""`), `_FirstLineOnly` (banner on line 1 wins; line 2 never searched), `_BlankLeadingLines` (leading blanks skipped to find the first non-empty line).
+- `_PermissiveSemVer` (`1.2` and `1.2.3-rc1+build.42`), `_CaseInsensitiveVersionWord` (`MyTool Version 1.0` → `v1.0`), `_PrefixStripCase` (`shll Version dev` → `dev`).
 
 ## Cross-references
 
