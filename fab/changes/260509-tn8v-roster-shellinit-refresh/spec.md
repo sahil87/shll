@@ -200,9 +200,10 @@ The roster invariants statement (six tools, order matters, named `formulaPrefix`
 #### Scenario: commands.md roster snippet matches tools.go
 
 - **GIVEN** `commands.md` has been hydrated for this change
-- **WHEN** a reader compares the Go literal in `commands.md`'s `Hardcoded tool roster` section to `src/cmd/shll/tools.go`'s `Roster`
-- **THEN** the two are identical except for whitespace and comment differences
+- **WHEN** a reader compares the snippet in `commands.md`'s `Hardcoded tool roster` section to `src/cmd/shll/tools.go`'s `Roster`
+- **THEN** the two represent the same six entries in the same order, with the same per-tool `Name`, `Formula`, and `ShellInit` argv values
 - **AND** every integrator's `ShellInit` argv ends in the `"<shell>"` placeholder
+- **AND** the snippet MAY use a normalized reader-friendly form (fully-expanded formula strings, literal `"<shell>"` placeholder) rather than reproducing the Go literal verbatim with named constants (`formulaPrefix`, `shellPlaceholder`) — the snippet is documentation, not a Go source copy
 
 ### Requirement: shell-init.md reflects three-integrator world
 

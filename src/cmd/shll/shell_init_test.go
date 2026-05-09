@@ -211,9 +211,19 @@ func TestShellInit_MissingShellArg(t *testing.T) {
 }
 
 func TestShellInit_SubToolFailure(t *testing.T) {
+	// All three integrators installed; hop (the middle one in roster order) fails.
+	// Asserts eval-safety on both sides of the failure: tu's stdout (before hop)
+	// and wt's stdout (after hop) both reach the user, while hop's bytes do not.
 	f := shellInitFake(
-		map[string]bool{formulaPrefix + "hop": true, formulaPrefix + "wt": true},
-		map[string]string{"wt shell-init zsh": "WT\n"},
+		map[string]bool{
+			formulaPrefix + "tu":  true,
+			formulaPrefix + "hop": true,
+			formulaPrefix + "wt":  true,
+		},
+		map[string]string{
+			"tu shell-init zsh": "TU\n",
+			"wt shell-init zsh": "WT\n",
+		},
 		map[string]error{"hop shell-init zsh": stdErr("boom")},
 	)
 	installFakeRunner(t, f)
@@ -223,9 +233,9 @@ func TestShellInit_SubToolFailure(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
-	// stdout must be eval-safe — only wt's output, no hop diagnostic on stdout.
-	if stdout.String() != "WT\n" {
-		t.Fatalf("stdout = %q, want \"WT\\n\" (hop's failure must not pollute stdout)", stdout.String())
+	// stdout must be eval-safe — tu before hop, wt after hop, no hop bytes.
+	if stdout.String() != "TU\nWT\n" {
+		t.Fatalf("stdout = %q, want \"TU\\nWT\\n\" (hop's failure must not pollute stdout; tu and wt still contribute)", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "hop") {
 		t.Fatalf("stderr should mention hop failure, got %q", stderr.String())
