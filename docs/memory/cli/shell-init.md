@@ -11,7 +11,7 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-A single eval line replaces what would otherwise be N per-tool eval lines (today: `hop shell-init <shell>` and `wt shell-setup`).
+A single eval line replaces what would otherwise be N per-tool eval lines (today: `tu shell-init <shell>`, `hop shell-init <shell>`, and `wt shell-init <shell>`).
 
 ## Behavior contract
 
@@ -47,7 +47,7 @@ This means `eval "$(shll shell-init zsh)"` is safe even when shll exits non-zero
 
 ## Composition order
 
-Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today only `hop` and `wt` produce output; in roster order that is `hop` first, then `wt`. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs.
+Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `tu`, `hop`, and `wt` produce output; in roster order that is `tu` first, then `hop`, then `wt`. `tu`'s position is incidental — its natural place in the existing `fab-kit, rk, tu, hop, wt, idea` roster puts it first among the integrators, but ordering between the three is not a designed sequencing decision. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs.
 
 ## Argv substitution
 
@@ -55,8 +55,9 @@ Output is concatenated in `Roster` order. This is deterministic (Spec: Compositi
 
 | Tool | Roster argv | After substitution (zsh) |
 |------|-------------|--------------------------|
+| `tu`  | `["tu", "shell-init", "<shell>"]`  | `["tu", "shell-init", "zsh"]`  |
 | `hop` | `["hop", "shell-init", "<shell>"]` | `["hop", "shell-init", "zsh"]` |
-| `wt`  | `["wt", "shell-setup"]` | `["wt", "shell-setup"]` (unchanged — no placeholder) |
+| `wt`  | `["wt", "shell-init", "<shell>"]`  | `["wt", "shell-init", "zsh"]`  |
 
 The placeholder constant (`shellPlaceholder = "<shell>"`) lives in `src/cmd/shll/tools.go:31`.
 
@@ -83,13 +84,15 @@ Exit 2 specifically distinguishes user-error (bad CLI invocation) from runtime f
 
 Covered scenarios:
 
-- `TestShellInit_ZshBothInstalled` — hop and wt both installed → concatenated output, deterministic order, exit 0.
-- `TestShellInit_BashHopOnly` — hop only → only hop output, no message about wt, exit 0.
-- `TestShellInit_NoIntegratingToolsInstalled` — neither installed → empty stdout, exit 0.
+- `TestShellInit_ZshAllIntegratorsInstalled` — `tu`, `hop`, and `wt` all installed → roster-ordered concatenation, exit 0.
+- `TestShellInit_OnlyTuInstalled` — only `tu` installed → only `tu`'s stdout, exit 0.
+- `TestShellInit_OnlyHopInstalled` — only `hop` installed → only `hop`'s stdout, exit 0.
+- `TestShellInit_OnlyWtInstalled` — only `wt` installed → only `wt`'s stdout (using new `wt shell-init <shell>` argv), exit 0.
+- `TestShellInit_NoIntegratingToolsInstalled` — none installed → empty stdout, exit 0.
 - `TestShellInit_UnsupportedShell` — `fish` → empty stdout, stderr usage line, exit 2.
 - `TestShellInit_MissingShellArg` — no arg → empty stdout, stderr usage line, exit 2.
-- `TestShellInit_DeterministicOrder` — two runs produce byte-identical output.
-- `TestShellInit_SubToolFailure` — `hop shell-init zsh` errors → stdout contains only wt output (eval-safe), stderr has the hop error line, exit 1.
+- `TestShellInit_DeterministicOrder` — all three integrators installed → byte-identical output across two runs, in roster order (`tu`, then `hop`, then `wt`).
+- `TestShellInit_SubToolFailure` — one integrator (e.g. `hop shell-init zsh`) errors → its stdout fragment is dropped, others succeed, eval-safety holds, exit 1.
 
 ## Cross-references
 

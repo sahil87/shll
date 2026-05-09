@@ -37,12 +37,17 @@ func shellInitFake(installedFormulas map[string]bool, outputs map[string]string,
 // stdErr is a tiny helper for "any non-nil error" cases.
 func stdErr(msg string) error { return errors.New(msg) }
 
-func TestShellInit_ZshBothInstalled(t *testing.T) {
+func TestShellInit_ZshAllIntegratorsInstalled(t *testing.T) {
 	f := shellInitFake(
-		map[string]bool{formulaPrefix + "hop": true, formulaPrefix + "wt": true},
+		map[string]bool{
+			formulaPrefix + "tu":  true,
+			formulaPrefix + "hop": true,
+			formulaPrefix + "wt":  true,
+		},
 		map[string]string{
+			"tu shell-init zsh":  "## tu init\nexport TU=1\n",
 			"hop shell-init zsh": "## hop init\nexport HOP=1\n",
-			"wt shell-setup":     "## wt init\nexport WT=1\n",
+			"wt shell-init zsh":  "## wt init\nexport WT=1\n",
 		},
 		nil,
 	)
@@ -52,7 +57,7 @@ func TestShellInit_ZshBothInstalled(t *testing.T) {
 	if err := runShellInit(context.Background(), "zsh", &stdout, &stderr); err != nil {
 		t.Fatalf("runShellInit err = %v", err)
 	}
-	want := "## hop init\nexport HOP=1\n## wt init\nexport WT=1\n"
+	want := "## tu init\nexport TU=1\n## hop init\nexport HOP=1\n## wt init\nexport WT=1\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
@@ -61,9 +66,29 @@ func TestShellInit_ZshBothInstalled(t *testing.T) {
 	}
 }
 
-func TestShellInit_BashHopOnly(t *testing.T) {
+func TestShellInit_OnlyTuInstalled(t *testing.T) {
 	f := shellInitFake(
-		map[string]bool{formulaPrefix + "hop": true}, // wt missing
+		map[string]bool{formulaPrefix + "tu": true}, // hop, wt missing
+		map[string]string{"tu shell-init zsh": "## tu only\n"},
+		nil,
+	)
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runShellInit(context.Background(), "zsh", &stdout, &stderr); err != nil {
+		t.Fatalf("runShellInit err = %v", err)
+	}
+	if stdout.String() != "## tu only\n" {
+		t.Fatalf("stdout = %q, want only tu", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr should be empty for missing hop and wt, got %q", stderr.String())
+	}
+}
+
+func TestShellInit_OnlyHopInstalled(t *testing.T) {
+	f := shellInitFake(
+		map[string]bool{formulaPrefix + "hop": true}, // tu, wt missing
 		map[string]string{"hop shell-init bash": "## hop bash\n"},
 		nil,
 	)
@@ -77,7 +102,27 @@ func TestShellInit_BashHopOnly(t *testing.T) {
 		t.Fatalf("stdout = %q, want only hop", stdout.String())
 	}
 	if stderr.Len() != 0 {
-		t.Fatalf("stderr should be empty for missing wt, got %q", stderr.String())
+		t.Fatalf("stderr should be empty for missing tu and wt, got %q", stderr.String())
+	}
+}
+
+func TestShellInit_OnlyWtInstalled(t *testing.T) {
+	f := shellInitFake(
+		map[string]bool{formulaPrefix + "wt": true}, // tu, hop missing
+		map[string]string{"wt shell-init zsh": "## wt only\n"},
+		nil,
+	)
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runShellInit(context.Background(), "zsh", &stdout, &stderr); err != nil {
+		t.Fatalf("runShellInit err = %v", err)
+	}
+	if stdout.String() != "## wt only\n" {
+		t.Fatalf("stdout = %q, want only wt", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr should be empty for missing tu and hop, got %q", stderr.String())
 	}
 }
 
@@ -96,10 +141,15 @@ func TestShellInit_NoIntegratingToolsInstalled(t *testing.T) {
 
 func TestShellInit_DeterministicOrder(t *testing.T) {
 	f := shellInitFake(
-		map[string]bool{formulaPrefix + "hop": true, formulaPrefix + "wt": true},
+		map[string]bool{
+			formulaPrefix + "tu":  true,
+			formulaPrefix + "hop": true,
+			formulaPrefix + "wt":  true,
+		},
 		map[string]string{
+			"tu shell-init zsh":  "TU\n",
 			"hop shell-init zsh": "HOP\n",
-			"wt shell-setup":     "WT\n",
+			"wt shell-init zsh":  "WT\n",
 		},
 		nil,
 	)
@@ -114,8 +164,8 @@ func TestShellInit_DeterministicOrder(t *testing.T) {
 	if a.String() != b.String() {
 		t.Fatalf("non-deterministic output: %q vs %q", a.String(), b.String())
 	}
-	if a.String() != "HOP\nWT\n" {
-		t.Fatalf("order = %q, want HOP then WT (roster order)", a.String())
+	if a.String() != "TU\nHOP\nWT\n" {
+		t.Fatalf("order = %q, want TU then HOP then WT (roster order)", a.String())
 	}
 }
 
@@ -161,9 +211,19 @@ func TestShellInit_MissingShellArg(t *testing.T) {
 }
 
 func TestShellInit_SubToolFailure(t *testing.T) {
+	// All three integrators installed; hop (the middle one in roster order) fails.
+	// Asserts eval-safety on both sides of the failure: tu's stdout (before hop)
+	// and wt's stdout (after hop) both reach the user, while hop's bytes do not.
 	f := shellInitFake(
-		map[string]bool{formulaPrefix + "hop": true, formulaPrefix + "wt": true},
-		map[string]string{"wt shell-setup": "WT\n"},
+		map[string]bool{
+			formulaPrefix + "tu":  true,
+			formulaPrefix + "hop": true,
+			formulaPrefix + "wt":  true,
+		},
+		map[string]string{
+			"tu shell-init zsh": "TU\n",
+			"wt shell-init zsh": "WT\n",
+		},
 		map[string]error{"hop shell-init zsh": stdErr("boom")},
 	)
 	installFakeRunner(t, f)
@@ -173,9 +233,9 @@ func TestShellInit_SubToolFailure(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
-	// stdout must be eval-safe — only wt's output, no hop diagnostic on stdout.
-	if stdout.String() != "WT\n" {
-		t.Fatalf("stdout = %q, want \"WT\\n\" (hop's failure must not pollute stdout)", stdout.String())
+	// stdout must be eval-safe — tu before hop, wt after hop, no hop bytes.
+	if stdout.String() != "TU\nWT\n" {
+		t.Fatalf("stdout = %q, want \"TU\\nWT\\n\" (hop's failure must not pollute stdout; tu and wt still contribute)", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "hop") {
 		t.Fatalf("stderr should mention hop failure, got %q", stderr.String())

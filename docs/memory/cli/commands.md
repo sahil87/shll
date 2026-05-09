@@ -26,7 +26,7 @@ Per Constitution VII (Minimal Surface Area), the v0.1.0 surface is exactly these
 These were locked in at spec time (Design Decision #1) and are reproduced here:
 
 - **`update`** — solves the no-single-update-command pain (`brew upgrade sahil87/tap/all` does NOT propagate to deps). Cannot be a flag on an existing tool because the entry point itself is what's missing.
-- **`shell-init`** — solves the cold-start cost and dual-eval-line burden when multiple shell-integrating tools are installed. Per-tool `shell-init` / `shell-setup` keep working standalone (Constitution IV).
+- **`shell-init`** — solves the cold-start cost and N-eval-line burden when multiple shell-integrating tools are installed. Per-tool `shell-init` keeps working standalone (Constitution IV).
 - **`version`** — solves the bug-report triage pain. Cannot live on a per-tool CLI because the value is the cross-tool aggregation.
 
 ## Exit-code translation
@@ -52,9 +52,9 @@ Defined in `src/cmd/shll/tools.go`. Constitution III (Tool Roster Source of Trut
 var Roster = []Tool{
     {Name: "fab-kit", Formula: "sahil87/tap/fab-kit"},
     {Name: "rk",      Formula: "sahil87/tap/rk"},
-    {Name: "tu",      Formula: "sahil87/tap/tu"},
+    {Name: "tu",      Formula: "sahil87/tap/tu",  ShellInit: []string{"tu", "shell-init", "<shell>"}},
     {Name: "hop",     Formula: "sahil87/tap/hop", ShellInit: []string{"hop", "shell-init", "<shell>"}},
-    {Name: "wt",      Formula: "sahil87/tap/wt",  ShellInit: []string{"wt", "shell-setup"}},
+    {Name: "wt",      Formula: "sahil87/tap/wt",  ShellInit: []string{"wt", "shell-init", "<shell>"}},
     {Name: "idea",    Formula: "sahil87/tap/idea"},
 }
 ```
@@ -63,7 +63,7 @@ Roster invariants:
 
 - **Order matters.** `shll shell-init` concatenates output in roster order (deterministic for users who reason about init sequencing).
 - **Six tools.** Adding a tool is a `shll` release, not a runtime configuration change.
-- **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `src/cmd/shll/tools.go:31`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. `wt shell-setup` takes no shell arg, so its argv has no placeholder.
+- **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `src/cmd/shll/tools.go:31`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. All three integrators (`tu`, `hop`, `wt`) substitute the placeholder uniformly — three of the six roster entries carry shell integration.
 - **`formulaPrefix = "sahil87/tap/"`** (`src/cmd/shll/tools.go:5`) is a named constant — no magic string at the call sites.
 
 ## File layout (src/cmd/shll/)

@@ -23,7 +23,7 @@ func newShellInitCmd() *cobra.Command {
 		Long: `Emit a single concatenated shell-init blob for every installed sahil87 tool
 that exposes shell integration.
 
-Today, hop and wt are the only roster tools with shell integration. The output
+Today, tu, hop, and wt are the roster tools with shell integration. The output
 is eval-safe: missing tools produce no output, errors go to stderr, and stdout
 is shell code only.
 
@@ -96,7 +96,7 @@ func runShellInit(ctx context.Context, shell string, stdout, stderr io.Writer) e
 }
 
 // substituteShell returns a copy of argv with every shellPlaceholder token
-// replaced by shell. Tools without the placeholder (e.g. wt shell-setup) come
+// replaced by shell. Argv elements that do not match shellPlaceholder come
 // through unchanged.
 func substituteShell(argv []string, shell string) []string {
 	out := make([]string, len(argv))
