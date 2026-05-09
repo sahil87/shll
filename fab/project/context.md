@@ -39,7 +39,7 @@ shll/
 | Command | Purpose |
 |---------|---------|
 | `shll update` | Run `brew update && brew upgrade sahil87/tap/<each>` for every installed sahil87 tool |
-| `shll shell-init <shell>` | Concatenate the shell-init output of all sahil87 tools that expose one (today: `hop shell-init`, `wt shell-setup`) |
+| `shll shell-init <shell>` | Concatenate the shell-init output of all sahil87 tools that expose one (today: `tu shell-init`, `hop shell-init`, `wt shell-init`) |
 | `shll version` | Print versions of `shll` itself and every installed sahil87 tool |
 
 ## Tool roster (hardcoded, see Constitution III)
@@ -48,9 +48,9 @@ shll/
 |------|--------------|---------------|---------------------------------|
 | `fab-kit` | `sahil87/tap/fab-kit` | yes (existing) | no |
 | `rk` | `sahil87/tap/rk` | yes (existing) | no |
-| `tu` | `sahil87/tap/tu` | yes (existing) | no |
+| `tu` | `sahil87/tap/tu` | yes (existing) | yes (`shell-init`) |
 | `hop` | `sahil87/tap/hop` | yes (existing) | yes (`shell-init`) |
-| `wt` | `sahil87/tap/wt` | no | yes (`shell-setup`) |
+| `wt` | `sahil87/tap/wt` | no | yes (`shell-init`) |
 | `idea` | `sahil87/tap/idea` | no | no |
 
 Per-tool `update` commands continue to work standalone (Constitution Principle IV) — `shll update` does not deprecate them.
@@ -61,7 +61,7 @@ Per-tool `update` commands continue to work standalone (Constitution Principle I
 - `brew info --json=v2 sahil87/tap/<formula>`
 - `brew upgrade sahil87/tap/<formula>`
 - `brew list --formula --versions sahil87/tap/<formula>` (or `command -v <tool>` for presence check)
-- `<tool> shell-init <shell>` and `<tool> shell-setup` (for shell-init composition)
+- `<tool> shell-init <shell>` (for shell-init composition)
 - `<tool> --version` (for version reporting)
 
 All routed through `internal/proc`.

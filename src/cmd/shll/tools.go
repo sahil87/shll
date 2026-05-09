@@ -19,9 +19,9 @@ type Tool struct {
 	// shell integration — it is skipped during `shll shell-init`.
 	//
 	// Use the literal token `<shell>` to indicate where the user-supplied shell
-	// name (zsh, bash) should be substituted at composition time. Tools without
-	// a shell argument (e.g. `wt shell-setup`) just list their argv verbatim
-	// with no substitution token.
+	// name (zsh, bash) should be substituted at composition time. Every current
+	// integrator (`tu`, `hop`, `wt`) takes a shell argument; if a future tool
+	// shipped a no-arg shell-init, its argv would simply omit the placeholder.
 	ShellInit []string
 }
 
@@ -36,8 +36,8 @@ const shellPlaceholder = "<shell>"
 var Roster = []Tool{
 	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit"},
 	{Name: "rk", Formula: formulaPrefix + "rk"},
-	{Name: "tu", Formula: formulaPrefix + "tu"},
+	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}},
 	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}},
-	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-setup"}},
+	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}},
 	{Name: "idea", Formula: formulaPrefix + "idea"},
 }
