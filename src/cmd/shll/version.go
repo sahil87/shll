@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -22,6 +23,15 @@ const versionTimeout = 2 * time.Second
 // or whose --version invocation fails/times out. Named constant to keep the
 // formatting honest — magic strings forbidden by code-quality.md.
 const notInstalledLabel = "not installed"
+
+// versionTokenRE matches a SemVer-shaped token: optional leading `v`, at
+// least one numeric component, optional `.`-separated additional numeric
+// components, optional `[.-]<suffix>` (pre-release / build-metadata).
+var versionTokenRE = regexp.MustCompile(`v?\d+(\.\d+)*([.-][\w.+-]+)?`)
+
+// versionPrefixRE matches lines of the shape `<word> version <rest>` where
+// `version` is case-insensitive. The captured group is `<rest>`.
+var versionPrefixRE = regexp.MustCompile(`^\S+\s+(?i:version)\s+(.+)$`)
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
@@ -44,7 +54,7 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 		ctx = context.Background()
 	}
 	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "shll\t%s\n", version)
+	fmt.Fprintf(w, "shll\t%s\n", normalizeVersion(version))
 	for _, tool := range Roster {
 		fmt.Fprintf(w, "%s\t%s\n", tool.Name, toolVersion(ctx, tool))
 	}
@@ -65,18 +75,41 @@ func toolVersion(ctx context.Context, tool Tool) string {
 	if err != nil {
 		return notInstalledLabel
 	}
-	return firstNonEmptyLine(string(out))
+	return normalizeVersion(string(out))
 }
 
-// firstNonEmptyLine returns the first non-blank line of s, trimmed of leading
-// and trailing whitespace. Tools sometimes emit multi-line --version output
-// (banner + version) — we only print the first useful line in the table.
-func firstNonEmptyLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
-		trimmed := strings.TrimSpace(line)
+// normalizeVersion extracts a displayable version string from a tool's
+// `--version` output. Behavior is purely shape-based — no per-tool logic —
+// so independent upstream `--version` standardization is absorbed without
+// shll code changes.
+//
+// Order of operations on the first non-empty line:
+//  1. If a SemVer-shaped token is present, return it with a `v` prefix
+//     (added if absent).
+//  2. Else if the line matches `<word> version <rest>`, return `<rest>`.
+//  3. Else return the trimmed first non-empty line verbatim.
+//
+// Empty / whitespace-only input returns `""`.
+func normalizeVersion(raw string) string {
+	line := ""
+	for _, candidate := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(candidate)
 		if trimmed != "" {
-			return trimmed
+			line = trimmed
+			break
 		}
 	}
-	return ""
+	if line == "" {
+		return ""
+	}
+	if token := versionTokenRE.FindString(line); token != "" {
+		if !strings.HasPrefix(token, "v") {
+			return "v" + token
+		}
+		return token
+	}
+	if m := versionPrefixRE.FindStringSubmatch(line); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return line
 }
