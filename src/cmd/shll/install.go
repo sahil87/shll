@@ -51,12 +51,13 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer) error {
 		ctx = context.Background()
 	}
 	if !hasBrew(ctx) {
-		fmt.Fprintln(stderr, brewMissingHint)
+		fmt.Fprintln(stderr, installBrewMissingHint)
 		return errSilent
 	}
 
-	// Partition the roster into already-installed and missing. We iterate
-	// Roster (not `installed`) below so order is preserved deterministically.
+	// Collect the tools that are not yet installed. The slice is built by
+	// walking Roster in order, so iterating `missing` below preserves roster
+	// order deterministically.
 	missing := make([]Tool, 0, len(Roster))
 	for _, t := range Roster {
 		if !isInstalled(ctx, t.Formula) {

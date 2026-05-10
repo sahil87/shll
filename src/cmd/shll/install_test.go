@@ -24,8 +24,14 @@ func TestInstall_BrewMissing(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent", err)
 	}
-	if !strings.Contains(stderr.String(), brewMissingHint) {
-		t.Fatalf("stderr = %q, want to contain %q", stderr.String(), brewMissingHint)
+	if !strings.Contains(stderr.String(), installBrewMissingHint) {
+		t.Fatalf("stderr = %q, want to contain %q", stderr.String(), installBrewMissingHint)
+	}
+	// The install-specific hint must say "shll install", not "shll update" —
+	// using the update-specific hint here would mislead users about which
+	// command produced the error.
+	if strings.Contains(stderr.String(), "shll update requires") {
+		t.Fatalf("stderr = %q, must not contain update-specific hint from `shll install`", stderr.String())
 	}
 	if invocationsContain(f.calls, brewBinary, "install", formulaPrefix+"hop") {
 		t.Fatal("brew install should not be invoked when brew is missing")

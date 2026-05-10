@@ -10,9 +10,17 @@ import (
 // brewBinary is the Homebrew CLI name. Named constant so callers do not open-code it.
 const brewBinary = "brew"
 
-// brewMissingHint is the exact stderr line printed when the brew binary is not
-// on PATH. Matches the spec's required text verbatim.
+// brewMissingHint is the exact stderr line printed by `shll update` when the
+// brew binary is not on PATH. Matches the original spec's required text verbatim
+// (260508-kvan scenario asserts this string literally — do not edit without
+// also updating that scenario).
 const brewMissingHint = "shll update requires Homebrew. Install from https://brew.sh"
+
+// installBrewMissingHint is the install-command counterpart to brewMissingHint.
+// `shll install` uses an install-specific message so the error tells the user
+// which command they ran; the update spec's verbatim assertion is preserved by
+// keeping `brewMissingHint` separate.
+const installBrewMissingHint = "shll install requires Homebrew. Install from https://brew.sh"
 
 // shllFormula is the brew formula for shll itself. Used by `shll update` to
 // self-upgrade alongside the roster (shll is not in Roster — Roster is the

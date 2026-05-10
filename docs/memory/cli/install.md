@@ -8,7 +8,7 @@ Source: `src/cmd/shll/install.go`, with shared brew helpers in `src/cmd/shll/bre
 
 The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd/shll/install.go`):
 
-1. **Brew missing.** If `hasBrew(ctx)` returns false, write `brewMissingHint` to stderr and return `errSilent`. Exit code: 1. The hint string is shared with `shll update` (`src/cmd/shll/brew.go:15`).
+1. **Brew missing.** If `hasBrew(ctx)` returns false, write `installBrewMissingHint` to stderr and return `errSilent`. Exit code: 1. The literal hint is `"shll install requires Homebrew. Install from https://brew.sh"` (`src/cmd/shll/brew.go`). It is intentionally separate from `brewMissingHint` (used by `shll update`) so each command's error tells the user which command they ran — the update spec scenario asserts its verbatim text, so reusing the same constant for both commands would either violate that lock or mislead `shll install` users.
 
 2. **Partition the roster.** Iterate `Roster` in order, calling `isInstalled(ctx, t.Formula)`; collect the *missing* entries into a local `missing` slice.
 
