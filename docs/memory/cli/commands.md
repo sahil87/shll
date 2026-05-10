@@ -1,6 +1,6 @@
 # cli/commands
 
-Top-level command surface for the `shll` binary — the cobra root, the four subcommands it wires up, the exit-code translation layer, and the hardcoded tool roster every subcommand consumes.
+Top-level command surface for the `shll` binary — the cobra root, the five subcommands it wires up, the exit-code translation layer, and the hardcoded tool roster every subcommand consumes.
 
 ## Binary entry point
 
@@ -15,17 +15,18 @@ Top-level command surface for the `shll` binary — the cobra root, the four sub
 
 - `Use: "shll"`
 - `Short: "meta-CLI for the sahil87 toolkit"`
-- A `Long` block listing the four subcommands and noting that per-tool CLIs continue to work standalone.
+- A `Long` block listing the five subcommands and noting that per-tool CLIs continue to work standalone.
 - `SilenceUsage: true` and `SilenceErrors: true` — usage is not printed on RunE errors, and cobra's default error printer is suppressed. The `translateExit` layer in `main.go` owns stderr.
-- `AddCommand` for `newUpdateCmd()`, `newShellInitCmd()`, `newShellInstallCmd()`, `newVersionCmd()`.
+- `AddCommand` for `newInstallCmd()`, `newUpdateCmd()`, `newShellInitCmd()`, `newShellInstallCmd()`, `newVersionCmd()`.
 
-Per Constitution VII (Minimal Surface Area), the v0.1.0 surface is exactly these four subcommands. Adding a new top-level subcommand requires explicit justification in the change's intake.
+Per Constitution VII (Minimal Surface Area), every top-level subcommand requires explicit justification in the change's intake. The current surface is five subcommands.
 
 ### Constitution VII justification per subcommand
 
-These are locked in at spec time and are reproduced here:
+These were locked in at spec time (Design Decision #1 for the original three; `install` and `shell-install` were added later, each with its own Constitution VII justification — see [cli/install](install.md#constitution-vii-justification) and the `shell-install` bullet below) and are reproduced here:
 
-- **`update`** — solves the no-single-update-command pain (`brew upgrade sahil87/tap/all` does NOT propagate to deps). Cannot be a flag on an existing tool because the entry point itself is what's missing.
+- **`install`** — solves the bootstrap pain (a new user wants "get me the toolkit"). Distinct lifecycle from `update`: different precondition (not-installed vs. installed), different failure modes, different discoverability. Cannot cleanly fold into `update --install-missing` without inverting that command's installed-only precondition. See [cli/install](install.md) for the full justification and behavior.
+- **`update`** — solves the no-single-update-command pain (`brew upgrade sahil87/tap/all` does NOT propagate to deps). Cannot be a flag on an existing tool because the entry point itself is what's missing. Also self-upgrades shll itself when shll was brew-installed — see [cli/update](update.md#shll-self-upgrade).
 - **`shell-init`** — solves the cold-start cost and N-eval-line burden when multiple shell-integrating tools are installed. Per-tool `shell-init` keeps working standalone (Constitution IV).
 - **`shell-install`** — solves the manual-rc-edit cliff in the post-`brew install` onboarding flow. Cannot be a flag on `shell-init` (it *invokes* `shell-init`, so making it a sub-flag is structurally self-referential). Cannot live in a per-tool CLI (per-tool CLIs emit their own shell-init; this command writes the cross-tool composition `eval "$(shll shell-init <shell>)"`, which is exactly what shll exists for).
 - **`version`** — solves the bug-report triage pain. Cannot live on a per-tool CLI because the value is the cross-tool aggregation.
@@ -74,7 +75,8 @@ Roster invariants:
 | `main.go` | Entry point, version variable, `translateExit`, `errSilent`, `errExitCode`. |
 | `root.go` | `newRootCmd()` — cobra root with three subcommands wired in. |
 | `tools.go` | `Tool` struct, `Roster`, `formulaPrefix`, `shellPlaceholder`. |
-| `brew.go` | Shared brew helpers used by every subcommand: `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`. See [update](update.md) for details. |
+| `brew.go` | Shared brew helpers used by every subcommand: `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`, `installBrewMissingHint`, `shllFormula`. See [update](update.md) for details. |
+| `install.go` | `newInstallCmd()` + `runInstall`. See [install](install.md). |
 | `update.go` | `newUpdateCmd()` + `runUpdate`. See [update](update.md). |
 | `shell_init.go` | `newShellInitCmd()` + `runShellInit`. See [shell-init](shell-init.md). |
 | `shell_install.go` | `newShellInstallCmd()` + `runShellInstall`. See [shell-install](shell-install.md). |
@@ -87,4 +89,4 @@ Each command file has a paired `_test.go` (test-alongside per `code-quality.md`)
 - Constitution I (Security First) → all subprocesses go through [`internal/proc`](../internal/proc.md).
 - Constitution III (Wrap, Don't Reinvent) + IV (Composition, Not Replacement) → every subcommand shells out; nothing reimplements brew or per-tool logic.
 - Constitution V (Graceful Degradation) → uninstalled tools never produce errors; missing tools are skipped silently.
-- Constitution VII (Minimal Surface Area) → subcommand list is closed at four for v0.1.0 (`update`, `shell-init`, `shell-install`, `version`).
+- Constitution VII (Minimal Surface Area) → subcommand list is closed at five for v0.1.0 (`install`, `update`, `shell-init`, `shell-install`, `version`).

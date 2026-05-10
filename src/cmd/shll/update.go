@@ -13,12 +13,14 @@ import (
 func newUpdateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update",
-		Short: "brew update + brew upgrade for every installed sahil87 tool",
-		Long: `Update every installed sahil87 tool via Homebrew.
+		Short: "brew update + brew upgrade for shll and every installed sahil87 tool",
+		Long: `Update shll itself and every installed sahil87 tool via Homebrew.
 
-shll update runs ` + "`brew update --quiet`" + ` then ` + "`brew upgrade sahil87/tap/<formula>`" + ` for
-every roster tool that is currently installed. Uninstalled tools are skipped
-silently. Brew's progress output streams directly to your terminal.`,
+shll update runs ` + "`brew update --quiet`" + `, then ` + "`brew upgrade sahil87/tap/shll`" + `
+(when shll itself was installed via brew), then ` + "`brew upgrade sahil87/tap/<formula>`" + `
+for every roster tool that is currently installed. Uninstalled tools (including
+shll itself, e.g. on a ` + "`go install`" + ` dev build) are skipped silently. Brew's
+progress output streams directly to your terminal.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runUpdate(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr())
@@ -39,7 +41,7 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 	}
 
 	// Filter the roster down to installed tools first — this lets us short-circuit
-	// the "no sahil87 tools installed" branch before doing the (cheap) brew update.
+	// the "nothing to do" branch before doing the (cheap) brew update.
 	installed := make([]Tool, 0, len(Roster))
 	for _, t := range Roster {
 		if isInstalled(ctx, t.Formula) {
@@ -47,7 +49,11 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 		}
 	}
 
-	if len(installed) == 0 {
+	// Self-upgrade only when shll was installed via brew. A `go install` or
+	// local-build shll is not brew-managed and brew upgrade would error.
+	shllSelfInstalled := isInstalled(ctx, shllFormula)
+
+	if len(installed) == 0 && !shllSelfInstalled {
 		fmt.Fprintln(stdout, "No sahil87 tools installed.")
 		return nil
 	}
@@ -65,10 +71,26 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 		return errSilent
 	}
 
+	// Best-effort: failures are recorded and reflected in the exit code, but
+	// never abort the loop — same policy for shll-self and every roster tool.
+	anyFailed := false
+
+	// Self-upgrade shll first so subsequent operations in this run benefit from
+	// the updated binary on disk (the running process keeps its mapped image,
+	// but a follow-up invocation picks up the new binary).
+	if shllSelfInstalled {
+		code, err := proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)
+		if err != nil {
+			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
+			anyFailed = true
+		} else if code != 0 {
+			anyFailed = true
+		}
+	}
+
 	// Sequentially upgrade each installed roster tool. A failure in one tool is
 	// surfaced but does not abort the run — we want best-effort across the roster
 	// (spec Assumption #16). The overall exit code reflects whether any failed.
-	anyFailed := false
 	for _, t := range installed {
 		code, err := proc.RunForeground(ctx, brewBinary, "upgrade", t.Formula)
 		if err != nil {

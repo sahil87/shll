@@ -110,7 +110,8 @@ func TestUpdate_NoToolsInstalled(t *testing.T) {
 
 func TestUpdate_AllInstalled(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		// Every brew list/--version call succeeds → every roster tool installed.
+		// Every brew list/--version call succeeds → shll itself plus every
+		// roster tool are all installed.
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -122,10 +123,119 @@ func TestUpdate_AllInstalled(t *testing.T) {
 	if !invocationsContain(f.calls, brewBinary, "update", "--quiet") {
 		t.Fatalf("expected brew update --quiet, calls: %+v", f.calls)
 	}
+	if !invocationsContain(f.calls, brewBinary, "upgrade", shllFormula) {
+		t.Fatalf("expected self-upgrade brew upgrade %s, calls: %+v", shllFormula, f.calls)
+	}
 	for _, tool := range Roster {
 		if !invocationsContain(f.calls, brewBinary, "upgrade", tool.Formula) {
 			t.Errorf("expected brew upgrade %s, calls: %+v", tool.Formula, f.calls)
 		}
+	}
+}
+
+func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
+	// shll self-upgrade must run BEFORE the roster loop so a follow-up
+	// invocation picks up the new binary.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		// shll itself + full roster all installed.
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v", err)
+	}
+
+	// Find the indices of the shll self-upgrade and the first roster upgrade
+	// (fab-kit, the first roster entry) in the recorded call sequence.
+	selfIdx, firstRosterIdx := -1, -1
+	for i, c := range f.calls {
+		if c.Name != brewBinary || len(c.Args) < 2 || c.Args[0] != "upgrade" {
+			continue
+		}
+		switch c.Args[1] {
+		case shllFormula:
+			if selfIdx == -1 {
+				selfIdx = i
+			}
+		case Roster[0].Formula:
+			if firstRosterIdx == -1 {
+				firstRosterIdx = i
+			}
+		}
+	}
+	if selfIdx == -1 || firstRosterIdx == -1 {
+		t.Fatalf("missing expected upgrade calls (self=%d, firstRoster=%d), calls: %+v", selfIdx, firstRosterIdx, f.calls)
+	}
+	if selfIdx >= firstRosterIdx {
+		t.Fatalf("shll self-upgrade index %d must be < first roster upgrade index %d", selfIdx, firstRosterIdx)
+	}
+}
+
+func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
+	// Dev build (e.g. `go install`) — shll itself is not brew-installed.
+	// shll update must skip the self-upgrade silently and still upgrade the
+	// roster.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			if req.Args[3] == shllFormula {
+				return proc.Result{Err: errors.New("not installed")}
+			}
+			return proc.Result{Stdout: []byte(req.Args[3] + " 1.0.0\n")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if invocationsContain(f.calls, brewBinary, "upgrade", shllFormula) {
+		t.Fatal("brew upgrade for shll should NOT run when shll itself isn't brew-installed")
+	}
+	// Roster upgrades still happen.
+	for _, tool := range Roster {
+		if !invocationsContain(f.calls, brewBinary, "upgrade", tool.Formula) {
+			t.Errorf("expected brew upgrade %s", tool.Formula)
+		}
+	}
+}
+
+func TestUpdate_OnlyShllInstalled(t *testing.T) {
+	// shll itself installed via brew, but no roster tools installed. shll
+	// update must still self-upgrade and exit 0 — the previous "No sahil87
+	// tools installed." short-circuit no longer fires when shll is brewed.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			if req.Args[3] == shllFormula {
+				return proc.Result{Stdout: []byte(shllFormula + " 1.0.0\n")}
+			}
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if !invocationsContain(f.calls, brewBinary, "update", "--quiet") {
+		t.Fatal("expected brew update --quiet to run when shll is brewed even with no roster tools")
+	}
+	if !invocationsContain(f.calls, brewBinary, "upgrade", shllFormula) {
+		t.Fatal("expected brew upgrade for shll itself")
+	}
+	// No roster upgrades.
+	for _, tool := range Roster {
+		if invocationsContain(f.calls, brewBinary, "upgrade", tool.Formula) {
+			t.Errorf("brew upgrade for uninstalled %s should NOT run", tool.Formula)
+		}
+	}
+	if strings.Contains(stdout.String(), "No sahil87 tools installed") {
+		t.Errorf("short-circuit message should NOT print when shll itself is brewed, got %q", stdout.String())
 	}
 }
 
@@ -196,13 +306,13 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 }
 
 func TestUpdate_OneUpgradeFails(t *testing.T) {
-	// All installed; first upgrade fails, second succeeds. Exit non-zero,
-	// continue through the roster.
-	upgradeCalls := 0
+	// All installed (including shll itself); the first roster upgrade fails;
+	// the rest must still be attempted. Exit non-zero overall.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == brewBinary && len(req.Args) >= 1 && req.Args[0] == "upgrade" {
-			upgradeCalls++
-			if upgradeCalls == 1 {
+		if req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "upgrade" {
+			// Fail only the first roster entry. Self-upgrade (shll) and the
+			// rest of the roster succeed.
+			if req.Args[1] == Roster[0].Formula {
 				return proc.Result{ExitCode: 1}
 			}
 			return proc.Result{ExitCode: 0}
@@ -216,14 +326,16 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (overall failure)", err)
 	}
-	// All six roster tools should have been attempted despite the first failure.
+	// Self-upgrade + every roster entry must have been attempted despite the
+	// roster[0] failure — best-effort policy.
 	gotUpgrades := 0
 	for _, c := range f.calls {
 		if c.Name == brewBinary && len(c.Args) >= 1 && c.Args[0] == "upgrade" {
 			gotUpgrades++
 		}
 	}
-	if gotUpgrades != len(Roster) {
-		t.Fatalf("upgrade attempts = %d, want %d (must continue through failure)", gotUpgrades, len(Roster))
+	want := len(Roster) + 1 // +1 for the shll self-upgrade
+	if gotUpgrades != want {
+		t.Fatalf("upgrade attempts = %d, want %d (self + roster, must continue through failure)", gotUpgrades, want)
 	}
 }

@@ -10,7 +10,8 @@ shll composes operations that span every per-tool CLI (hop, wt, fab-kit, rk, tu,
 so you have one entry point for cross-toolkit concerns.
 
 Subcommands:
-  shll update                 brew update + brew upgrade for every installed sahil87 tool
+  shll install                brew install every sahil87 tool that isn't already installed
+  shll update                 brew update + brew upgrade for shll and every installed sahil87 tool
   shll shell-init <shell>     emit a single eval-safe shell-init blob for all installed tools
   shll shell-install [shell]  append the shell-init eval line to your rc file (idempotent)
   shll version                print versions of shll and every installed sahil87 tool
@@ -26,6 +27,7 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	cmd.AddCommand(
+		newInstallCmd(),
 		newUpdateCmd(),
 		newShellInitCmd(),
 		newShellInstallCmd(),

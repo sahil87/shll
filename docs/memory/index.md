@@ -5,5 +5,5 @@
 
 | Domain | Description | Memory Files |
 |--------|-------------|------|
-| cli | Top-level command surface — root, update, shell-init, shell-install, version | [commands](cli/commands.md), [update](cli/update.md), [shell-init](cli/shell-init.md), [shell-install](cli/shell-install.md), [version](cli/version.md) |
+| cli | Top-level command surface — root, install, update, shell-init, shell-install, version | [commands](cli/commands.md), [install](cli/install.md), [update](cli/update.md), [shell-init](cli/shell-init.md), [shell-install](cli/shell-install.md), [version](cli/version.md) |
 | internal | Shared internal packages | [proc](internal/proc.md) |
