@@ -14,6 +14,11 @@ const brewBinary = "brew"
 // on PATH. Matches the spec's required text verbatim.
 const brewMissingHint = "shll update requires Homebrew. Install from https://brew.sh"
 
+// shllFormula is the brew formula for shll itself. Used by `shll update` to
+// self-upgrade alongside the roster (shll is not in Roster — Roster is the
+// sub-tool list per Constitution III).
+const shllFormula = formulaPrefix + "shll"
+
 // hasBrew reports whether the brew binary is on PATH. It does this by invoking
 // `brew --version` via proc.Run (so tests can swap behavior) and checking for
 // proc.ErrNotFound. Per Constitution I, no manual PATH parsing — let exec do it.
