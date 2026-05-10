@@ -5,32 +5,38 @@ created_by: sahil-weaver
 change_type: feat
 issues: []
 progress:
-    intake: ready
-    spec: pending
-    apply: pending
-    review: pending
-    hydrate: pending
-    ship: pending
-    review-pr: pending
+    intake: done
+    spec: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
 plan:
-    generated: false
-    task_count: 0
-    acceptance_count: 0
-    acceptance_completed: 0
+    generated: true
+    task_count: 32
+    acceptance_count: 39
+    acceptance_completed: 39
 confidence:
-    certain: 6
-    confident: 12
+    certain: 23
+    confident: 0
     tentative: 0
     unresolved: 0
-    score: 1.4
-    indicative: true
+    score: 5.0
     fuzzy: true
     dimensions:
-        signal: 81.1
-        reversibility: 81.7
-        competence: 86.1
-        disambiguation: 81.4
+        signal: 93.7
+        reversibility: 83.5
+        competence: 87.2
+        disambiguation: 82.2
 stage_metrics:
-    intake: {started_at: "2026-05-10T01:05:14Z", driver: fab-new, iterations: 1}
-prs: []
-last_updated: 2026-05-10T01:08:26Z
+    intake: {started_at: "2026-05-10T01:05:14Z", driver: fab-new, iterations: 1, completed_at: "2026-05-10T01:21:14Z"}
+    spec: {started_at: "2026-05-10T01:21:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-10T01:25:50Z"}
+    apply: {started_at: "2026-05-10T01:25:50Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-10T01:30:51Z"}
+    review: {started_at: "2026-05-10T01:30:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-10T01:34:12Z"}
+    hydrate: {started_at: "2026-05-10T01:34:12Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-10T01:38:22Z"}
+    ship: {started_at: "2026-05-10T01:38:22Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-10T01:40:47Z"}
+    review-pr: {started_at: "2026-05-10T01:40:47Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/4
+last_updated: 2026-05-10T01:40:47Z

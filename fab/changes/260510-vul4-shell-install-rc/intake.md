@@ -208,6 +208,25 @@ Showing a one-shot install path replaces the manual `eval "$(shll shell-init zsh
 - Is there a future `fish` story? Not in this change; if added later, fish convention is a drop-in dir (`~/.config/fish/conf.d/shll.fish`) rather than editing `config.fish`. Out of scope here.
 - Should `shll update` (the existing subcommand) gain awareness of an installed shell-init block, e.g. warn if the rc file was edited by a tool other than shll? Out of scope; would couple `update` to rc-file knowledge, violating subcommand independence.
 
+## Clarifications
+
+### Session 2026-05-10 (bulk confirm)
+
+| # | Action | Detail |
+|---|--------|--------|
+| 6 | Confirmed | — |
+| 7 | Confirmed | — |
+| 8 | Confirmed | — |
+| 9 | Confirmed | — |
+| 10 | Confirmed | — |
+| 12 | Confirmed | — |
+| 13 | Confirmed | — |
+| 14 | Confirmed | — |
+| 15 | Confirmed | — |
+| 16 | Confirmed | — |
+| 17 | Confirmed | — |
+| 18 | Confirmed | — |
+
 ## Assumptions
 
 | # | Grade | Decision | Rationale | Scores |
@@ -217,18 +236,18 @@ Showing a one-shot install path replaces the manual `eval "$(shll shell-init zsh
 | 3 | Certain | Error rather than create rc file when absent | Discussed — user explicitly chose this; missing rc file is a meaningful signal (ZDOTDIR, dotfile manager pending) | S:95 R:85 A:90 D:95 |
 | 4 | Certain | Don't make other tools brew dependencies of shll | Discussed — user raised, agent recommended against; Constitution IV/V conflicts and `all` formula already covers bundle-install | S:95 R:80 A:90 D:90 |
 | 5 | Certain | No brew postinstall hook for auto shell-install | Discussed — must always be explicit user command; brew formulas mutating rc files have a bad reputation | S:90 R:75 A:85 D:90 |
-| 6 | Confident | Sentinel format `# >>> shll shell-init >>>` / `# <<< shll shell-init <<<` | Mirrors `mise activate` / `direnv hook` convention; visually distinct, easy to grep, easy to pattern-match in uninstall | S:75 R:70 A:80 D:75 |
-| 7 | Confident | Subcommand name `shell-install` (vs `init`, `setup`, `bootstrap`) | `init` clashes with `shell-init`; `setup` is generic; `install` is unambiguous and matches user intent. Pairs naturally with `--uninstall` flag | S:70 R:80 A:80 D:75 |
-| 8 | Confident | Shell detection from `$SHELL` basename when no positional | Standard pattern (starship, zoxide, mise all do this); explicit positional remains the canonical form | S:80 R:80 A:85 D:85 |
-| 9 | Confident | macOS bash → `~/.bash_profile`; Linux bash → `~/.bashrc` | POSIX login-shell convention on macOS; isolated behind `runtime.GOOS` per Constitution Cross-Platform | S:75 R:80 A:90 D:80 |
-| 10 | Confident | Trailing-newline guard before append | Cheap, prevents block from merging with user's last line; standard hygiene for append-based installers | S:80 R:85 A:90 D:85 |
+| 6 | Certain | Sentinel format `# >>> shll shell-init >>>` / `# <<< shll shell-init <<<` | Clarified — user confirmed | S:95 R:70 A:80 D:75 |
+| 7 | Certain | Subcommand name `shell-install` (vs `init`, `setup`, `bootstrap`) | Clarified — user confirmed | S:95 R:80 A:80 D:75 |
+| 8 | Certain | Shell detection from `$SHELL` basename when no positional | Clarified — user confirmed | S:95 R:80 A:85 D:85 |
+| 9 | Certain | macOS bash → `~/.bash_profile`; Linux bash → `~/.bashrc` | Clarified — user confirmed | S:95 R:80 A:90 D:80 |
+| 10 | Certain | Trailing-newline guard before append | Clarified — user confirmed | S:95 R:85 A:90 D:85 |
 | 11 | Certain | `--print` for dry-run; `--uninstall` for removal; `--rc-file` for override | User explicitly named `--print` and `--uninstall` in the change request; `--rc-file` follows from the missing-rc-file error guidance | S:90 R:80 A:85 D:85 |
-| 12 | Confident | Exit codes — 2 for user-invocation errors, 1 for I/O failure, 0 for success/no-op | Reuses existing `errExitCode`/`errSilent` policy from `shell-init` (cli/commands.md) | S:85 R:85 A:90 D:90 |
-| 13 | Confident | `--uninstall` resolves symlink first then truncates the real target | Preserves dotfile-manager symlinks for the destructive path too; otherwise truncate would leave the symlink intact but the source-of-truth file unchanged | S:75 R:65 A:80 D:75 |
-| 14 | Confident | README install section keeps manual `eval` line as fallback | Constitution IV — composition not replacement; users with custom setups should retain the manual path | S:80 R:85 A:90 D:80 |
-| 15 | Confident | New memory file `cli/shell-install.md`, modify `cli/commands.md` and `cli/shell-init.md` | Mirrors existing memory shape; per-subcommand file is the established pattern | S:85 R:85 A:95 D:85 |
-| 16 | Confident | Default-install success message includes both "restart shell" and "source <path>" hints | Both are useful; either alone is fine. Trivial output-only choice, fully reversible | S:65 R:90 A:80 D:60 |
-| 17 | Confident | `--print` accepts a shell positional rather than deriving solely from `$SHELL` | Consistency with default mode argues for positional; trivial UX choice, fully reversible | S:60 R:90 A:80 D:60 |
-| 18 | Confident | No `fish` support in this change | Explicit scope exclusion — fish convention differs (drop-in dir, not rc edit); deferring keeps scope tight, follow-up change can add it | S:70 R:80 A:80 D:70 |
+| 12 | Certain | Exit codes — 2 for user-invocation errors, 1 for I/O failure, 0 for success/no-op | Clarified — user confirmed | S:95 R:85 A:90 D:90 |
+| 13 | Certain | `--uninstall` resolves symlink first then truncates the real target | Clarified — user confirmed | S:95 R:65 A:80 D:75 |
+| 14 | Certain | README install section keeps manual `eval` line as fallback | Clarified — user confirmed | S:95 R:85 A:90 D:80 |
+| 15 | Certain | New memory file `cli/shell-install.md`, modify `cli/commands.md` and `cli/shell-init.md` | Clarified — user confirmed | S:95 R:85 A:95 D:85 |
+| 16 | Certain | Default-install success message includes both "restart shell" and "source <path>" hints | Clarified — user confirmed | S:95 R:90 A:80 D:60 |
+| 17 | Certain | `--print` accepts a shell positional rather than deriving solely from `$SHELL` | Clarified — user confirmed | S:95 R:90 A:80 D:60 |
+| 18 | Certain | No `fish` support in this change | Clarified — user confirmed | S:95 R:80 A:80 D:70 |
 
-18 assumptions (6 certain, 12 confident, 0 tentative, 0 unresolved).
+18 assumptions (18 certain, 0 confident, 0 tentative, 0 unresolved).
