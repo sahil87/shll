@@ -1,0 +1,5 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-05-10T01:05:14Z"}
+{"args":"Add 'shll shell-install' subcommand that appends 'eval \"$(shll shell-init \u003cshell\u003e)\"' to the user's shell rc file (zsh/bash) idempotently using sentinel comments. Use plain O_APPEND (preserves symlinks). Error rather than create the rc file if absent. Support --print and --uninstall.","cmd":"fab-new","event":"command","ts":"2026-05-10T01:05:14Z"}
+{"delta":"+0.0","event":"confidence","score":0,"trigger":"calc-score","ts":"2026-05-10T01:07:42Z"}
+{"delta":"+1.1","event":"confidence","score":1.1,"trigger":"calc-score","ts":"2026-05-10T01:07:58Z"}
+{"delta":"+0.3","event":"confidence","score":1.4,"trigger":"calc-score","ts":"2026-05-10T01:08:21Z"}
