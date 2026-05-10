@@ -138,9 +138,10 @@ func buildBlock(shell string) []byte {
 // Returns (start, end, true) where content[start:end] covers the open sentinel
 // through the trailing \n that follows the close sentinel (if present).
 //
-// Used by both the idempotency check (callers only need ok) and --uninstall
-// (callers slice content[:start] + content[end:] to remove the block plus its
-// trailing newline).
+// Used by --uninstall to slice content[:start] + content[end:] (removing the
+// block plus its trailing newline). The default install path does NOT call
+// this — its idempotency check is a simpler bytes.Contains scan for the open
+// sentinel only.
 func findBlock(content []byte) (start, end int, ok bool) {
 	openBytes := []byte(openSentinel)
 	closeBytes := []byte(closeSentinel)
@@ -151,10 +152,12 @@ func findBlock(content []byte) (start, end int, ok bool) {
 	// Search for the close sentinel after the open sentinel.
 	rel := bytes.Index(content[s+len(openBytes):], closeBytes)
 	if rel < 0 {
-		// Open without close — treat as not-found; the install path will then
-		// append a fresh block, and the user can manually clean up. Keeping the
-		// behavior conservative here (no auto-repair) per the spec invariant
-		// that one block is recognized.
+		// Open without close — findBlock returns not-found, but note this is
+		// only consulted by --uninstall. The default install path's idempotency
+		// check uses bytes.Contains on the open sentinel alone, so an
+		// open-without-close partial block causes install to short-circuit as
+		// "already installed" (no auto-repair). Users with a corrupted partial
+		// block must clean it up manually before re-installing.
 		return 0, 0, false
 	}
 	e := s + len(openBytes) + rel + len(closeBytes)

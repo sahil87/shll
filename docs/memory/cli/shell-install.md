@@ -44,7 +44,7 @@ The `userProvidedPath bool` parameter to `runShellInstallDefault` (`shell_instal
 | No positional, `$SHELL` basename ∈ `{zsh, bash}` | the inferred shell |
 | No positional, `$SHELL` basename unsupported | `errExitCode{code:2, msg: "shll shell-install: cannot infer shell from $SHELL=<raw>. Pass shell explicitly: shll shell-install zsh"}` |
 
-The basename is computed via `filepath.Base($SHELL)` (`shell_install.go:87`), so `/bin/zsh`, `/usr/bin/env zsh`, and `/usr/local/bin/zsh` all collapse to `zsh`. The supported-shell predicate (`isSupportedShell`) is the same one `shell-init` uses — both subcommands share the `supportedShells = {"zsh", "bash"}` constant defined in `shell_init.go`. The two unsupported-shell error messages are deliberately distinct so users get actionable feedback for the path they took (positional rejection vs. environment inference).
+The basename is computed via `filepath.Base($SHELL)` (`shell_install.go:87`), so canonical absolute paths like `/bin/zsh` and `/usr/local/bin/zsh` collapse to `zsh`. The supported-shell predicate (`isSupportedShell`) is the same one `shell-init` uses — both subcommands share the `supportedShells = {"zsh", "bash"}` constant defined in `shell_init.go`. The two unsupported-shell error messages are deliberately distinct so users get actionable feedback for the path they took (positional rejection vs. environment inference).
 
 ## Rc-file derivation
 
