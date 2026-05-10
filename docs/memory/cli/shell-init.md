@@ -99,4 +99,5 @@ Covered scenarios:
 - Roster definition and `<shell>` placeholder: [cli/commands](commands.md#hardcoded-tool-roster).
 - Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
 - Brew detection (`isInstalled`): [cli/update](update.md#detection).
+- Rc-file installer: [cli/shell-install](shell-install.md) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
 - Constitution V (Graceful Degradation) — uninstalled tools omitted silently.

@@ -4,12 +4,13 @@
 
 `shll` is a meta-CLI for the sahil87 toolkit. It composes operations that span every per-tool CLI (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so you have one entry point for cross-toolkit concerns.
 
-Three subcommands today:
+Four subcommands today:
 
 | Command | Purpose |
 |---------|---------|
 | `shll update` | `brew update` then `brew upgrade` for every installed sahil87 tool |
 | `shll shell-init <shell>` | Single eval-safe shell-init blob composed from all installed sahil87 tools that expose one |
+| `shll shell-install [shell]` | Append the `shll shell-init` eval line to your shell rc file (idempotent; supports `--print` and `--uninstall`) |
 | `shll version` | Versions of `shll` itself plus every installed sahil87 tool, plain text, paste-friendly for bug reports |
 
 Per-tool CLIs continue to work standalone — `shll` wraps them, it does not replace them.
@@ -27,6 +28,14 @@ brew install sahil87/tap/shll
 ```sh
 brew install sahil87/tap/all   # installs every sahil87 tool, including shll
 ```
+
+Then wire shell integration into your rc file with one command:
+
+```sh
+shll shell-install              # auto-detect shell, append eval line to your rc file
+```
+
+`shll shell-install` is idempotent — re-running is a no-op when the line is already present. It preserves dotfile-manager symlinks (chezmoi, dotbot, stow, yadm). Supports `--print` (dry-run) and `--uninstall` (clean removal). If you'd rather edit the rc file by hand, the manual fallback is below under [Single-line shell integration](#single-line-shell-integration).
 
 ### From source
 
