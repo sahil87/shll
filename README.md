@@ -2,40 +2,37 @@
 
 > Part of [@sahil87's open source toolkit](https://ai.shll.in) — see all projects there.
 
-`shll` is a meta-CLI for the sahil87 toolkit. It composes operations that span every per-tool CLI (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so you have one entry point for cross-toolkit concerns.
+One command to install, update, and shell-wire every tool in the [@sahil87 toolkit](https://ai.shll.in) (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
-Four subcommands today:
+## Why shll?
 
-| Command | Purpose |
-|---------|---------|
-| `shll update` | `brew update` then `brew upgrade` for every installed sahil87 tool |
-| `shll shell-init <shell>` | Single eval-safe shell-init blob composed from all installed sahil87 tools that expose one |
-| `shll shell-install [shell]` | Append the `shll shell-init` eval line to your shell rc file (idempotent; supports `--print` and `--uninstall`) |
-| `shll version` | Versions of `shll` itself plus every installed sahil87 tool, plain text, paste-friendly for bug reports |
+- **One-shot install** — `shll install` runs `brew install sahil87/tap/<formula>` for every roster tool you don't already have. Idempotent and safe to re-run.
+- **One-line shell integration** — `shll shell-install` appends a single eval line to your rc file that wires up `hop`, `wt`, and any future toolkit shell-init in one block. No more managing four eval lines.
+- **One update for everything** — `shll update` runs `brew update` once, then upgrades every installed roster tool in sequence. Skips ones you don't have. Skips itself if it wasn't installed via brew.
+- **Paste-friendly version dump** — `shll version` prints one row per tool, ideal for bug reports.
 
 Per-tool CLIs continue to work standalone — `shll` wraps them, it does not replace them.
 
-## Install
+## Quick start
 
-### Homebrew (macOS and Linux)
+From a clean machine to a fully wired toolkit:
+
+```sh
+brew install sahil87/tap/shll   # or: brew install sahil87/tap/all
+shll install                    # brew-installs every roster tool you're missing
+shll shell-install              # appends the composed eval block to your rc file
+exec $SHELL                     # reload so the shell integration takes effect
+```
+
+That's it. `hop`, `wt`, and the other tools are now installed and their shell integration is live.
+
+## Install
 
 ```sh
 brew install sahil87/tap/shll
 ```
 
-`shll` is also installed transitively via the `all` meta-formula:
-
-```sh
-brew install sahil87/tap/all   # installs every sahil87 tool, including shll
-```
-
-Then wire shell integration into your rc file with one command:
-
-```sh
-shll shell-install              # auto-detect shell, append eval line to your rc file
-```
-
-`shll shell-install` is idempotent — re-running is a no-op when the line is already present. It preserves dotfile-manager symlinks (chezmoi, dotbot, stow, yadm). Supports `--print` (dry-run) and `--uninstall` (clean removal). If you'd rather edit the rc file by hand, the manual fallback is below under [Single-line shell integration](#single-line-shell-integration).
+`shll` is also installed transitively via the `all` meta-formula (`brew install sahil87/tap/all`), which pulls in every roster tool at once.
 
 ### From source
 
@@ -47,47 +44,89 @@ just install
 
 Builds the binary and copies it to `~/.local/bin/shll`. Make sure that directory is on your `$PATH`.
 
-## Usage
+## Commands
 
-### Update every installed sahil87 tool
+### `shll install` — bootstrap missing tools
+
+```sh
+shll install
+```
+
+Iterates the roster (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`) and runs `brew install sahil87/tap/<formula>` for each one that's missing. Already-installed tools are skipped silently. Does NOT upgrade — use `shll update` for that.
+
+### `shll update` — upgrade everything
 
 ```sh
 shll update
 ```
 
-Runs `brew update --quiet` once, then `brew upgrade sahil87/tap/<formula>` for every roster tool that's currently installed. Uninstalled tools are skipped silently. Brew's progress streams directly to your terminal.
+Runs `brew update --quiet` once, then `brew upgrade sahil87/tap/shll` (when shll itself was installed via brew), then `brew upgrade sahil87/tap/<formula>` for every roster tool currently installed. Brew's progress streams directly to your terminal.
 
-### Single-line shell integration
+### `shll shell-install` — wire the rc file (recommended)
 
-Replace per-tool eval lines with one composed line in your rc file:
+```sh
+shll shell-install              # auto-detect shell, append eval block to your rc file
+shll shell-install --print      # dry-run: print the block to stdout, modify nothing
+shll shell-install --uninstall  # clean removal of the block
+shll shell-install --rc-file ~/.zshrc.local   # override the target path
+```
+
+The appended block is sentinel-wrapped and idempotent — re-running is a no-op when the line is already present:
+
+```sh
+# >>> shll shell-init >>>
+eval "$(shll shell-init zsh)"
+# <<< shll shell-init <<<
+```
+
+The rc file is opened with plain `O_APPEND`, so dotfile-manager symlinks (chezmoi, dotbot, stow, yadm) are preserved. Default targets: `${ZDOTDIR:-$HOME}/.zshrc` for zsh, `$HOME/.bash_profile` (macOS) or `$HOME/.bashrc` (Linux) for bash.
+
+### `shll shell-init <shell>` — composed shell-init
+
+If you'd rather wire the eval line by hand, this is what `shell-install` writes to your rc file:
 
 ```sh
 eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-The output is the concatenation (in roster order) of every installed sahil87 tool's own shell-init. Today, `hop` and `wt` are the only roster tools with shell integration. Per-tool `hop shell-init` and `wt shell-setup` continue to work standalone if you'd rather wire them up individually.
+The output is the concatenation (in roster order) of every installed sahil87 tool's own shell-init. Today, `hop`, `wt`, and `tu` are the roster tools with shell integration. Per-tool `hop shell-init` and `wt shell-init` continue to work standalone if you'd rather wire them up individually.
 
-### Print versions
+### `shll version` — paste-friendly version dump
 
 ```sh
-shll version
+$ shll version
+shll     v0.0.5
+fab-kit  v1.9.4
+rk       v1.5.3
+tu       v0.4.13
+hop      v0.1.5
+wt       v0.0.5
+idea     v0.0.2
 ```
 
-Plain-text table — one row per tool, easy to paste into a bug report:
+One row per tool. Uninstalled tools render as `not installed`. Drop the whole block into a bug report.
 
-```
-shll      v0.1.0
-fab-kit   v0.4.2
-rk        v0.7.1
-tu        v0.2.0
-hop       v0.0.3
-wt        v0.1.5
-idea      not installed
-```
+## How composition works
+
+shll has no state, no database, and no special knowledge of the tools it wraps. Every subcommand is a thin coordinator over the per-tool CLIs:
+
+| `shll` command | What it actually runs |
+|----------------|------------------------|
+| `shll install` | `brew install sahil87/tap/<formula>` per missing tool |
+| `shll update` | `brew update`, then `brew upgrade sahil87/tap/<formula>` per installed tool |
+| `shll shell-init zsh` | concatenates the stdout of each installed tool's `<tool> shell-init zsh` |
+| `shll version` | invokes `<tool> --version` per tool, formats as a table |
+
+Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt shell-init`, etc. continue to work standalone. shll's only job is to fan-out, collect output, and degrade gracefully when a tool is missing.
 
 ## Reference
 
 - `shll --help` — full subcommand listing
-- [`fab/project/constitution.md`](fab/project/constitution.md) — non-negotiable design constraints (security, no state, composition over absorption, tool roster as source of truth)
-- [`fab/project/context.md`](fab/project/context.md) — repo shape, tech stack, tool roster
+- Per-tool repos for the wrapped CLIs:
+  [fab-kit](https://github.com/sahil87/fab-kit) ·
+  [run-kit](https://github.com/sahil87/run-kit) ·
+  [tu](https://github.com/sahil87/tu) ·
+  [hop](https://github.com/sahil87/hop) ·
+  [wt](https://github.com/sahil87/wt) ·
+  [idea](https://github.com/sahil87/idea)
