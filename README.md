@@ -90,7 +90,18 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-The output is the concatenation (in roster order) of every installed sahil87 tool's own shell-init. Today, `hop`, `wt`, and `tu` are the roster tools with shell integration. Per-tool `hop shell-init` and `wt shell-init` continue to work standalone if you'd rather wire them up individually.
+The output is the concatenation (in roster order) of every installed sahil87 tool's own shell-init. What each roster tool contributes:
+
+| Tool | What it adds to your shell |
+|------|----------------------------|
+| `hop` | `hop` shell function (bare-name `cd`, verb dispatch, tool-form), `h` / `hi` aliases, completion |
+| `wt`  | `wt` shell function wrapper (so the "Open here" menu option can `cd` your shell), completion |
+| `tu`  | completion |
+| `idea` | completion |
+| `rk`  | completion |
+| `fab-kit` | completion |
+
+`hop` and `wt` are the only tools that ship *shell functions* — those need eval-time installation because a function defined inside the binary can't escape into the parent shell. Everything else is completion, which the shell sources lazily on tab. Per-tool `<tool> shell-init <shell>` continues to work standalone if you'd rather wire them up individually.
 
 ### `shll version` — paste-friendly version dump
 
