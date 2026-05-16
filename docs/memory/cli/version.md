@@ -30,7 +30,7 @@ idea      not installed
 3. For each tool in `Roster` (in order), write `<tool.Name>\t<toolVersion(ctx, tool)>\n`.
 4. `w.Flush()` — propagates any write error up.
 
-`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:68`) is the per-tool resolver:
+`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:73`) is the per-tool resolver:
 
 1. Create `subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`. Defer cancel.
 2. Run `proc.Run(subCtx, tool.Name, "--version")` (capture transport).
@@ -39,7 +39,7 @@ idea      not installed
 
 "Installed" is detected via `proc.ErrNotFound` (binary not on PATH) rather than a brew probe — install-mechanism agnostic, and saves ~400ms per tool (no Homebrew/Ruby startup tax).
 
-`normalizeVersion(raw string) string` (`src/cmd/shll/version.go:93`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
+`normalizeVersion(raw string) string` (`src/cmd/shll/version.go:95`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
 
 The normalization pipeline runs in this order on the input:
 

@@ -15,7 +15,7 @@ A single eval line replaces what would otherwise be N per-tool eval lines (today
 
 ## Behavior contract
 
-`runShellInit(ctx, shell, stdout, stderr)` (`src/cmd/shll/shell_init.go:65`) is the implementation seam. The cobra `RunE` wrapper handles argument validation before delegating:
+`runShellInit(ctx, shell, stdout, stderr)` (`src/cmd/shll/shell_init.go:74`) is the implementation seam. The cobra `RunE` wrapper handles argument validation before delegating:
 
 1. **Missing shell argument.** No positional → return `errExitCode{code: 2, msg: "shll shell-init: missing shell. Supported: zsh, bash"}`. Exit code: **2**. stdout: empty.
 
@@ -51,7 +51,7 @@ Output is concatenated in `Roster` order. This is deterministic (Spec: Compositi
 
 ## Argv substitution
 
-`substituteShell(argv, shell)` (`src/cmd/shll/shell_init.go:98`) replaces every literal `<shell>` token with `shell`, returning a fresh slice (does not mutate the roster):
+`substituteShell(argv, shell)` (`src/cmd/shll/shell_init.go:107`) replaces every literal `<shell>` token with `shell`, returning a fresh slice (does not mutate the roster):
 
 | Tool | Roster argv | After substitution (zsh) |
 |------|-------------|--------------------------|
