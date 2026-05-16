@@ -75,7 +75,7 @@ Roster invariants:
 | `main.go` | Entry point, version variable, `translateExit`, `errSilent`, `errExitCode`. |
 | `root.go` | `newRootCmd()` — cobra root with three subcommands wired in. |
 | `tools.go` | `Tool` struct, `Roster`, `formulaPrefix`, `shellPlaceholder`. |
-| `brew.go` | Shared brew helpers used by every subcommand: `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`, `installBrewMissingHint`, `shllFormula`. See [update](update.md) for details. |
+| `brew.go` | Shared brew helpers used by the brew-coupled subcommands (`install`, `update`): `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`, `installBrewMissingHint`, `shllFormula`. `shell-init` and `version` are install-mechanism agnostic and do NOT consult brew — they detect runnable tools via `proc.ErrNotFound` from the sub-tool invocation itself. See [update](update.md) for details. |
 | `install.go` | `newInstallCmd()` + `runInstall`. See [install](install.md). |
 | `update.go` | `newUpdateCmd()` + `runUpdate`. See [update](update.md). |
 | `shell_init.go` | `newShellInitCmd()` + `runShellInit`. See [shell-init](shell-init.md). |

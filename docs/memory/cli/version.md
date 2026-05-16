@@ -30,15 +30,16 @@ idea      not installed
 3. For each tool in `Roster` (in order), write `<tool.Name>\t<toolVersion(ctx, tool)>\n`.
 4. `w.Flush()` — propagates any write error up.
 
-`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:68`) is the per-tool resolver:
+`toolVersion(ctx, tool)` (`src/cmd/shll/version.go:73`) is the per-tool resolver:
 
-1. If `!isInstalled(ctx, tool.Formula)` → return `notInstalledLabel = "not installed"`.
-2. Else create `subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`. Defer cancel.
-3. Run `proc.Run(subCtx, tool.Name, "--version")` (capture transport).
-4. On any error (transport error, exit non-zero, deadline exceeded) → return `notInstalledLabel`.
-5. On success → return `normalizeVersion(string(out))`.
+1. Create `subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`. Defer cancel.
+2. Run `proc.Run(subCtx, tool.Name, "--version")` (capture transport).
+3. On any error (`proc.ErrNotFound` for missing binary, exit non-zero, deadline exceeded, etc.) → return `notInstalledLabel = "not installed"`.
+4. On success → return `normalizeVersion(string(out))`.
 
-`normalizeVersion(raw string) string` (`src/cmd/shll/version.go:93`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
+"Installed" is detected via `proc.ErrNotFound` (binary not on PATH) rather than a brew probe — install-mechanism agnostic, and saves ~400ms per tool (no Homebrew/Ruby startup tax).
+
+`normalizeVersion(raw string) string` (`src/cmd/shll/version.go:95`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
 
 The normalization pipeline runs in this order on the input:
 
@@ -71,7 +72,7 @@ Properties (Design Decision #5):
 - 2s is generous (typical `--version` runs in well under 100ms).
 - Bounds worst-case `shll version` runtime to `len(Roster) * versionTimeout` ≈ 12 seconds even if every tool hangs.
 - A timeout is treated as "not installed" — we don't differentiate hung-but-installed from missing in the output. The user gets a usable table either way.
-- The deadline applies only to the `--version` invocation, not to the `brew list` probe. The probe runs against the parent ctx (typically unbounded for the CLI invocation).
+- The deadline applies only to the `--version` invocation. There is no separate install probe — installation is inferred from `proc.ErrNotFound` returned by the same `--version` call.
 
 `TestVersion_TimeoutHandling` simulates the timeout path by having the fake runner return `context.DeadlineExceeded` immediately for the targeted tool (no real wall-clock wait), then asserts the row reads `not installed` and that the test's elapsed time stays under `versionTimeout`.
 
@@ -109,6 +110,6 @@ Unit scenarios pinning the normalization contract (12 cases, all named `TestNorm
 
 ## Cross-references
 
-- Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
+- Subprocess wrapper conventions: [internal/proc](../internal/proc.md) — including `proc.ErrNotFound` semantics.
 - Roster definition: [cli/commands](commands.md#hardcoded-tool-roster).
-- Brew detection (`isInstalled`): [cli/update](update.md#detection).
+- Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).

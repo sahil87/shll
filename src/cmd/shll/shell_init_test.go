@@ -11,17 +11,24 @@ import (
 )
 
 // shellInitFakeBuilder constructs a fakeRunner that simulates per-tool installation
-// state and shell-init outputs. installedFormulas selects which roster formulas
-// are present; outputs maps tool argv (joined by space) to stdout, missing entries
-// produce empty stdout success.
+// state and shell-init outputs.
+//
+// installedFormulas selects which roster formulas are "installed" — for a tool
+// whose formula is absent from this map, the fake returns proc.ErrNotFound from
+// its `<tool> shell-init <shell>` invocation, mirroring real exec.LookPath
+// behavior when the binary is missing from PATH. For installed tools, outputs
+// supplies the canned stdout (missing entries default to empty stdout success).
 func shellInitFake(installedFormulas map[string]bool, outputs map[string]string, errors map[string]error) *fakeRunner {
+	// Map binary name → formula so the fake can resolve "is this tool's binary
+	// on the simulated PATH?" from the Roster.
+	formulaByName := map[string]string{}
+	for _, t := range Roster {
+		formulaByName[t.Name] = t.Formula
+	}
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
-			formula := req.Args[3]
-			if installedFormulas[formula] {
-				return proc.Result{Stdout: []byte(formula + " 1.0.0\n")}
-			}
-			return proc.Result{Err: stdErr("not installed")}
+		// Simulate ErrNotFound for tools whose formula isn't installed.
+		if formula, ok := formulaByName[req.Name]; ok && !installedFormulas[formula] {
+			return proc.Result{Err: proc.ErrNotFound}
 		}
 		key := strings.Join(append([]string{req.Name}, req.Args...), " ")
 		if e, ok := errors[key]; ok {

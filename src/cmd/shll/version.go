@@ -62,13 +62,15 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 }
 
 // toolVersion returns the version string for a single roster tool, or
-// notInstalledLabel on any failure (binary missing, brew reports
-// not-installed, --version errors, or timeout). The returned string never
-// contains internal newlines — only the first non-empty line is reported.
+// notInstalledLabel on any failure (binary missing from PATH, --version
+// errors, or timeout). The returned string never contains internal newlines —
+// only the first non-empty line is reported.
+//
+// "Installed" here means "runnable on PATH" — proc.Run returns proc.ErrNotFound
+// when the binary is missing, and any other failure mode (non-zero exit,
+// timeout, etc.) falls under the same notInstalledLabel branch. This is
+// install-mechanism agnostic (brew, from-source, etc.).
 func toolVersion(ctx context.Context, tool Tool) string {
-	if !isInstalled(ctx, tool.Formula) {
-		return notInstalledLabel
-	}
 	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
 	defer cancel()
 	out, err := proc.Run(subCtx, tool.Name, "--version")

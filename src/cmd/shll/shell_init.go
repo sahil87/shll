@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -64,6 +65,11 @@ func isSupportedShell(shell string) bool {
 //     any sub-tool error output. Eval-safety only applies to stdout.
 //   - exit code is non-zero if any sub-tool's shell-init failed.
 //
+// "Installed" here means "runnable on PATH" — we attempt the sub-tool's
+// shell-init and treat proc.ErrNotFound (binary missing) as graceful skip
+// per Constitution V. This is independent of the install mechanism (brew,
+// from-source, etc.), so source-built tools are not silently dropped.
+//
 // Order is roster order (deterministic — spec requirement).
 func runShellInit(ctx context.Context, shell string, stdout, stderr io.Writer) error {
 	if ctx == nil {
@@ -74,13 +80,13 @@ func runShellInit(ctx context.Context, shell string, stdout, stderr io.Writer) e
 		if len(tool.ShellInit) == 0 {
 			continue
 		}
-		if !isInstalled(ctx, tool.Formula) {
-			// Graceful degradation — uninstalled means no output, no error.
-			continue
-		}
 		argv := substituteShell(tool.ShellInit, shell)
 		out, err := proc.Run(ctx, argv[0], argv[1:]...)
 		if err != nil {
+			if errors.Is(err, proc.ErrNotFound) {
+				// Graceful degradation — binary not on PATH means no output, no error.
+				continue
+			}
 			fmt.Fprintf(stderr, "shll shell-init: %s: %v\n", tool.Name, err)
 			anyFailed = true
 			continue

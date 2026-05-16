@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -12,15 +11,18 @@ import (
 )
 
 // versionFake constructs a fakeRunner that simulates per-tool installation and
-// version output.
+// version output. For a tool whose formula is absent from installedFormulas,
+// the fake returns proc.ErrNotFound from `<tool> --version`, mirroring real
+// exec.LookPath behavior when the binary is missing from PATH.
 func versionFake(installedFormulas map[string]bool, versions map[string]string) *fakeRunner {
+	formulaByName := map[string]string{}
+	for _, t := range Roster {
+		formulaByName[t.Name] = t.Formula
+	}
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
-			formula := req.Args[3]
-			if installedFormulas[formula] {
-				return proc.Result{Stdout: []byte(formula + " 1.0.0\n")}
-			}
-			return proc.Result{Err: errors.New("not installed")}
+		// Simulate ErrNotFound for tools whose formula isn't installed.
+		if formula, ok := formulaByName[req.Name]; ok && !installedFormulas[formula] {
+			return proc.Result{Err: proc.ErrNotFound}
 		}
 		// Match per-tool --version invocations: req.Name is the tool name,
 		// args[0] is "--version".
