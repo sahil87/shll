@@ -2,7 +2,7 @@
 
 `shll shell-init <shell>` — emits a single concatenated shell-init blob composed from every installed roster tool with shell integration.
 
-Source: `src/cmd/shll/shell_init.go`. Uses the shared brew helpers in `src/cmd/shll/brew.go` and the `Roster` from `src/cmd/shll/tools.go`.
+Source: `src/cmd/shll/shell_init.go`. Uses the `Roster` from `src/cmd/shll/tools.go`. Does **not** call brew — install-state is detected via `proc.ErrNotFound` from the sub-tool invocation itself (i.e. "is the binary on PATH?"), which is install-mechanism agnostic (brew, from-source via `just install`, etc.).
 
 ## Usage
 
@@ -23,10 +23,10 @@ A single eval line replaces what would otherwise be N per-tool eval lines (today
 
 3. **Composition loop.** For each tool in `Roster` (in order):
    - Skip if `len(tool.ShellInit) == 0` (tool has no shell integration).
-   - Skip silently if `!isInstalled(ctx, tool.Formula)` — Constitution V (graceful degradation).
-   - Otherwise build argv via `substituteShell(tool.ShellInit, shell)` (replaces every `"<shell>"` token with the user-supplied shell name).
+   - Build argv via `substituteShell(tool.ShellInit, shell)` (replaces every `"<shell>"` token with the user-supplied shell name).
    - Run `proc.Run(ctx, argv[0], argv[1:]...)` (capture transport).
-   - On error: write `shll shell-init: <tool>: <err>` to stderr, set `anyFailed = true`, **and skip this tool's stdout** (eval-safety — failing tool's partial output never reaches stdout). Continue with the next tool.
+   - On `proc.ErrNotFound` (binary not on PATH): skip silently — Constitution V (graceful degradation). Install-mechanism agnostic: any source-built or non-brew install of the tool participates as long as its binary is on PATH.
+   - On any other error: write `shll shell-init: <tool>: <err>` to stderr, set `anyFailed = true`, **and skip this tool's stdout** (eval-safety — failing tool's partial output never reaches stdout). Continue with the next tool.
    - On success: write the captured stdout bytes verbatim to the output writer.
 
 4. **Final exit.** If `anyFailed`, return `errSilent` (exit 1). Else return nil (exit 0).
@@ -97,7 +97,7 @@ Covered scenarios:
 ## Cross-references
 
 - Roster definition and `<shell>` placeholder: [cli/commands](commands.md#hardcoded-tool-roster).
-- Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
-- Brew detection (`isInstalled`): [cli/update](update.md#detection).
+- Subprocess wrapper conventions: [internal/proc](../internal/proc.md) — including `proc.ErrNotFound` semantics.
+- Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).
 - Rc-file installer: [cli/shell-install](shell-install.md) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
-- Constitution V (Graceful Degradation) — uninstalled tools omitted silently.
+- Constitution V (Graceful Degradation) — tools not on PATH are omitted silently.
