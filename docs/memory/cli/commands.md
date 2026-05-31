@@ -52,20 +52,21 @@ Defined in `src/cmd/shll/tools.go`. Constitution III (Tool Roster Source of Trut
 
 ```go
 var Roster = []Tool{
-    {Name: "fab-kit", Formula: "sahil87/tap/fab-kit"},
-    {Name: "rk",      Formula: "sahil87/tap/rk"},
-    {Name: "tu",      Formula: "sahil87/tap/tu",  ShellInit: []string{"tu", "shell-init", "<shell>"}},
-    {Name: "hop",     Formula: "sahil87/tap/hop", ShellInit: []string{"hop", "shell-init", "<shell>"}},
-    {Name: "wt",      Formula: "sahil87/tap/wt",  ShellInit: []string{"wt", "shell-init", "<shell>"}},
-    {Name: "idea",    Formula: "sahil87/tap/idea"},
+    {Name: "fab-kit", Formula: "sahil87/tap/fab-kit",                                                       Update: []string{"fab-kit", "update"}},
+    {Name: "rk",      Formula: "sahil87/tap/rk",                                                             Update: []string{"rk", "update"}},
+    {Name: "tu",      Formula: "sahil87/tap/tu",  ShellInit: []string{"tu", "shell-init", "<shell>"},        Update: []string{"tu", "update"}},
+    {Name: "hop",     Formula: "sahil87/tap/hop", ShellInit: []string{"hop", "shell-init", "<shell>"},       Update: []string{"hop", "update"}},
+    {Name: "wt",      Formula: "sahil87/tap/wt",  ShellInit: []string{"wt", "shell-init", "<shell>"},        Update: []string{"wt", "update"}},
+    {Name: "idea",    Formula: "sahil87/tap/idea",                                                           Update: []string{"idea", "update"}},
 }
 ```
 
 Roster invariants:
 
-- **Order matters.** `shll shell-init` concatenates output in roster order (deterministic for users who reason about init sequencing).
+- **Order matters.** `shll shell-init` concatenates output in roster order (deterministic for users who reason about init sequencing); `shll update` probes and upgrades in roster order too.
 - **Six tools.** Adding a tool is a `shll` release, not a runtime configuration change.
-- **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `src/cmd/shll/tools.go:31`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. All three integrators (`tu`, `hop`, `wt`) substitute the placeholder uniformly — three of the six roster entries carry shell integration.
+- **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `src/cmd/shll/tools.go:39`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. All three integrators (`tu`, `hop`, `wt`) substitute the placeholder uniformly — three of the six roster entries carry shell integration.
+- **`Tool.Update`** (added in change cczs) is the argv of the tool's own `update` invocation, mirroring `ShellInit`'s "empty slice means no capability" semantics. `shll update` delegates to this argv (appending `--skip-brew-update` when the tool advertises it) instead of calling `brew upgrade <formula>` directly, so each tool's post-upgrade side effects (e.g. rk's daemon restart) are preserved (Constitution IV). An empty slice means the tool exposes no `update` subcommand → `shll update` falls back to `brew upgrade <formula>`. **All six current roster entries populate `Update`** (`{"<name>", "update"}`) — every sahil87 tool ships an `update` subcommand. See [cli/update](update.md#behavior-contract) for the delegation/probe logic.
 - **`formulaPrefix = "sahil87/tap/"`** (`src/cmd/shll/tools.go:5`) is a named constant — no magic string at the call sites.
 
 ## File layout (src/cmd/shll/)
@@ -74,7 +75,7 @@ Roster invariants:
 |------|------|
 | `main.go` | Entry point, version variable, `translateExit`, `errSilent`, `errExitCode`. |
 | `root.go` | `newRootCmd()` — cobra root with three subcommands wired in. |
-| `tools.go` | `Tool` struct, `Roster`, `formulaPrefix`, `shellPlaceholder`. |
+| `tools.go` | `Tool` struct (`Name`, `Formula`, `ShellInit`, `Update`), `Roster`, `formulaPrefix`, `shellPlaceholder`. |
 | `brew.go` | Shared brew helpers used by the brew-coupled subcommands (`install`, `update`): `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`, `installBrewMissingHint`, `shllFormula`. `shell-init` and `version` are install-mechanism agnostic and do NOT consult brew — they detect runnable tools via `proc.ErrNotFound` from the sub-tool invocation itself. See [update](update.md) for details. |
 | `install.go` | `newInstallCmd()` + `runInstall`. See [install](install.md). |
 | `update.go` | `newUpdateCmd()` + `runUpdate`. See [update](update.md). |

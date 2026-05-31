@@ -23,6 +23,14 @@ type Tool struct {
 	// integrator (`tu`, `hop`, `wt`) takes a shell argument; if a future tool
 	// shipped a no-arg shell-init, its argv would simply omit the placeholder.
 	ShellInit []string
+	// Update is the argv of the tool's own update invocation (e.g. `{"rk",
+	// "update"}`). `shll update` delegates to this rather than calling `brew
+	// upgrade <formula>` directly, so each tool's post-upgrade side effects
+	// (e.g. rk's daemon restart) are preserved (Constitution IV — Composition).
+	// An empty slice means the tool exposes no `update` subcommand — `shll
+	// update` falls back to `brew upgrade <formula>` for it. Every current
+	// roster tool ships an `update`, so all entries populate this field.
+	Update []string
 }
 
 // shellPlaceholder is the literal substituted with the requested shell at
@@ -34,10 +42,10 @@ const shellPlaceholder = "<shell>"
 // shell-init` concatenates output in roster order so users can reason about
 // init sequencing (spec: Composition Order requirement).
 var Roster = []Tool{
-	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit"},
-	{Name: "rk", Formula: formulaPrefix + "rk"},
-	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}},
-	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}},
-	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}},
-	{Name: "idea", Formula: formulaPrefix + "idea"},
+	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}},
+	{Name: "rk", Formula: formulaPrefix + "rk", Update: []string{"rk", "update"}},
+	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}},
+	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}},
+	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}},
+	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}},
 }

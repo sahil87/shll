@@ -38,7 +38,7 @@ shll/
 
 | Command | Purpose |
 |---------|---------|
-| `shll update` | Run `brew update && brew upgrade sahil87/tap/<each>` for every installed sahil87 tool |
+| `shll update` | Run `brew update` once, self-upgrade shll, then delegate to each installed tool's own `update` (with `--skip-brew-update` when supported) — falling back to `brew upgrade sahil87/tap/<formula>` only for a tool with no `update` subcommand |
 | `shll shell-init <shell>` | Concatenate the shell-init output of all sahil87 tools that expose one (today: `tu shell-init`, `hop shell-init`, `wt shell-init`) |
 | `shll version` | Print versions of `shll` itself and every installed sahil87 tool |
 
@@ -46,21 +46,23 @@ shll/
 
 | Tool | Brew formula | Has `update`? | Has `shell-init`/`shell-setup`? |
 |------|--------------|---------------|---------------------------------|
-| `fab-kit` | `sahil87/tap/fab-kit` | yes (existing) | no |
-| `rk` | `sahil87/tap/rk` | yes (existing) | no |
-| `tu` | `sahil87/tap/tu` | yes (existing) | yes (`shell-init`) |
-| `hop` | `sahil87/tap/hop` | yes (existing) | yes (`shell-init`) |
-| `wt` | `sahil87/tap/wt` | no | yes (`shell-init`) |
-| `idea` | `sahil87/tap/idea` | no | no |
+| `fab-kit` | `sahil87/tap/fab-kit` | yes | no |
+| `rk` | `sahil87/tap/rk` | yes | no |
+| `tu` | `sahil87/tap/tu` | yes | yes (`shell-init`) |
+| `hop` | `sahil87/tap/hop` | yes | yes (`shell-init`) |
+| `wt` | `sahil87/tap/wt` | yes | yes (`shell-init`) |
+| `idea` | `sahil87/tap/idea` | yes | no |
 
-Per-tool `update` commands continue to work standalone (Constitution Principle IV) — `shll update` does not deprecate them.
+All six tools expose an `update` subcommand. `shll update` upgrades each installed tool by **delegating to that tool's own `update`** (appending `--skip-brew-update` when the tool advertises it) rather than calling `brew upgrade <formula>` directly — this preserves each tool's post-upgrade side effects, e.g. rk's daemon restart (Constitution Principle IV). A tool with no `update` subcommand would fall back to `brew upgrade`. Per-tool `update` commands continue to work standalone (Constitution Principle IV) — `shll update` does not deprecate them.
 
 ## External commands shll invokes
 
-- `brew update --quiet`
+- `brew update --quiet` (once per `shll update`)
 - `brew info --json=v2 sahil87/tap/<formula>`
-- `brew upgrade sahil87/tap/<formula>`
+- `brew upgrade sahil87/tap/<formula>` (shll self-upgrade, and the fallback for a tool with no `update` subcommand)
 - `brew list --formula --versions sahil87/tap/<formula>` (or `command -v <tool>` for presence check)
+- `<tool> update --help` (capability probe — checks for the `--skip-brew-update` substring)
+- `<tool> update [--skip-brew-update]` (delegated per-tool upgrade in `shll update`)
 - `<tool> shell-init <shell>` (for shell-init composition)
 - `<tool> --version` (for version reporting)
 
