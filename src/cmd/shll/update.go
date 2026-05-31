@@ -78,13 +78,18 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 	fmt.Fprintln(stdout, updateStatusLine)
 
 	// Concurrent read-only capability probes across the roster. These take no
-	// brew write lock and their output is captured (not foregrounded), so they
-	// are safe to run in parallel — the explicit carve-out to the "sequential,
-	// not parallel" decision, which governs upgrades only. Results are indexed by
-	// roster position so they stay in roster order regardless of completion order
-	// (the upgrade loop below relies on roster ordering). Concurrency lives here
-	// in the caller; every subprocess call still routes through internal/proc
-	// (Constitution I).
+	// brew write lock, so they are safe to run in parallel — the explicit
+	// carve-out to the "sequential, not parallel" decision, which governs
+	// upgrades only. Their stdout is captured by proc.Run (not foregrounded);
+	// proc.Run's TransportCapture still streams stderr to the terminal, but the
+	// probes run here (`brew list --versions` and `<tool> update --help`, only
+	// for installed tools that have an Update argv) write their meaningful output
+	// to stdout and are silent on stderr in the normal case, so concurrent stderr
+	// interleaving is a rare, cosmetic edge rather than a correctness concern.
+	// Results are indexed by roster position so they stay in roster order
+	// regardless of completion order (the upgrade loop below relies on roster
+	// ordering). Concurrency lives here in the caller; every subprocess call still
+	// routes through internal/proc (Constitution I).
 	probes := probeRoster(ctx)
 
 	// Self-upgrade only when shll was installed via brew. A `go install` or

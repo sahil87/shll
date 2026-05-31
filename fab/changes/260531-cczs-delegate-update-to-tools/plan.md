@@ -42,39 +42,39 @@
 
 ### Functional Completeness
 
-- [ ] A-001 Upgrade via tool's own `update`: each installed roster tool with an `Update` argv is upgraded via its `update` subcommand (with `--skip-brew-update` appended when supported), not `brew upgrade <formula>`.
-- [ ] A-002 Brew-upgrade fallback: a roster tool with an empty `Update` argv is upgraded via `brew upgrade <formula>`.
-- [ ] A-003 Hoisted single `brew update`: `brew update --quiet` is invoked exactly once per run, foregrounded, after probing and before upgrades; on failure shll writes `shll update: brew update failed: …` to stderr and returns `errSilent` without attempting upgrades.
-- [ ] A-004 Probe-first detection: flag support is determined by `<tool> update --help` literal-substring check on `--skip-brew-update` (no regex); when unsupported, the tool's `update` runs without the flag (no brew-upgrade fallback).
-- [ ] A-005 Parallel read-only probes: per-tool installed + flag-support probes are dispatched concurrently, with results assembled in roster order; all subprocess calls route through `internal/proc`.
-- [ ] A-006 Status line: `Checking installed sahil87 tools…` is written to stdout before probes and before the nothing-to-do short-circuit; the nothing-to-do case still skips `brew update` (DD#9).
-- [ ] A-007 Roster `Update` populated: all six roster entries have a non-empty `Update` argv whose first element is the binary name and second is `update`.
-- [ ] A-008 `Tool.Update` field: the `Tool` struct gains an `Update []string` field mirroring `ShellInit` (empty slice = no `update` subcommand → brew-upgrade fallback).
+- [x] A-001 Upgrade via tool's own `update`: each installed roster tool with an `Update` argv is upgraded via its `update` subcommand (with `--skip-brew-update` appended when supported), not `brew upgrade <formula>`.
+- [x] A-002 Brew-upgrade fallback: a roster tool with an empty `Update` argv is upgraded via `brew upgrade <formula>`.
+- [x] A-003 Hoisted single `brew update`: `brew update --quiet` is invoked exactly once per run, foregrounded, after probing and before upgrades; on failure shll writes `shll update: brew update failed: …` to stderr and returns `errSilent` without attempting upgrades.
+- [x] A-004 Probe-first detection: flag support is determined by `<tool> update --help` literal-substring check on `--skip-brew-update` (no regex); when unsupported, the tool's `update` runs without the flag (no brew-upgrade fallback).
+- [x] A-005 Parallel read-only probes: per-tool installed + flag-support probes are dispatched concurrently, with results assembled in roster order; all subprocess calls route through `internal/proc`.
+- [x] A-006 Status line: `Checking installed sahil87 tools…` is written to stdout before probes and before the nothing-to-do short-circuit; the nothing-to-do case still skips `brew update` (DD#9).
+- [x] A-007 Roster `Update` populated: all six roster entries have a non-empty `Update` argv whose first element is the binary name and second is `update`.
+- [x] A-008 `Tool.Update` field: the `Tool` struct gains an `Update []string` field mirroring `ShellInit` (empty slice = no `update` subcommand → brew-upgrade fallback).
 
 ### Scenario Coverage
 
-- [ ] A-009 Test: flag-supported tool upgraded via `<tool> update --skip-brew-update`, not `brew upgrade <formula>`.
-- [ ] A-010 Test: version-skew tool (help lacks substring) upgraded via `<tool> update` with no flag and no brew-upgrade fallback.
-- [ ] A-011 Test: tool with empty `Update` argv falls back to `brew upgrade <formula>`.
-- [ ] A-012 Test: `update --help` probe issued only for installed tools; `brew update --quiet` runs exactly once; nothing-to-do skips `brew update`; status line precedes probes and appears in nothing-to-do output.
-- [ ] A-014 Test: ordering (self-upgrade before roster), self-not-brewed skip, and best-effort continue-through-failure preserved under the new structure.
+- [x] A-009 Test: flag-supported tool upgraded via `<tool> update --skip-brew-update`, not `brew upgrade <formula>`.
+- [x] A-010 Test: version-skew tool (help lacks substring) upgraded via `<tool> update` with no flag and no brew-upgrade fallback.
+- [x] A-011 Test: tool with empty `Update` argv falls back to `brew upgrade <formula>`.
+- [x] A-012 Test: `update --help` probe issued only for installed tools; `brew update --quiet` runs exactly once; nothing-to-do skips `brew update`; status line precedes probes and appears in nothing-to-do output.
+- [x] A-014 Test: ordering (self-upgrade before roster), self-not-brewed skip, and best-effort continue-through-failure preserved under the new structure.
 
 ### Edge Cases & Error Handling
 
-- [ ] A-013 Concurrency safety: the test `fakeRunner` is goroutine-safe (mutex-guarded) so concurrent probes do not race; `go test -race` is clean.
+- [x] A-013 Concurrency safety: the test `fakeRunner` is goroutine-safe (mutex-guarded) so concurrent probes do not race; `go test -race` is clean.
 
 ### Code Quality
 
-- [ ] A-007Q Pattern consistency: new code follows surrounding naming/structure (named constants for the status line and flag string, `ShellInit`-style doc comment for `Update`).
-- [ ] A-008Q No unnecessary duplication: existing helpers (`isInstalled`, `proc.Run`, `proc.RunForeground`, named brew constants) reused; no reimplementation.
-- [ ] A-016 No magic strings: the status-line text and `--skip-brew-update` flag are named constants (code-quality.md anti-pattern).
-- [ ] A-017 No regex over brew/help output: flag detection is a literal substring presence check (`strings.Contains`), not regex (code-quality.md anti-pattern).
-- [ ] A-018 Subprocess routing: every subprocess call goes through `internal/proc`; concurrency lives in the caller, not `proc` (Constitution I).
-- [ ] A-019 Sub-tool composition: upgrade delegates to each tool's own `update` rather than reimplementing per-tool logic (Constitution III/IV).
+- [x] A-007Q Pattern consistency: new code follows surrounding naming/structure (named constants for the status line and flag string, `ShellInit`-style doc comment for `Update`).
+- [x] A-008Q No unnecessary duplication: existing helpers (`isInstalled`, `proc.Run`, `proc.RunForeground`, named brew constants) reused; no reimplementation.
+- [x] A-016 No magic strings: the status-line text and `--skip-brew-update` flag are named constants (code-quality.md anti-pattern).
+- [x] A-017 No regex over brew/help output: flag detection is a literal substring presence check (`strings.Contains`), not regex (code-quality.md anti-pattern).
+- [x] A-018 Subprocess routing: every subprocess call goes through `internal/proc`; concurrency lives in the caller, not `proc` (Constitution I).
+- [x] A-019 Sub-tool composition: upgrade delegates to each tool's own `update` rather than reimplementing per-tool logic (Constitution III/IV).
 
 ### Build & Validation
 
-- [ ] A-015 `go test ./cmd/shll/... ./internal/proc/...`, `go build ./...`, and `go vet ./...` all pass.
+- [x] A-015 `go test ./cmd/shll/... ./internal/proc/...`, `go build ./...`, and `go vet ./...` all pass.
 
 ## Notes
 
