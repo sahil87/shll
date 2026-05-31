@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/sahil87/shll/internal/proc"
@@ -13,19 +14,38 @@ import (
 // fakeRunner is a test double for proc.Runner. Each invocation is recorded;
 // behavior is driven by a per-Request response function so tests can simulate
 // brew presence/absence, installed/not-installed, upgrade success/failure.
+//
+// runUpdate now dispatches its read-only capability probes concurrently, so the
+// fake must be safe for concurrent calls — mu guards both the calls slice and the
+// respond dispatch.
 type fakeRunner struct {
+	mu    sync.Mutex
 	calls []proc.Request
 	// respond returns the Result for a given Request. Default behavior (when
-	// nil) is success with no captured stdout.
+	// nil) is success with no captured stdout. Invoked under mu, so respond
+	// functions must not call back into the runner.
 	respond func(req proc.Request) proc.Result
 }
 
 func (f *fakeRunner) Runner(_ context.Context, req proc.Request) proc.Result {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls = append(f.calls, req)
 	if f.respond != nil {
 		return f.respond(req)
 	}
 	return proc.Result{}
+}
+
+// recordedCalls returns a snapshot copy of the recorded requests, taken under mu.
+// Tests call this after runUpdate returns (probes have joined) to assert against a
+// stable slice without racing the fake's internal state.
+func (f *fakeRunner) recordedCalls() []proc.Request {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]proc.Request, len(f.calls))
+	copy(out, f.calls)
+	return out
 }
 
 // installFakeRunner swaps proc.Runner for f.Runner and restores the prior runner
@@ -78,8 +98,13 @@ func TestUpdate_BrewMissing(t *testing.T) {
 	if !strings.Contains(stderr.String(), brewMissingHint) {
 		t.Fatalf("stderr = %q, want to contain %q", stderr.String(), brewMissingHint)
 	}
-	if invocationsContain(f.calls, brewBinary, "update", "--quiet") {
+	if invocationsContain(f.recordedCalls(), brewBinary, "update", "--quiet") {
 		t.Fatal("brew update should not be invoked when brew is missing")
+	}
+	// The status line is NOT printed before the brew-missing bail-out — brew
+	// presence is checked first.
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty when brew is missing", stdout.String())
 	}
 }
 
@@ -100,18 +125,37 @@ func TestUpdate_NoToolsInstalled(t *testing.T) {
 	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if got := stdout.String(); got != "No sahil87 tools installed.\n" {
-		t.Fatalf("stdout = %q, want \"No sahil87 tools installed.\\n\"", got)
+	// The status line prints first (unconditionally, before the short-circuit),
+	// then the nothing-to-do message.
+	wantOut := updateStatusLine + "\nNo sahil87 tools installed.\n"
+	if got := stdout.String(); got != wantOut {
+		t.Fatalf("stdout = %q, want %q", got, wantOut)
 	}
-	if invocationsContain(f.calls, brewBinary, "update", "--quiet") {
+	if invocationsContain(f.recordedCalls(), brewBinary, "update", "--quiet") {
 		t.Fatal("brew update --quiet should NOT be invoked when nothing is installed")
 	}
 }
 
+// helpAdvertisesSkipFlag returns help output containing the --skip-brew-update
+// substring, so a probed tool reports flag support. Used by respond functions to
+// drive the "supports the flag" path.
+func helpAdvertisesSkipFlag() proc.Result {
+	return proc.Result{Stdout: []byte("Usage: update [flags]\n  --skip-brew-update  skip brew update\n")}
+}
+
+// isUpdateHelpProbe reports whether req is a `<tool> update --help` capability
+// probe (captured transport). The probe argv is the tool's Update[1:] followed by
+// --help; for the current roster that is exactly ["update", "--help"].
+func isUpdateHelpProbe(req proc.Request) bool {
+	return len(req.Args) >= 1 && req.Args[len(req.Args)-1] == "--help"
+}
+
 func TestUpdate_AllInstalled(t *testing.T) {
+	// Every brew list/--version call succeeds → shll itself plus every roster
+	// tool are all installed. Help probes return empty stdout (no
+	// --skip-brew-update), so each tool delegates to `<tool> update` with no
+	// flag.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		// Every brew list/--version call succeeds → shll itself plus every
-		// roster tool are all installed.
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -120,15 +164,21 @@ func TestUpdate_AllInstalled(t *testing.T) {
 	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if !invocationsContain(f.calls, brewBinary, "update", "--quiet") {
-		t.Fatalf("expected brew update --quiet, calls: %+v", f.calls)
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, brewBinary, "update", "--quiet") {
+		t.Fatalf("expected brew update --quiet, calls: %+v", calls)
 	}
-	if !invocationsContain(f.calls, brewBinary, "upgrade", shllFormula) {
-		t.Fatalf("expected self-upgrade brew upgrade %s, calls: %+v", shllFormula, f.calls)
+	if !invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
+		t.Fatalf("expected self-upgrade brew upgrade %s, calls: %+v", shllFormula, calls)
 	}
+	// Each roster tool is upgraded via its own `update` (no flag), and NOT via
+	// brew upgrade <formula>.
 	for _, tool := range Roster {
-		if !invocationsContain(f.calls, brewBinary, "upgrade", tool.Formula) {
-			t.Errorf("expected brew upgrade %s, calls: %+v", tool.Formula, f.calls)
+		if !invocationsContain(calls, tool.Update[0], tool.Update[1]) {
+			t.Errorf("expected delegated %s update, calls: %+v", tool.Name, calls)
+		}
+		if invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
+			t.Errorf("did NOT expect brew upgrade %s — should delegate to `%s update`", tool.Formula, tool.Name)
 		}
 	}
 }
@@ -147,26 +197,30 @@ func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 
-	// Find the indices of the shll self-upgrade and the first roster upgrade
-	// (fab-kit, the first roster entry) in the recorded call sequence.
+	// Find the indices of the shll self-upgrade (`brew upgrade shllFormula`) and
+	// the first roster upgrade (fab-kit, delegated to `fab-kit update`) in the
+	// recorded call sequence. The first roster upgrade is a delegated `<tool>
+	// update` invocation, not a brew upgrade.
+	calls := f.recordedCalls()
+	first := Roster[0]
 	selfIdx, firstRosterIdx := -1, -1
-	for i, c := range f.calls {
-		if c.Name != brewBinary || len(c.Args) < 2 || c.Args[0] != "upgrade" {
-			continue
-		}
-		switch c.Args[1] {
-		case shllFormula:
+	for i, c := range calls {
+		if c.Name == brewBinary && len(c.Args) >= 2 && c.Args[0] == "upgrade" && c.Args[1] == shllFormula {
 			if selfIdx == -1 {
 				selfIdx = i
 			}
-		case Roster[0].Formula:
+			continue
+		}
+		// The delegated upgrade is `<tool> update[ --skip-brew-update]` — exclude
+		// the concurrent `<tool> update --help` capability probe.
+		if c.Name == first.Update[0] && len(c.Args) >= 1 && c.Args[0] == first.Update[1] && !isUpdateHelpProbe(c) {
 			if firstRosterIdx == -1 {
 				firstRosterIdx = i
 			}
 		}
 	}
 	if selfIdx == -1 || firstRosterIdx == -1 {
-		t.Fatalf("missing expected upgrade calls (self=%d, firstRoster=%d), calls: %+v", selfIdx, firstRosterIdx, f.calls)
+		t.Fatalf("missing expected upgrade calls (self=%d, firstRoster=%d), calls: %+v", selfIdx, firstRosterIdx, calls)
 	}
 	if selfIdx >= firstRosterIdx {
 		t.Fatalf("shll self-upgrade index %d must be < first roster upgrade index %d", selfIdx, firstRosterIdx)
@@ -192,13 +246,14 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if invocationsContain(f.calls, brewBinary, "upgrade", shllFormula) {
+	calls := f.recordedCalls()
+	if invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
 		t.Fatal("brew upgrade for shll should NOT run when shll itself isn't brew-installed")
 	}
-	// Roster upgrades still happen.
+	// Roster upgrades still happen — delegated to each tool's own `update`.
 	for _, tool := range Roster {
-		if !invocationsContain(f.calls, brewBinary, "upgrade", tool.Formula) {
-			t.Errorf("expected brew upgrade %s", tool.Formula)
+		if !invocationsContain(calls, tool.Update[0], tool.Update[1]) {
+			t.Errorf("expected delegated %s update", tool.Name)
 		}
 	}
 }
@@ -222,16 +277,20 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if !invocationsContain(f.calls, brewBinary, "update", "--quiet") {
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, brewBinary, "update", "--quiet") {
 		t.Fatal("expected brew update --quiet to run when shll is brewed even with no roster tools")
 	}
-	if !invocationsContain(f.calls, brewBinary, "upgrade", shllFormula) {
+	if !invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
 		t.Fatal("expected brew upgrade for shll itself")
 	}
-	// No roster upgrades.
+	// No roster upgrades — neither brew upgrade nor delegated `<tool> update`.
 	for _, tool := range Roster {
-		if invocationsContain(f.calls, brewBinary, "upgrade", tool.Formula) {
+		if invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
 			t.Errorf("brew upgrade for uninstalled %s should NOT run", tool.Formula)
+		}
+		if invocationsContain(calls, tool.Update[0], tool.Update[1]) {
+			t.Errorf("delegated update for uninstalled %s should NOT run", tool.Name)
 		}
 	}
 	if strings.Contains(stdout.String(), "No sahil87 tools installed") {
@@ -261,17 +320,33 @@ func TestUpdate_PartialInstalled(t *testing.T) {
 	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
-	if !invocationsContain(f.calls, brewBinary, "upgrade", formulaPrefix+"hop") {
-		t.Error("expected brew upgrade for hop")
+	calls := f.recordedCalls()
+	// hop and wt are upgraded via their own `update` (help advertises no flag).
+	if !invocationsContain(calls, "hop", "update") {
+		t.Error("expected delegated hop update")
 	}
-	if !invocationsContain(f.calls, brewBinary, "upgrade", formulaPrefix+"wt") {
-		t.Error("expected brew upgrade for wt")
+	if !invocationsContain(calls, "wt", "update") {
+		t.Error("expected delegated wt update")
 	}
-	if invocationsContain(f.calls, brewBinary, "upgrade", formulaPrefix+"idea") {
-		t.Error("brew upgrade for idea (uninstalled) should NOT be invoked")
+	// Uninstalled tools: neither delegated update nor brew-upgrade fallback.
+	if invocationsContain(calls, "idea", "update") || invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"idea") {
+		t.Error("idea (uninstalled) should NOT be upgraded")
 	}
-	if invocationsContain(f.calls, brewBinary, "upgrade", formulaPrefix+"fab-kit") {
-		t.Error("brew upgrade for fab-kit (uninstalled) should NOT be invoked")
+	if invocationsContain(calls, "fab-kit", "update") || invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"fab-kit") {
+		t.Error("fab-kit (uninstalled) should NOT be upgraded")
+	}
+	// The --help capability probe is issued only for installed tools.
+	if !invocationsContain(calls, "hop", "update", "--help") {
+		t.Error("expected hop update --help probe (hop is installed)")
+	}
+	if !invocationsContain(calls, "wt", "update", "--help") {
+		t.Error("expected wt update --help probe (wt is installed)")
+	}
+	if invocationsContain(calls, "idea", "update", "--help") {
+		t.Error("idea update --help should NOT be probed (idea is not installed)")
+	}
+	if invocationsContain(calls, "fab-kit", "update", "--help") {
+		t.Error("fab-kit update --help should NOT be probed (fab-kit is not installed)")
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr should be empty for graceful degradation, got %q", stderr.String())
@@ -283,11 +358,13 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 	// contract). shll must surface this as failure rather than silently
 	// continuing into the upgrade loop.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		// Match `brew update --quiet` specifically (not a `<tool> update --help`
+		// capability probe, whose Name is the tool binary, not brew).
 		if req.Name == brewBinary && len(req.Args) >= 1 && req.Args[0] == "update" {
 			return proc.Result{ExitCode: 1}
 		}
-		// Everything else (brew --version, brew list, brew upgrade) succeeds —
-		// keeps the test focused on the brew-update branch.
+		// Everything else (brew --version, brew list, capability probes,
+		// upgrades) succeeds — keeps the test focused on the brew-update branch.
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -300,22 +377,24 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 	if !strings.Contains(stderr.String(), "brew update failed") {
 		t.Fatalf("stderr = %q, want to contain \"brew update failed\"", stderr.String())
 	}
-	if invocationsContain(f.calls, brewBinary, "upgrade", formulaPrefix+"hop") {
-		t.Fatal("brew upgrade should NOT be invoked after brew update fails")
+	calls := f.recordedCalls()
+	// No upgrade — neither delegated `<tool> update` nor brew-upgrade fallback —
+	// is attempted after the metadata refresh fails.
+	if invocationsContain(calls, "hop", "update") || invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"hop") {
+		t.Fatal("no upgrade should be invoked after brew update fails")
 	}
 }
 
 func TestUpdate_OneUpgradeFails(t *testing.T) {
-	// All installed (including shll itself); the first roster upgrade fails;
-	// the rest must still be attempted. Exit non-zero overall.
+	// All installed (including shll itself); the first roster tool's delegated
+	// `update` fails; the rest must still be attempted. Exit non-zero overall.
+	first := Roster[0]
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "upgrade" {
-			// Fail only the first roster entry. Self-upgrade (shll) and the
-			// rest of the roster succeed.
-			if req.Args[1] == Roster[0].Formula {
-				return proc.Result{ExitCode: 1}
-			}
-			return proc.Result{ExitCode: 0}
+		// Fail only the first roster entry's delegated update (not its --help
+		// probe). Self-upgrade (brew upgrade shll) and the rest of the roster
+		// succeed.
+		if req.Name == first.Update[0] && len(req.Args) == 1 && req.Args[0] == first.Update[1] {
+			return proc.Result{ExitCode: 1}
 		}
 		return proc.Result{}
 	}}
@@ -326,16 +405,164 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (overall failure)", err)
 	}
-	// Self-upgrade + every roster entry must have been attempted despite the
-	// roster[0] failure — best-effort policy.
+	calls := f.recordedCalls()
+	// Self-upgrade (brew upgrade) + every roster entry's delegated `update` must
+	// have been attempted despite the roster[0] failure — best-effort policy.
+	// Count brew-upgrade calls and delegated `<tool> update` calls (excluding the
+	// `--help` capability probes).
 	gotUpgrades := 0
-	for _, c := range f.calls {
-		if c.Name == brewBinary && len(c.Args) >= 1 && c.Args[0] == "upgrade" {
+	for _, c := range calls {
+		switch {
+		case c.Name == brewBinary && len(c.Args) >= 1 && c.Args[0] == "upgrade":
+			gotUpgrades++
+		case len(c.Args) == 1 && c.Args[0] == "update":
 			gotUpgrades++
 		}
 	}
-	want := len(Roster) + 1 // +1 for the shll self-upgrade
+	want := len(Roster) + 1 // +1 for the shll self-upgrade (brew upgrade)
 	if gotUpgrades != want {
 		t.Fatalf("upgrade attempts = %d, want %d (self + roster, must continue through failure)", gotUpgrades, want)
+	}
+}
+
+// installedOnly returns a respond function where only the named formulas report
+// installed (via `brew list`), with all other requests succeeding (empty stdout).
+// shll itself is reported not-brew-installed so the self-upgrade is skipped and
+// the test stays focused on roster delegation.
+func installedOnly(formulas ...string) func(proc.Request) proc.Result {
+	set := make(map[string]bool, len(formulas))
+	for _, f := range formulas {
+		set[f] = true
+	}
+	return func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			if set[req.Args[3]] {
+				return proc.Result{Stdout: []byte(req.Args[3] + " 1.0.0\n")}
+			}
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}
+}
+
+func TestUpdate_FlagSupported(t *testing.T) {
+	// rk is installed and `rk update --help` advertises --skip-brew-update → rk
+	// is upgraded via `rk update --skip-brew-update`, NOT brew upgrade.
+	base := installedOnly(formulaPrefix + "rk")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "rk" && isUpdateHelpProbe(req) {
+			return helpAdvertisesSkipFlag()
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, "rk", "update", skipBrewUpdateFlag) {
+		t.Fatalf("expected `rk update %s`, calls: %+v", skipBrewUpdateFlag, calls)
+	}
+	if invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"rk") {
+		t.Fatal("should NOT brew upgrade rk — must delegate to `rk update --skip-brew-update`")
+	}
+	if invocationsContain(calls, "rk", "update") {
+		t.Fatal("expected the flagged form, not a bare `rk update`")
+	}
+}
+
+func TestUpdate_FlagUnsupportedVersionSkew(t *testing.T) {
+	// hop is installed but `hop update --help` does NOT advertise the flag
+	// (version skew) → hop is upgraded via `hop update` with no flag, and does
+	// NOT fall back to brew upgrade.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix + "hop")}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, "hop", "update") {
+		t.Fatalf("expected bare `hop update` (no flag), calls: %+v", calls)
+	}
+	if invocationsContain(calls, "hop", "update", skipBrewUpdateFlag) {
+		t.Fatal("flag should NOT be passed when the tool does not advertise it")
+	}
+	if invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"hop") {
+		t.Fatal("version-skew tool must run `hop update`, NOT fall back to brew upgrade")
+	}
+}
+
+func TestUpdate_NoUpdateArgvFallsBackToBrew(t *testing.T) {
+	// A (hypothetical future) roster tool with an empty Update argv that is
+	// installed falls back to `brew upgrade <formula>`. Swap a single-entry
+	// roster in for the duration of the test.
+	prev := Roster
+	t.Cleanup(func() { Roster = prev })
+	legacy := Tool{Name: "legacy", Formula: formulaPrefix + "legacy"} // no Update argv
+	Roster = []Tool{legacy}
+
+	f := &fakeRunner{respond: installedOnly(legacy.Formula)}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, brewBinary, "upgrade", legacy.Formula) {
+		t.Fatalf("expected brew upgrade fallback for a tool with no Update argv, calls: %+v", calls)
+	}
+	// No delegated update, and no --help probe (nothing to delegate to).
+	if invocationsContain(calls, "legacy", "update") {
+		t.Fatal("a tool with no Update argv must not be delegated to")
+	}
+	if invocationsContain(calls, "legacy", "update", "--help") {
+		t.Fatal("a tool with no Update argv must not be capability-probed")
+	}
+}
+
+func TestUpdate_StatusLinePrecedesProbes(t *testing.T) {
+	// The status line is the first thing written to stdout, before any probe or
+	// brew output. All installed; help advertises no flag.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if !strings.HasPrefix(stdout.String(), updateStatusLine+"\n") {
+		t.Fatalf("stdout = %q, want to start with %q", stdout.String(), updateStatusLine)
+	}
+}
+
+func TestUpdate_BrewUpdateRunsExactlyOnce(t *testing.T) {
+	// With multiple roster tools installed, the hoisted `brew update --quiet`
+	// runs exactly once for the whole run.
+	f := &fakeRunner{respond: installedOnly(
+		formulaPrefix+"rk",
+		formulaPrefix+"hop",
+		formulaPrefix+"wt",
+	)}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	count := 0
+	for _, c := range f.recordedCalls() {
+		if c.Name == brewBinary && len(c.Args) >= 2 && c.Args[0] == "update" && c.Args[1] == "--quiet" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("brew update --quiet ran %d times, want exactly 1", count)
 	}
 }

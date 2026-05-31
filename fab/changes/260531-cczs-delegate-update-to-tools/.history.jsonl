@@ -1,0 +1,25 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-05-31T05:30:00Z"}
+{"args":"Rework shll update to delegate to each tool's own update subcommand instead of brew upgrade directly, plus fix slow first-output UX (parallelize probes, status line).","cmd":"fab-new","event":"command","ts":"2026-05-31T05:30:00Z"}
+{"cmd":"fab-new","event":"command","ts":"2026-05-31T05:30:07Z"}
+{"delta":"+1.8","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-05-31T05:31:20Z"}
+{"delta":"+0.0","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-05-31T05:31:25Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-05-31T07:06:26Z"}
+{"delta":"+1.2","event":"confidence","score":3,"trigger":"calc-score","ts":"2026-05-31T07:28:33Z"}
+{"delta":"+0.0","event":"confidence","score":3,"trigger":"calc-score","ts":"2026-05-31T07:28:37Z"}
+{"delta":"+0.0","event":"confidence","score":3,"trigger":"calc-score","ts":"2026-05-31T07:28:49Z"}
+{"delta":"+2.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-05-31T08:41:48Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-05-31T08:41:59Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-05-31T08:42:04Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-05-31T08:42:10Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-05-31T08:42:34Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"spec","ts":"2026-05-31T08:42:59Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-05-31T08:44:00Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-05-31T08:46:11Z"}
+{"action":"enter","driver":"fab-continue","event":"stage-transition","stage":"apply","ts":"2026-05-31T08:46:11Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-05-31T08:54:15Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-05-31T08:57:30Z"}
+{"event":"review","result":"passed","ts":"2026-05-31T08:57:30Z"}
+{"action":"enter","driver":"fab-continue","event":"stage-transition","stage":"ship","ts":"2026-05-31T09:00:53Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-05-31T09:03:31Z"}
+{"cmd":"git-pr-review","event":"command","ts":"2026-05-31T09:05:02Z"}
+{"event":"review","result":"passed","ts":"2026-05-31T09:11:01Z"}
