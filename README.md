@@ -1,8 +1,8 @@
 # shll
 
-> Part of [@sahil87's open source toolkit](https://ai.shll.in) — see all projects there.
+> Part of [@sahil87's open source toolkit](https://shll.ai) — see all projects there.
 
-One command to install, update, and shell-wire every tool in the [@sahil87 toolkit](https://ai.shll.in) (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`). `shll` doesn't replace the per-tool CLIs — it composes them.
+One command to install, update, and shell-wire every tool in the [@sahil87 toolkit](https://shll.ai) (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
 ## Why shll?
 
