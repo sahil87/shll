@@ -10,8 +10,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 8
@@ -35,6 +35,8 @@ stage_metrics:
     apply: {started_at: "2026-06-01T03:33:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T03:40:36Z"}
     review: {started_at: "2026-06-01T03:40:36Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T03:45:52Z"}
     hydrate: {started_at: "2026-06-01T03:45:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T03:49:54Z"}
-    ship: {started_at: "2026-06-01T03:49:54Z", driver: fab-fff, iterations: 1}
-prs: []
-last_updated: 2026-06-01T03:49:54Z
+    ship: {started_at: "2026-06-01T03:49:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T03:52:09Z"}
+    review-pr: {started_at: "2026-06-01T03:52:09Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/10
+last_updated: 2026-06-01T03:52:09Z
