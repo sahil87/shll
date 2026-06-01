@@ -13,3 +13,4 @@
 
 | Spec | Description |
 |------|-------------|
+| [per-tool-output-separation](per-tool-output-separation.md) | Make tool boundaries obvious in `update`/`install`/`shell-init` output — per-tool headers, a summary tail, TTY-gated color, and an eval-safe shell-comment separator for `shell-init`. |

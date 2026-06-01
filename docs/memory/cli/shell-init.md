@@ -26,8 +26,8 @@ A single eval line replaces what would otherwise be N per-tool eval lines (today
    - Build argv via `substituteShell(tool.ShellInit, shell)` (replaces every `"<shell>"` token with the user-supplied shell name).
    - Run `proc.Run(ctx, argv[0], argv[1:]...)` (capture transport).
    - On `proc.ErrNotFound` (binary not on PATH): skip silently — Constitution V (graceful degradation). Install-mechanism agnostic: any source-built or non-brew install of the tool participates as long as its binary is on PATH.
-   - On any other error: write `shll shell-init: <tool>: <err>` to stderr, set `anyFailed = true`, **and skip this tool's stdout** (eval-safety — failing tool's partial output never reaches stdout). Continue with the next tool.
-   - On success: write the captured stdout bytes verbatim to the output writer.
+   - On any other error: write `shll shell-init: <tool>: <err>` to stderr, set `anyFailed = true`, **and skip this tool's stdout** (eval-safety — failing tool's partial output never reaches stdout). Continue with the next tool. **No separator** is emitted for this tool.
+   - On success (the only success-write path): emit the shell-comment separator `# ── <tool> ──` followed by a newline (see [Shell-comment separator](#shell-comment-separator-change-y630)), then write the captured stdout bytes verbatim to the output writer.
 
 4. **Final exit.** If `anyFailed`, return `errSilent` (exit 1). Else return nil (exit 0).
 
@@ -41,9 +41,39 @@ This is the central correctness property of `shell-init` and is non-negotiable (
   - Sub-tool execution fails → its (partial) stdout is dropped; the error message goes to stderr only.
   - Sub-tool returns non-zero exit → falls under the "fails" branch (proc returns a non-nil err).
 - **stderr is the only diagnostic channel.** Any human-readable text — usage, error notes — goes to stderr.
-- **`shll` itself never injects shell code.** stdout consists of bytes returned by sub-tools, concatenated. shll does not prepend or append anything.
+- **`shll` injects only eval-safe shell comments.** stdout consists of the bytes returned by successful sub-tools, concatenated, plus shll's own `# ── <tool> ──` comment separators (change y630). shll injects no executable shell code — a `#`-prefixed line is a shell no-op, so the comments are eval-safe and the invariant holds. A separator is emitted **only** on the success-write path, so stdout never contains a separator for a tool whose output is absent (see [Shell-comment separator](#shell-comment-separator-change-y630)).
 
 This means `eval "$(shll shell-init zsh)"` is safe even when shll exits non-zero or sub-tools are broken — at worst the user gets a shell with one fewer integration loaded, never a parse error.
+
+## Shell-comment separator (change y630)
+
+`shll shell-init` frames each contributing tool's init block with a separator so a composed blob is no longer one undifferentiated wall of shell code. The separator is `# ── <tool> ──`, produced by `toolComment(name)` in the shared helper `src/cmd/shll/ui.go:67` and written (with a trailing newline) immediately before the tool's captured output on the success-write path of step 3.
+
+```
+# ── tu ──
+export PATH=...
+# ── hop ──
+alias h='hop'
+# ── wt ──
+...
+```
+
+### The deliberate exception — DO NOT unify onto the `▸`/`==>` header
+
+This is the single most important fact in this file for a future maintainer. `shell-init` uses a **shell comment**, **not** the `▸`/`==>` header that `update` and `install` use, and the difference is **intentional and load-bearing**:
+
+- **No `▸`/`==>` header, no color, no TTY-gating.** `toolComment` takes no `color` parameter and never consults `colorEnabled`. The separator is emitted **identically** whether or not stdout is a terminal and regardless of `NO_COLOR` — always plain ASCII shell-comment text.
+- **Why.** `shll shell-init` stdout is consumed by `eval "$(shll shell-init <shell>)"`. A bare `▸ <tool>` line would be eval'd as a command and break the user's shell; ANSI color escapes inside eval'd output would corrupt it. A `#`-prefixed line is a shell no-op — the only eval-safe separator here. This is mandated by **Constitution V (Graceful Degradation — `shll shell-init` output MUST always be eval-safe)**.
+- **This is NOT an oversight.** A future "consistency" refactor that unifies `shell-init` onto the `▸`/`==>` header (or adds color/TTY-gating to it) **reintroduces the eval-break** and MUST NOT be done. The inconsistency with `update`/`install` is the correct, guarded design — recorded here so the guard survives.
+
+### Separator emitted only when the tool's output reaches stdout
+
+The separator is written **only** on the success-write path — the tool is installed (binary on PATH) **and** its `shell-init` did not error:
+
+- **Not installed** (`proc.ErrNotFound`, skipped silently): no separator, no block — the `continue` happens before the separator write.
+- **Errored** (any other error): its stdout is dropped to preserve eval-safety, the error note goes to stderr, and **no separator** is emitted — the `continue` happens before the separator write.
+
+This preserves the eval-safety invariant exactly: stdout consists only of bytes from successful sub-tools, concatenated, now plus shll's own comment separators — never a dangling separator for a tool that produced nothing.
 
 ## Composition order
 
@@ -84,15 +114,15 @@ Exit 2 specifically distinguishes user-error (bad CLI invocation) from runtime f
 
 Covered scenarios:
 
-- `TestShellInit_ZshAllIntegratorsInstalled` — `tu`, `hop`, and `wt` all installed → roster-ordered concatenation, exit 0.
-- `TestShellInit_OnlyTuInstalled` — only `tu` installed → only `tu`'s stdout, exit 0.
-- `TestShellInit_OnlyHopInstalled` — only `hop` installed → only `hop`'s stdout, exit 0.
-- `TestShellInit_OnlyWtInstalled` — only `wt` installed → only `wt`'s stdout (using new `wt shell-init <shell>` argv), exit 0.
-- `TestShellInit_NoIntegratingToolsInstalled` — none installed → empty stdout, exit 0.
+- `TestShellInit_ZshAllIntegratorsInstalled` — `tu`, `hop`, and `wt` all installed → roster-ordered concatenation, each block preceded by its `# ── <tool> ──` separator (`# ── tu ──`, then tu's block, `# ── hop ──`, then hop's block, `# ── wt ──`, then wt's block), exit 0.
+- `TestShellInit_OnlyTuInstalled` — only `tu` installed → `# ── tu ──` + tu's stdout only; no separator for the uninstalled tools, exit 0.
+- `TestShellInit_OnlyHopInstalled` — only `hop` installed → `# ── hop ──` + hop's stdout only, exit 0.
+- `TestShellInit_OnlyWtInstalled` — only `wt` installed → `# ── wt ──` + wt's stdout (using new `wt shell-init <shell>` argv), exit 0.
+- `TestShellInit_NoIntegratingToolsInstalled` — none installed → empty stdout (no separators), exit 0.
 - `TestShellInit_UnsupportedShell` — `fish` → empty stdout, stderr usage line, exit 2.
 - `TestShellInit_MissingShellArg` — no arg → empty stdout, stderr usage line, exit 2.
-- `TestShellInit_DeterministicOrder` — all three integrators installed → byte-identical output across two runs, in roster order (`tu`, then `hop`, then `wt`).
-- `TestShellInit_SubToolFailure` — one integrator (e.g. `hop shell-init zsh`) errors → its stdout fragment is dropped, others succeed, eval-safety holds, exit 1.
+- `TestShellInit_DeterministicOrder` — all three integrators installed → byte-identical output (separators included) across two runs, in roster order (`tu`, then `hop`, then `wt`).
+- `TestShellInit_SubToolFailure` — one integrator (e.g. `hop shell-init zsh`) errors → its stdout fragment **and its `# ── hop ──` separator** are both dropped, the other two emit separator + block, eval-safety holds, exit 1.
 
 ## Cross-references
 
@@ -100,4 +130,5 @@ Covered scenarios:
 - Subprocess wrapper conventions: [internal/proc](../internal/proc.md) — including `proc.ErrNotFound` semantics.
 - Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).
 - Rc-file installer: [cli/shell-install](shell-install.md) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
-- Constitution V (Graceful Degradation) — tools not on PATH are omitted silently.
+- Shared UI helper (`ui.go`): [cli/commands](commands.md#file-layout-srccmdshll). `shell-init` consumes only `toolComment` from it — **not** the `▸`/`==>` header or color logic that `update`/`install` use (the [deliberate exception](#the-deliberate-exception--do-not-unify-onto-the--header)).
+- Constitution V (Graceful Degradation) — tools not on PATH are omitted silently; eval-safety mandates the shell-comment separator over the `▸`/`==>` header.

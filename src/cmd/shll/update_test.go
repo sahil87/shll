@@ -566,3 +566,113 @@ func TestUpdate_BrewUpdateRunsExactlyOnce(t *testing.T) {
 		t.Fatalf("brew update --quiet ran %d times, want exactly 1", count)
 	}
 }
+
+func TestUpdate_HeadersAndTail(t *testing.T) {
+	// shll itself + the full roster are installed. With a bytes.Buffer (non-TTY)
+	// stdout, the helper takes the plain branch, so the framing reads in the
+	// ASCII `==>` / `Done — …` forms. The fakeRunner records calls but writes no
+	// sub-tool bytes, so stdout contains exactly shll's own framing: the status
+	// line, a `==> shll (self)` header before the self-upgrade, a `==> <tool>`
+	// header per roster tool in order, then the all-succeeded tail.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+
+	want := updateStatusLine + "\n" +
+		"==> shll (self)\n" +
+		"==> fab-kit\n==> rk\n==> tu\n==> hop\n==> wt\n==> idea\n" +
+		"Done — 7 of 7 tools succeeded.\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	// Stream discipline: headers and tail go to stdout, never stderr.
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty (framing must not go to stderr)", stderr.String())
+	}
+}
+
+func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
+	// The per-tool header must be written immediately BEFORE that tool's
+	// foregrounded upgrade is invoked. We assert ordering by having the fake
+	// snapshot stdout's length at the moment each delegated `<tool> update` runs:
+	// the corresponding `==> <tool>` header must already be present in the buffer.
+	base := installedOnly(formulaPrefix + "hop")
+	var stdout, stderr bytes.Buffer
+	var seenAtHopUpgrade string
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		// Delegated `hop update` (foreground), not the `hop update --help` probe.
+		if req.Name == "hop" && req.Transport == proc.TransportForeground {
+			seenAtHopUpgrade = stdout.String()
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if !strings.Contains(seenAtHopUpgrade, "==> hop\n") {
+		t.Fatalf("at hop upgrade, stdout was %q, want it to already contain \"==> hop\\n\"", seenAtHopUpgrade)
+	}
+}
+
+func TestUpdate_PartialFailureTail(t *testing.T) {
+	// hop and wt installed (shll itself not brew-installed via installedOnly, so
+	// it is excluded from the count → total = 2). hop's delegated update fails,
+	// wt succeeds → the partial-failure tail form with counts 1 succeeded,
+	// 1 failed. Exit stays errSilent (unchanged).
+	base := installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "hop" && req.Transport == proc.TransportForeground {
+			return proc.Result{ExitCode: 1}
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), &stdout, &stderr)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent (one tool failed)", err)
+	}
+	if !strings.HasSuffix(stdout.String(), "1 succeeded, 1 failed — see above.\n") {
+		t.Fatalf("stdout = %q, want to end with partial-failure tail", stdout.String())
+	}
+	// Honesty constraint: the tail never claims updated/up-to-date.
+	if strings.Contains(stdout.String(), "updated") || strings.Contains(stdout.String(), "up-to-date") {
+		t.Fatalf("stdout = %q, must not claim updated/up-to-date", stdout.String())
+	}
+}
+
+func TestUpdate_EmptyCaseNoHeaderNoTail(t *testing.T) {
+	// Nothing installed (neither shll nor any roster tool) → the short-circuit
+	// fires with no per-tool loop, so no header and no tail. The golden string is
+	// exactly the status line + the one-line note.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
+			return proc.Result{Stdout: []byte("Homebrew 4.0\n")}
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if got := stdout.String(); got != updateStatusLine+"\nNo sahil87 tools installed.\n" {
+		t.Fatalf("stdout = %q, want status line + note only (no header, no tail)", got)
+	}
+	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {
+		t.Fatalf("empty case must emit no header and no tail, got %q", stdout.String())
+	}
+}

@@ -64,7 +64,11 @@ func TestShellInit_ZshAllIntegratorsInstalled(t *testing.T) {
 	if err := runShellInit(context.Background(), "zsh", &stdout, &stderr); err != nil {
 		t.Fatalf("runShellInit err = %v", err)
 	}
-	want := "## tu init\nexport TU=1\n## hop init\nexport HOP=1\n## wt init\nexport WT=1\n"
+	// Each contributing tool's init block is preceded by a `# ── <tool> ──`
+	// shell-comment separator (always plain ASCII, eval-safe), in roster order.
+	want := "# ── tu ──\n## tu init\nexport TU=1\n" +
+		"# ── hop ──\n## hop init\nexport HOP=1\n" +
+		"# ── wt ──\n## wt init\nexport WT=1\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
@@ -85,8 +89,13 @@ func TestShellInit_OnlyTuInstalled(t *testing.T) {
 	if err := runShellInit(context.Background(), "zsh", &stdout, &stderr); err != nil {
 		t.Fatalf("runShellInit err = %v", err)
 	}
-	if stdout.String() != "## tu only\n" {
-		t.Fatalf("stdout = %q, want only tu", stdout.String())
+	if got, want := stdout.String(), "# ── tu ──\n## tu only\n"; got != want {
+		t.Fatalf("stdout = %q, want %q (only tu, with separator)", got, want)
+	}
+	// Uninstalled tools (hop, wt) get NO separator — the separator is emitted
+	// only for tools whose output reaches stdout (installed + non-erroring).
+	if strings.Contains(stdout.String(), "# ── hop ──") || strings.Contains(stdout.String(), "# ── wt ──") {
+		t.Fatalf("stdout = %q, must NOT contain separators for uninstalled hop/wt", stdout.String())
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr should be empty for missing hop and wt, got %q", stderr.String())
@@ -105,8 +114,8 @@ func TestShellInit_OnlyHopInstalled(t *testing.T) {
 	if err := runShellInit(context.Background(), "bash", &stdout, &stderr); err != nil {
 		t.Fatalf("runShellInit err = %v", err)
 	}
-	if stdout.String() != "## hop bash\n" {
-		t.Fatalf("stdout = %q, want only hop", stdout.String())
+	if got, want := stdout.String(), "# ── hop ──\n## hop bash\n"; got != want {
+		t.Fatalf("stdout = %q, want %q (only hop, with separator)", got, want)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr should be empty for missing tu and wt, got %q", stderr.String())
@@ -125,8 +134,8 @@ func TestShellInit_OnlyWtInstalled(t *testing.T) {
 	if err := runShellInit(context.Background(), "zsh", &stdout, &stderr); err != nil {
 		t.Fatalf("runShellInit err = %v", err)
 	}
-	if stdout.String() != "## wt only\n" {
-		t.Fatalf("stdout = %q, want only wt", stdout.String())
+	if got, want := stdout.String(), "# ── wt ──\n## wt only\n"; got != want {
+		t.Fatalf("stdout = %q, want %q (only wt, with separator)", got, want)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr should be empty for missing tu and hop, got %q", stderr.String())
@@ -171,8 +180,9 @@ func TestShellInit_DeterministicOrder(t *testing.T) {
 	if a.String() != b.String() {
 		t.Fatalf("non-deterministic output: %q vs %q", a.String(), b.String())
 	}
-	if a.String() != "TU\nHOP\nWT\n" {
-		t.Fatalf("order = %q, want TU then HOP then WT (roster order)", a.String())
+	want := "# ── tu ──\nTU\n# ── hop ──\nHOP\n# ── wt ──\nWT\n"
+	if a.String() != want {
+		t.Fatalf("order = %q, want %q (TU then HOP then WT in roster order, each separator-prefixed)", a.String(), want)
 	}
 }
 
@@ -240,9 +250,15 @@ func TestShellInit_SubToolFailure(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
-	// stdout must be eval-safe — tu before hop, wt after hop, no hop bytes.
-	if stdout.String() != "TU\nWT\n" {
-		t.Fatalf("stdout = %q, want \"TU\\nWT\\n\" (hop's failure must not pollute stdout; tu and wt still contribute)", stdout.String())
+	// stdout must be eval-safe — tu (with separator) before hop, wt (with
+	// separator) after hop, and NO hop bytes and NO `# ── hop ──` separator
+	// (the separator is emitted only on the success-write path).
+	want := "# ── tu ──\nTU\n# ── wt ──\nWT\n"
+	if stdout.String() != want {
+		t.Fatalf("stdout = %q, want %q (hop's failure must not pollute stdout or get a separator; tu and wt still contribute)", stdout.String(), want)
+	}
+	if strings.Contains(stdout.String(), "# ── hop ──") {
+		t.Fatalf("stdout = %q, must NOT contain a separator for the erroring hop", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), "hop") {
 		t.Fatalf("stderr should mention hop failure, got %q", stderr.String())

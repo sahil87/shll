@@ -91,6 +91,17 @@ func runShellInit(ctx context.Context, shell string, stdout, stderr io.Writer) e
 			anyFailed = true
 			continue
 		}
+		// Emit the shell-comment separator only on the success-write path —
+		// installed (binary on PATH) AND its shell-init did not error. Skipped
+		// (ErrNotFound) and errored tools never reach here, so they get no
+		// separator, preserving the eval-safety invariant that stdout holds only
+		// bytes from successful sub-tools plus shll's own comment separators. The
+		// separator is plain ASCII shell-comment text with no color and no
+		// TTY-gating (Constitution V — eval-safety); it is a shell no-op when the
+		// output is eval'd.
+		if _, werr := fmt.Fprintln(stdout, toolComment(tool.Name)); werr != nil {
+			return fmt.Errorf("shll shell-init: write: %w", werr)
+		}
 		if _, werr := stdout.Write(out); werr != nil {
 			return fmt.Errorf("shll shell-init: write: %w", werr)
 		}
