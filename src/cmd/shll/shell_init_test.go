@@ -66,9 +66,9 @@ func TestShellInit_ZshAllIntegratorsInstalled(t *testing.T) {
 	}
 	// Each contributing tool's init block is preceded by a `# ── <tool> ──`
 	// shell-comment separator (always plain ASCII, eval-safe), in roster order.
-	want := "# ── tu ──\n## tu init\nexport TU=1\n" +
-		"# ── hop ──\n## hop init\nexport HOP=1\n" +
-		"# ── wt ──\n## wt init\nexport WT=1\n"
+	want := "# ── wt ──\n## wt init\nexport WT=1\n" +
+		"# ── tu ──\n## tu init\nexport TU=1\n" +
+		"# ── hop ──\n## hop init\nexport HOP=1\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 	}
@@ -180,9 +180,9 @@ func TestShellInit_DeterministicOrder(t *testing.T) {
 	if a.String() != b.String() {
 		t.Fatalf("non-deterministic output: %q vs %q", a.String(), b.String())
 	}
-	want := "# ── tu ──\nTU\n# ── hop ──\nHOP\n# ── wt ──\nWT\n"
+	want := "# ── wt ──\nWT\n# ── tu ──\nTU\n# ── hop ──\nHOP\n"
 	if a.String() != want {
-		t.Fatalf("order = %q, want %q (TU then HOP then WT in roster order, each separator-prefixed)", a.String(), want)
+		t.Fatalf("order = %q, want %q (WT then TU then HOP in roster order, each separator-prefixed)", a.String(), want)
 	}
 }
 
@@ -228,9 +228,9 @@ func TestShellInit_MissingShellArg(t *testing.T) {
 }
 
 func TestShellInit_SubToolFailure(t *testing.T) {
-	// All three integrators installed; hop (the middle one in roster order) fails.
-	// Asserts eval-safety on both sides of the failure: tu's stdout (before hop)
-	// and wt's stdout (after hop) both reach the user, while hop's bytes do not.
+	// All three integrators installed; hop (the last one in roster order) fails.
+	// Asserts eval-safety: the surviving integrators wt and tu (both before hop)
+	// reach the user, while hop's bytes do not.
 	f := shellInitFake(
 		map[string]bool{
 			formulaPrefix + "tu":  true,
@@ -250,10 +250,10 @@ func TestShellInit_SubToolFailure(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
-	// stdout must be eval-safe — tu (with separator) before hop, wt (with
-	// separator) after hop, and NO hop bytes and NO `# ── hop ──` separator
-	// (the separator is emitted only on the success-write path).
-	want := "# ── tu ──\nTU\n# ── wt ──\nWT\n"
+	// stdout must be eval-safe — wt and tu (each with separator) reach stdout,
+	// while hop (last in roster order) contributes NO bytes and NO `# ── hop ──`
+	// separator (the separator is emitted only on the success-write path).
+	want := "# ── wt ──\nWT\n# ── tu ──\nTU\n"
 	if stdout.String() != want {
 		t.Fatalf("stdout = %q, want %q (hop's failure must not pollute stdout or get a separator; tu and wt still contribute)", stdout.String(), want)
 	}

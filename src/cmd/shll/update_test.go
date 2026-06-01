@@ -198,9 +198,9 @@ func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
 	}
 
 	// Find the indices of the shll self-upgrade (`brew upgrade shllFormula`) and
-	// the first roster upgrade (fab-kit, delegated to `fab-kit update`) in the
-	// recorded call sequence. The first roster upgrade is a delegated `<tool>
-	// update` invocation, not a brew upgrade.
+	// the first roster upgrade (Roster[0], now wt, delegated to `wt update`) in
+	// the recorded call sequence. The first roster upgrade is a delegated
+	// `<tool> update` invocation, not a brew upgrade.
 	calls := f.recordedCalls()
 	first := Roster[0]
 	selfIdx, firstRosterIdx := -1, -1
@@ -586,7 +586,7 @@ func TestUpdate_HeadersAndTail(t *testing.T) {
 
 	want := updateStatusLine + "\n" +
 		"==> shll (self)\n" +
-		"==> fab-kit\n==> rk\n==> tu\n==> hop\n==> wt\n==> idea\n" +
+		"==> wt\n==> idea\n==> tu\n==> rk\n==> hop\n==> fab-kit\n" +
 		"Done — 7 of 7 tools succeeded.\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)

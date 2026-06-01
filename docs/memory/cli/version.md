@@ -8,15 +8,15 @@ Source: `src/cmd/shll/version.go`. Uses the shared brew helpers in `src/cmd/shll
 
 ```
 shll      v0.1.0
-fab-kit   v0.1.0
-rk        v0.1.0
-tu        v0.1.0
-hop       v0.1.0
 wt        v0.1.0
 idea      not installed
+tu        v0.1.0
+rk        v0.1.0
+hop       v0.1.0
+fab-kit   v0.1.0
 ```
 
-- Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`).
+- Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit` — the leaves-first order, change auvj). `version` output is order-agnostic in test (assertions are index-paired to `Roster`, so reorder moves expected and actual in lockstep — no `version_test.go` change was needed for the reorder); only this example's ordering reflects the slice. See [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj).
 - Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:56`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 - When the upstream tool's `--version` output contains a SemVer-shaped token, the row is normalized to a `v`-prefixed token (e.g. `v1.9.4`). When no such token is present, the row falls through the prefix-strip and raw-passthrough branches and may emit a non-`v` string (e.g. `dev`, or an unparseable banner verbatim) — see the `normalizeVersion` pipeline below for the full contract.
 - **Plain text only.** No ANSI escapes, no JSON, no colors. The output is meant to paste cleanly into bug reports.

@@ -199,7 +199,7 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	want := "==> fab-kit\n==> rk\n==> tu\n==> idea\nDone — 4 of 4 tools succeeded.\n"
+	want := "==> idea\n==> tu\n==> rk\n==> fab-kit\nDone — 4 of 4 tools succeeded.\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}

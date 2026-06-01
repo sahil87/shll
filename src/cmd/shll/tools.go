@@ -38,14 +38,34 @@ type Tool struct {
 // open-code the string.
 const shellPlaceholder = "<shell>"
 
-// Roster is the hardcoded sahil87 toolkit list. Order matters — `shll
-// shell-init` concatenates output in roster order so users can reason about
-// init sequencing (spec: Composition Order requirement).
+// Roster is the hardcoded sahil87 toolkit list. Order matters and is declared
+// leaves-first: every tool appears after all of its dependencies, so dependents
+// are processed only once their dependencies are done.
+//
+// The dependency edges driving this order are:
+//   - fab-kit -> wt, fab-kit -> idea  (fab-kit's brew formula upgrades wt/idea)
+//   - hop -> wt                       (hop's brew formula upgrades wt; hop also
+//     invokes wt at runtime)
+//   - rk -> wt                        (rk invokes wt at runtime)
+//
+// so the leaves wt, idea, tu (no outgoing edges) precede the dependents rk,
+// hop, fab-kit. This is OUTPUT COHERENCE, not a correctness fix: brew already
+// resolves formula dependencies correctly and idempotently, and each
+// `<tool> update` is self-update-only, so the order can neither break nor
+// improve upgrade correctness. What it buys is that each tool's per-tool output
+// section in `shll update` / `shll install` completes (and is counted) before a
+// dependent's internal `brew upgrade` can re-touch a leaf already reported done
+// under its own header. `shll shell-init` likewise concatenates output in this
+// order, so users can reason about init sequencing.
+//
+// The full ordering contract (brew-upgrade AND runtime edges) is enforced by
+// TestRosterLeavesBeforeDependents — a comment cannot fail CI, so the test
+// guards against an accidental reorder.
 var Roster = []Tool{
-	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}},
-	{Name: "rk", Formula: formulaPrefix + "rk", Update: []string{"rk", "update"}},
-	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}},
-	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}},
 	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}},
 	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}},
+	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}},
+	{Name: "rk", Formula: formulaPrefix + "rk", Update: []string{"rk", "update"}},
+	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}},
+	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}},
 }

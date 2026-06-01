@@ -11,7 +11,7 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-A single eval line replaces what would otherwise be N per-tool eval lines (today: `tu shell-init <shell>`, `hop shell-init <shell>`, and `wt shell-init <shell>`).
+A single eval line replaces what would otherwise be N per-tool eval lines (today: `wt shell-init <shell>`, `tu shell-init <shell>`, and `hop shell-init <shell>`).
 
 ## Behavior contract
 
@@ -50,12 +50,12 @@ This means `eval "$(shll shell-init zsh)"` is safe even when shll exits non-zero
 `shll shell-init` frames each contributing tool's init block with a separator so a composed blob is no longer one undifferentiated wall of shell code. The separator is `# ── <tool> ──`, produced by `toolComment(name)` in the shared helper `src/cmd/shll/ui.go:67` and written (with a trailing newline) immediately before the tool's captured output on the success-write path of step 3.
 
 ```
+# ── wt ──
+...
 # ── tu ──
 export PATH=...
 # ── hop ──
 alias h='hop'
-# ── wt ──
-...
 ```
 
 ### The deliberate exception — DO NOT unify onto the `▸`/`==>` header
@@ -77,7 +77,9 @@ This preserves the eval-safety invariant exactly: stdout consists only of bytes 
 
 ## Composition order
 
-Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `tu`, `hop`, and `wt` produce output; in roster order that is `tu` first, then `hop`, then `wt`. `tu`'s position is incidental — its natural place in the existing `fab-kit, rk, tu, hop, wt, idea` roster puts it first among the integrators, but ordering between the three is not a designed sequencing decision. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs.
+Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `wt`, `tu`, and `hop` produce output; in the leaves-first roster (`wt, idea, tu, rk, hop, fab-kit` — change auvj) the three integrators sit at indices `wt`@0, `tu`@2, `hop`@4, so `runShellInit` emits them in ascending-index order: **`wt` first, then `tu`, then `hop`**. This order is *intentional*, not incidental — it follows the toolkit's leaves-first dependency order (`wt` is a leaf that `hop` depends on at runtime; `hop open` delegates to wt's menu), so users reading a composed blob see a dependency before its dependent. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs. The roster-order invariant itself is guarded by `TestRosterLeavesBeforeDependents` — see [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj).
+
+> The earlier framing here said the order was `tu, hop, wt` and that tu's position was "incidental". Both are superseded by change auvj: the order is now `wt, tu, hop` and it is a deliberate leaves-first sequencing decision. (Note: `wt, tu, hop`, NOT `tu, wt, hop` — the integrators in ascending `Roster` index order are wt@0, tu@2, hop@4.)
 
 ## Argv substitution
 
@@ -85,9 +87,9 @@ Output is concatenated in `Roster` order. This is deterministic (Spec: Compositi
 
 | Tool | Roster argv | After substitution (zsh) |
 |------|-------------|--------------------------|
+| `wt`  | `["wt", "shell-init", "<shell>"]`  | `["wt", "shell-init", "zsh"]`  |
 | `tu`  | `["tu", "shell-init", "<shell>"]`  | `["tu", "shell-init", "zsh"]`  |
 | `hop` | `["hop", "shell-init", "<shell>"]` | `["hop", "shell-init", "zsh"]` |
-| `wt`  | `["wt", "shell-init", "<shell>"]`  | `["wt", "shell-init", "zsh"]`  |
 
 The placeholder constant (`shellPlaceholder = "<shell>"`) lives in `src/cmd/shll/tools.go:31`.
 
@@ -114,15 +116,15 @@ Exit 2 specifically distinguishes user-error (bad CLI invocation) from runtime f
 
 Covered scenarios:
 
-- `TestShellInit_ZshAllIntegratorsInstalled` — `tu`, `hop`, and `wt` all installed → roster-ordered concatenation, each block preceded by its `# ── <tool> ──` separator (`# ── tu ──`, then tu's block, `# ── hop ──`, then hop's block, `# ── wt ──`, then wt's block), exit 0.
+- `TestShellInit_ZshAllIntegratorsInstalled` — `wt`, `tu`, and `hop` all installed → roster-ordered concatenation, each block preceded by its `# ── <tool> ──` separator (`# ── wt ──`, then wt's block, `# ── tu ──`, then tu's block, `# ── hop ──`, then hop's block), exit 0.
 - `TestShellInit_OnlyTuInstalled` — only `tu` installed → `# ── tu ──` + tu's stdout only; no separator for the uninstalled tools, exit 0.
 - `TestShellInit_OnlyHopInstalled` — only `hop` installed → `# ── hop ──` + hop's stdout only, exit 0.
 - `TestShellInit_OnlyWtInstalled` — only `wt` installed → `# ── wt ──` + wt's stdout (using new `wt shell-init <shell>` argv), exit 0.
 - `TestShellInit_NoIntegratingToolsInstalled` — none installed → empty stdout (no separators), exit 0.
 - `TestShellInit_UnsupportedShell` — `fish` → empty stdout, stderr usage line, exit 2.
 - `TestShellInit_MissingShellArg` — no arg → empty stdout, stderr usage line, exit 2.
-- `TestShellInit_DeterministicOrder` — all three integrators installed → byte-identical output (separators included) across two runs, in roster order (`tu`, then `hop`, then `wt`).
-- `TestShellInit_SubToolFailure` — one integrator (e.g. `hop shell-init zsh`) errors → its stdout fragment **and its `# ── hop ──` separator** are both dropped, the other two emit separator + block, eval-safety holds, exit 1.
+- `TestShellInit_DeterministicOrder` — all three integrators installed → byte-identical output (separators included) across two runs, in roster order (`wt`, then `tu`, then `hop`).
+- `TestShellInit_SubToolFailure` — one integrator (`hop shell-init zsh`, last in roster order) errors → its stdout fragment **and its `# ── hop ──` separator** are both dropped, the surviving two emit separator + block in `wt, tu` order, eval-safety holds, exit 1.
 
 ## Cross-references
 
