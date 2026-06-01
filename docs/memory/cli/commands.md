@@ -82,12 +82,23 @@ Roster invariants:
 | `shell_init.go` | `newShellInitCmd()` + `runShellInit`. See [shell-init](shell-init.md). |
 | `shell_install.go` | `newShellInstallCmd()` + `runShellInstall`. See [shell-install](shell-install.md). |
 | `version.go` | `newVersionCmd()` + `runVersion`. See [version](version.md). |
+| `ui.go` *(change y630)* | Shared UI helper — TTY/`NO_COLOR` detection (`colorEnabled`), the per-tool header printer (`printToolHeader` → `▸ <tool>` / `==> <tool>`), the summary-tail printer (`printSummaryTail`), the shell-init comment-separator emitter (`toolComment` → `# ── <tool> ──`), and the named ANSI SGR constants (`ansiReset`, `ansiBold`, `ansiBoldCyan`, `ansiGreen`). Holds presentation logic only — **no** subprocess calls, **no** command of its own. Consumed by `update.go`/`install.go` (header + tail + color) and `shell_init.go` (`toolComment` only — never the color/header path, per the [eval-safety exception](shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)). |
 
-Each command file has a paired `_test.go` (test-alongside per `code-quality.md`).
+Each command file has a paired `_test.go` (test-alongside per `code-quality.md`); `ui.go` has `ui_test.go`, which unit-tests the helpers directly (`bytes.Buffer` writers naturally hit the plain-ASCII branch).
+
+## Shared UI helper (`ui.go`)
+
+Three commands frame their per-tool output via the shared `ui.go` helper (change y630), so the TTY/`NO_COLOR`/glyph logic lives in exactly one place:
+
+- [cli/update](update.md#per-tool-output-separation-change-y630) — per-tool `▸`/`==>` header (including `shll (self)`) + summary tail.
+- [cli/install](install.md#per-tool-output-separation-change-y630) — mirrors update's header + tail.
+- [cli/shell-init](shell-init.md#shell-comment-separator-change-y630) — `# ── <tool> ──` comment separator only; deliberately **not** the header/color path (eval-safety).
+
+`golang.org/x/term` (TTY detection) is the codebase's only color/terminal dependency, added by change y630 — it is the codebase's first terminal inspection. `version` is deliberately untouched by this change (its lines already self-label).
 
 ## Cross-references
 
-- Constitution I (Security First) → all subprocesses go through [`internal/proc`](../internal/proc.md).
-- Constitution III (Wrap, Don't Reinvent) + IV (Composition, Not Replacement) → every subcommand shells out; nothing reimplements brew or per-tool logic.
-- Constitution V (Graceful Degradation) → uninstalled tools never produce errors; missing tools are skipped silently.
-- Constitution VII (Minimal Surface Area) → subcommand list is closed at five for v0.1.0 (`install`, `update`, `shell-init`, `shell-install`, `version`).
+- Constitution I (Security First) → all subprocesses go through [`internal/proc`](../internal/proc.md). (`ui.go` makes no subprocess calls — it is pure presentation.)
+- Constitution III (Wrap, Don't Reinvent) + IV (Composition, Not Replacement) → every subcommand shells out; nothing reimplements brew or per-tool logic. shll's framing prints only *around* each subprocess; sub-tool bytes are never rewritten.
+- Constitution V (Graceful Degradation) → uninstalled tools never produce errors; missing tools are skipped silently. Eval-safety drives `shell-init`'s comment-separator exception (see [cli/shell-init](shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)).
+- Constitution VII (Minimal Surface Area) → subcommand list is closed at five for v0.1.0 (`install`, `update`, `shell-init`, `shell-install`, `version`); change y630 added behavior to existing commands and a non-command helper file (`ui.go`), not a new subcommand.

@@ -1,0 +1,42 @@
+id: y630
+name: 260601-y630-per-tool-output-separation
+created: 2026-06-01T00:48:27Z
+created_by: sahil87
+change_type: feat
+issues: []
+progress:
+    intake: done
+    spec: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
+plan:
+    generated: true
+    task_count: 9
+    acceptance_count: 27
+    acceptance_completed: 0
+confidence:
+    certain: 13
+    confident: 0
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 96.1
+        reversibility: 71.5
+        competence: 85.1
+        disambiguation: 82.2
+stage_metrics:
+    intake: {started_at: "2026-06-01T00:48:27Z", driver: fab-new, iterations: 1, completed_at: "2026-06-01T01:18:00Z"}
+    spec: {started_at: "2026-06-01T01:18:00Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T01:21:04Z"}
+    apply: {started_at: "2026-06-01T01:21:04Z", driver: fab-continue, iterations: 1, completed_at: "2026-06-01T01:28:04Z"}
+    review: {started_at: "2026-06-01T01:28:04Z", driver: fab-continue, iterations: 1, completed_at: "2026-06-01T01:31:54Z"}
+    hydrate: {started_at: "2026-06-01T01:31:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T01:36:43Z"}
+    ship: {started_at: "2026-06-01T01:36:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-01T01:39:40Z"}
+    review-pr: {started_at: "2026-06-01T01:39:40Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/9
+last_updated: 2026-06-01T01:39:40Z

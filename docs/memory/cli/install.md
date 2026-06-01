@@ -16,7 +16,9 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 4. **No `brew update --quiet`.** Unlike `shll update`, `shll install` does NOT refresh brew metadata first. `brew install sahil87/tap/<formula>` resolves the formula via the tap directly, and the spec freezes this distinction (Design Decision: install ≠ update). `TestInstall_NoBrewUpdateInvoked` pins the contract.
 
-5. **Sequential per-tool install.** For each missing tool in roster order, run `proc.RunForeground(ctx, "brew", "install", t.Formula)`. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop. After the loop, if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0).
+5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, "brew", "install", t.Formula)`. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
+
+6. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
 
 ## Exit codes
 
@@ -25,6 +27,18 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 | All installs succeeded (or all-already-installed branch) | 0 |
 | `brew` not on PATH | 1 (via `errSilent`, hint already on stderr) |
 | Any per-tool `brew install` failed | 1 (via `errSilent`, after all missing tools attempted) |
+
+## Per-tool output separation (change y630)
+
+`shll install` mirrors `shll update`'s framing exactly, via the same shared helper `src/cmd/shll/ui.go` (see [cli/commands](commands.md#file-layout-srccmdshll)) — no TTY/`NO_COLOR`/glyph logic is duplicated in `install.go`.
+
+- **Per-tool header.** Before each missing tool's `brew install` output, `printToolHeader(stdout, t.Name, color)` writes `▸ <tool>` (color TTY) / `==> <tool>` (plain), in roster order.
+- **Summary tail.** After the loop, `printSummaryTail(stdout, succeeded, len(missing), color)` writes `Done — N of M tools succeeded.` (green `✓` when color) or `X succeeded, Y failed — see above.`, by **exit code only** — `succeeded` counts installs that exited 0, mirroring the same per-tool facts that drive `anyFailed`. Presentation-only; does not change the exit code.
+- **Stream discipline.** Header and tail go to **stdout** (the stream `brew install` is foregrounded onto), never stderr.
+- **Color gating.** One `colorEnabled(stdout)` decision (TTY via `golang.org/x/term` AND `NO_COLOR` unset), reused for headers and tail; `bytes.Buffer` test writers hit the plain-ASCII branch.
+- **Empty case emits no header and no tail.** The all-already-installed short-circuit (step 3) runs no loop, so its stdout stays **exactly** `All sahil87 tools already installed.\n` — the `TestInstall_AllAlreadyInstalled` golden string is preserved verbatim. Only the install-loop path carries the `==>`/tail markers.
+
+The helper details (named SGR constants, the `colorEnabled` gating, the honesty constraint on the tail) are documented once under [cli/update](update.md#per-tool-output-separation-change-y630); `install` consumes the identical helpers.
 
 ## Constitution VII justification
 
@@ -62,9 +76,12 @@ Covered scenarios (`src/cmd/shll/install_test.go`):
 - `TestInstall_NoBrewUpdateInvoked` — pin the no-metadata-refresh contract: `brew update --quiet` MUST NOT appear in the recorded calls.
 - `TestInstall_OneInstallFails` — first roster install (fab-kit) exits non-zero → loop continues through all six, exit 1.
 
+Per-tool header/tail behavior (change y630) is unit-tested against the `ui.go` helpers in `ui_test.go`; `install_test.go` additionally asserts loop-path runs emit `==> <tool>` headers and the plain tail to the **stdout** buffer (not stderr), and that the empty-case golden string is unchanged.
+
 ## Cross-references
 
 - Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
 - The hardcoded roster: [cli/commands](commands.md#hardcoded-tool-roster).
-- Sibling lifecycle command: [cli/update](update.md) — the upgrade-already-installed counterpart.
+- Sibling lifecycle command: [cli/update](update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`.
+- Shared UI helper (`ui.go`): [cli/commands](commands.md#file-layout-srccmdshll).
 - Constitution III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation), VII (Minimal Surface Area).

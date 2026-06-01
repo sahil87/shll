@@ -70,8 +70,17 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer) error {
 		return nil
 	}
 
+	// Per-tool boundary framing. The color decision is computed once against the
+	// stdout writer and reused for every header and the tail, so they share the
+	// stream the foregrounded `brew install` output is written to (stdout), never
+	// stderr. succeeded/total feed the summary tail by exit code only, mirroring
+	// the anyFailed facts.
+	color := colorEnabled(stdout)
+	succeeded := 0
+
 	anyFailed := false
 	for _, t := range missing {
+		printToolHeader(stdout, t.Name, color)
 		code, err := proc.RunForeground(ctx, brewBinary, "install", t.Formula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
@@ -80,8 +89,16 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer) error {
 		}
 		if code != 0 {
 			anyFailed = true
+			continue
 		}
+		succeeded++
 	}
+
+	// Summary tail by exit-code counts. Printed only after the install loop ran
+	// (the all-already-installed short-circuit returned earlier with no header and
+	// no tail). Presentation only — it does not influence the exit code.
+	printSummaryTail(stdout, succeeded, len(missing), color)
+
 	if anyFailed {
 		return errSilent
 	}

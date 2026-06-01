@@ -128,17 +128,29 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 	// never abort the loop — same policy for shll-self and every roster tool.
 	anyFailed := false
 
+	// Per-tool boundary framing. The color decision is computed once against the
+	// stdout writer (a TTY+NO_COLOR check) and reused for every header and the
+	// tail, so headers and tail stay on the same stream the foregrounded sub-tool
+	// output is written to (stdout) and never to stderr. succeeded/total feed the
+	// summary tail; they count by exit code only, mirroring the anyFailed facts.
+	color := colorEnabled(stdout)
+	succeeded, total := 0, 0
+
 	// Self-upgrade shll first so subsequent operations in this run benefit from
 	// the updated binary on disk (the running process keeps its mapped image,
 	// but a follow-up invocation picks up the new binary). shll has no `update`
 	// subcommand to call on itself, so this stays a direct brew upgrade.
 	if shllSelfInstalled {
+		total++
+		printToolHeader(stdout, "shll (self)", color)
 		code, err := proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
 			anyFailed = true
 		} else if code != 0 {
 			anyFailed = true
+		} else {
+			succeeded++
 		}
 	}
 
@@ -155,6 +167,8 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 		if !probes[i].installed {
 			continue
 		}
+		total++
+		printToolHeader(stdout, t.Name, color)
 		code, err := upgradeTool(ctx, t, probes[i].supportsSkipFlag)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: %s: %v\n", t.Name, err)
@@ -163,8 +177,17 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer) error {
 		}
 		if code != 0 {
 			anyFailed = true
+			continue
 		}
+		succeeded++
 	}
+
+	// Summary tail: one line by exit-code counts (Done — N of M / X succeeded,
+	// Y failed). Printed only after the per-tool loop ran (the empty-case
+	// short-circuit returned earlier with no header and no tail). Presentation
+	// only — it does not influence the exit code below.
+	printSummaryTail(stdout, succeeded, total, color)
+
 	if anyFailed {
 		return errSilent
 	}
