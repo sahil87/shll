@@ -32,7 +32,7 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 `shll install` mirrors `shll update`'s framing exactly, via the same shared helper `src/cmd/shll/ui.go` (see [cli/commands](commands.md#file-layout-srccmdshll)) — no TTY/`NO_COLOR`/glyph logic is duplicated in `install.go`.
 
-- **Per-tool header.** Before each missing tool's `brew install` output, `printToolHeader(stdout, t.Name, color)` writes `▸ <tool>` (color TTY) / `==> <tool>` (plain), in roster order.
+- **Per-tool header.** Before each missing tool's `brew install` output, `printToolHeader(stdout, t.Name, color)` writes `▸ <tool>` (color TTY) / `==> <tool>` (plain), in roster order. Since change auvj that order is leaves-first (`wt, idea, tu, rk, hop, fab-kit`), so the headers for the *missing subset* print in that relative order — e.g. with `hop`+`wt` already installed, the missing set `{idea, tu, rk, fab-kit}` yields `==> idea`, `==> tu`, `==> rk`, `==> fab-kit` (`TestInstall_HeadersAndTail` golden at `src/cmd/shll/install_test.go`, with the `Done — 4 of 4 tools succeeded.` tail). See the [leaves-first ordering rationale](commands.md#design-decision-leaves-first-roster-order-change-auvj).
 - **Summary tail.** After the loop, `printSummaryTail(stdout, succeeded, len(missing), color)` writes `Done — N of M tools succeeded.` (green `✓` when color) or `X succeeded, Y failed — see above.`, by **exit code only** — `succeeded` counts installs that exited 0, mirroring the same per-tool facts that drive `anyFailed`. Presentation-only; does not change the exit code.
 - **Stream discipline.** Header and tail go to **stdout** (the stream `brew install` is foregrounded onto), never stderr.
 - **Color gating.** One `colorEnabled(stdout)` decision (TTY via `golang.org/x/term` AND `NO_COLOR` unset), reused for headers and tail; `bytes.Buffer` test writers hit the plain-ASCII branch.
@@ -74,7 +74,7 @@ Covered scenarios (`src/cmd/shll/install_test.go`):
 - `TestInstall_NoneInstalled` — every `brew list` exit-1 → install all six roster tools, exit 0.
 - `TestInstall_PartialInstalled` — only `hop` and `wt` installed → install the other four, skip hop/wt, no stderr.
 - `TestInstall_NoBrewUpdateInvoked` — pin the no-metadata-refresh contract: `brew update --quiet` MUST NOT appear in the recorded calls.
-- `TestInstall_OneInstallFails` — first roster install (fab-kit) exits non-zero → loop continues through all six, exit 1.
+- `TestInstall_OneInstallFails` — one roster install (the `fab-kit` formula, now last in the leaves-first order) exits non-zero → loop continues and attempts all six, exit 1. The test pins the formula by name (`fab-kit`), not by roster position, and asserts total install attempts == `len(Roster)`, so it is robust to the reorder.
 
 Per-tool header/tail behavior (change y630) is unit-tested against the `ui.go` helpers in `ui_test.go`; `install_test.go` additionally asserts loop-path runs emit `==> <tool>` headers and the plain tail to the **stdout** buffer (not stderr), and that the empty-case golden string is unchanged.
 

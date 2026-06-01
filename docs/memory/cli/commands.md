@@ -52,22 +52,44 @@ Defined in `src/cmd/shll/tools.go`. Constitution III (Tool Roster Source of Trut
 
 ```go
 var Roster = []Tool{
-    {Name: "fab-kit", Formula: "sahil87/tap/fab-kit",                                                       Update: []string{"fab-kit", "update"}},
-    {Name: "rk",      Formula: "sahil87/tap/rk",                                                             Update: []string{"rk", "update"}},
-    {Name: "tu",      Formula: "sahil87/tap/tu",  ShellInit: []string{"tu", "shell-init", "<shell>"},        Update: []string{"tu", "update"}},
-    {Name: "hop",     Formula: "sahil87/tap/hop", ShellInit: []string{"hop", "shell-init", "<shell>"},       Update: []string{"hop", "update"}},
     {Name: "wt",      Formula: "sahil87/tap/wt",  ShellInit: []string{"wt", "shell-init", "<shell>"},        Update: []string{"wt", "update"}},
     {Name: "idea",    Formula: "sahil87/tap/idea",                                                           Update: []string{"idea", "update"}},
+    {Name: "tu",      Formula: "sahil87/tap/tu",  ShellInit: []string{"tu", "shell-init", "<shell>"},        Update: []string{"tu", "update"}},
+    {Name: "rk",      Formula: "sahil87/tap/rk",                                                             Update: []string{"rk", "update"}},
+    {Name: "hop",     Formula: "sahil87/tap/hop", ShellInit: []string{"hop", "shell-init", "<shell>"},       Update: []string{"hop", "update"}},
+    {Name: "fab-kit", Formula: "sahil87/tap/fab-kit",                                                        Update: []string{"fab-kit", "update"}},
 }
 ```
 
 Roster invariants:
 
-- **Order matters.** `shll shell-init` concatenates output in roster order (deterministic for users who reason about init sequencing); `shll update` probes and upgrades in roster order too.
+- **Order matters — leaves-first dependency order (change auvj).** The slice is declared `wt, idea, tu, rk, hop, fab-kit`: every tool appears *after* all of its dependencies. The leaves `wt, idea, tu` (no outgoing edges) precede the dependents `rk, hop, fab-kit`. `shll shell-init` concatenates output in roster order, `shll update`/`shll install` probe/upgrade/install in roster order, and `shll version` prints rows in roster order — so the single declared order drives all four consumers. **Why leaves-first**: it is *output coherence*, not a correctness fix (brew already resolves formula dependencies correctly and idempotently, and each `<tool> update` is self-update-only, so the order can neither break nor improve upgrade correctness). What it buys is that each tool's per-tool output section in `shll update` / `shll install` completes (and is counted under its own `▸ <tool>`/`==> <tool>` header) before a dependent's internal `brew upgrade` can re-touch a leaf already reported done. The invariant is enforced by `TestRosterLeavesBeforeDependents` (`src/cmd/shll/tools_test.go`) — a comment cannot fail CI, so the test guards against an accidental re-alphabetize or reorder and names the offending edge with both indices on violation. See the [leaves-first ordering Design Decision](#design-decision-leaves-first-roster-order-change-auvj) below.
 - **Six tools.** Adding a tool is a `shll` release, not a runtime configuration change.
 - **`Tool.ShellInit`** is the argv of the tool's shell-init invocation. Empty slice = no shell integration. The literal token `<shell>` (declared as `shellPlaceholder` in `src/cmd/shll/tools.go:39`) is substituted with the user-supplied shell name (`zsh`/`bash`) at composition time. All three integrators (`tu`, `hop`, `wt`) substitute the placeholder uniformly — three of the six roster entries carry shell integration.
 - **`Tool.Update`** (added in change cczs) is the argv of the tool's own `update` invocation, mirroring `ShellInit`'s "empty slice means no capability" semantics. `shll update` delegates to this argv (appending `--skip-brew-update` when the tool advertises it) instead of calling `brew upgrade <formula>` directly, so each tool's post-upgrade side effects (e.g. rk's daemon restart) are preserved (Constitution IV). An empty slice means the tool exposes no `update` subcommand → `shll update` falls back to `brew upgrade <formula>`. **All six current roster entries populate `Update`** (`{"<name>", "update"}`) — every sahil87 tool ships an `update` subcommand. See [cli/update](update.md#behavior-contract) for the delegation/probe logic.
 - **`formulaPrefix = "sahil87/tap/"`** (`src/cmd/shll/tools.go:5`) is a named constant — no magic string at the call sites.
+
+### Design Decision: Leaves-first Roster order (change auvj)
+
+The `Roster` is declared in **leaves-first dependency order** — every tool that depends on another (by brew-upgrade *or* by runtime invocation) appears *after* all of its dependencies. The order is `wt, idea, tu, rk, hop, fab-kit`.
+
+The dependency edges driving this order (encoded as data in `TestRosterLeavesBeforeDependents`, each labeled by kind):
+
+| Dependent → dep | Kind | Cause |
+|-----------------|------|-------|
+| `fab-kit → wt` | brew-upgrade | fab-kit's brew formula upgrades wt |
+| `fab-kit → idea` | brew-upgrade | fab-kit's brew formula upgrades idea |
+| `hop → wt` | brew-upgrade **and** runtime-invocation | hop's formula upgrades wt; `hop open` delegates to wt's menu and `hop ls --trees` fans out `wt list --json` |
+| `rk → wt` | runtime-invocation | `rk riff` shells out to `wt create` |
+
+So the leaves `wt, idea, tu` (no outgoing edges) precede the dependents `rk, hop, fab-kit`; `fab-kit` is a pure dependent (no cycle).
+
+- **Why this ordering exists**: *output coherence* in `shll update` / `shll install`, **not** correctness. Brew owns formula-dependency resolution (correct and idempotent), and each `<tool> update` is self-update-only — no tool's `update` cascades into another tool's upgrade during `shll update`. The only observable effect of the old order (`fab-kit, rk, tu, hop, wt, idea`) was that a dependent's *internal* `brew upgrade` could re-touch a leaf already reported done under its own `▸ <tool>`/`==> <tool>` header (an idempotent near-instant no-op), under-representing the per-tool framing introduced by change y630. Leaves-first keeps each tool's section complete and counted before any dependent runs.
+- **Why a test, not just a comment**: a comment cannot fail CI. `TestRosterLeavesBeforeDependents` (`src/cmd/shll/tools_test.go`) builds a `name → roster index` map from the live `Roster` and asserts `index[dependent] > index[dep]` for every edge, failing with the offending edge and both indices named (e.g. `"fab-kit (index N) must come after wt (index M)"`). It encodes **both** brew-upgrade and runtime-invocation edges — a *superset* of what output-coherence strictly needs (which depends only on the brew-upgrade edges) — so the executable contract documents the toolkit's full ordering relationship. A test comment makes clear a runtime edge (e.g. `rk → wt`) does **not** mean `rk update` touches `wt` during `shll update`.
+- **Why the dependency model stays implicit (Constitution III/VII)**: the `Tool` struct gains **no** `DependsOn` field, and there is no runtime topological sort or `brew deps` query. shll's contract is the hardcoded roster *list* (Constitution III); it does not own a data model of how the tools relate — brew owns the brew graph and runtime edges are the sub-tools' concern. The dependency graph lives only as slice order + the invariant test. Rejected: (a) a `DependsOn []string` field with runtime topo-sort (models the inter-tool graph as shll-owned data, more code/failure modes); (b) a runtime `brew deps` query (more brew coupling, latency, runtime discovery the constitution discourages for roster concerns).
+- **Why the shared `Roster`, not an update-only iteration order**: one source of truth. Reordering the single shared slice lets `update`, `install`, `shell-init`, and `version` all inherit the order. Rejected: a second, `update`-scoped iteration order (sorting at iteration time in `update.go`) — adds a divergence risk and a second ordering concept for marginal isolation benefit.
+
+Traceability: change `260601-auvj-reorder-roster-leaves-first`. Output coherence is an `update`/`install` concern — see [cli/update](update.md#leaves-first-roster-order-change-auvj).
 
 ## File layout (src/cmd/shll/)
 

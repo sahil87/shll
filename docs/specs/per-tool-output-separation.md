@@ -34,6 +34,13 @@ upgrade commands.
 `rk 1.5.0` is redundant, and a success/failure summary tail is meaningless for a
 read-only aggregation.
 
+> **Follow-on (change auvj).** This per-tool header framing is what later motivated the
+> leaves-first `Roster` reorder (`wt, idea, tu, rk, hop, fab-kit`): processing dependencies
+> before their dependents keeps each tool's `▸ <tool>`/`==> <tool>` section complete and
+> counted before a dependent's internal `brew upgrade` can re-touch a leaf already reported
+> done. See `docs/memory/cli/commands.md` (Leaves-first Roster order). Output coherence, not
+> correctness.
+
 ## Design
 
 ### Header style

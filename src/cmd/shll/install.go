@@ -16,7 +16,7 @@ func newInstallCmd() *cobra.Command {
 		Short: "brew install every sahil87 tool that isn't already installed",
 		Long: `Install every roster tool that isn't already installed via Homebrew.
 
-shll install iterates the roster (` + "`fab-kit`, `rk`, `tu`, `hop`, `wt`, `idea`" + `)
+shll install iterates the roster (` + "`wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit`" + `)
 and runs ` + "`brew install sahil87/tap/<formula>`" + ` for each one that is missing.
 Tools that are already installed are skipped silently — the command is
 idempotent and safe to re-run. Brew's progress output streams directly to
