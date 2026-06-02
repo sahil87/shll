@@ -906,7 +906,7 @@ func mustRead(t *testing.T, path string) []byte {
 
 func TestRoot_ShellSetupRegistered(t *testing.T) {
 	root := newRootCmd()
-	want := map[string]bool{"update": false, "shell-init": false, "shell-setup": false, "version": false}
+	want := map[string]bool{"install": false, "update": false, "shell-init": false, "shell-setup": false, "version": false}
 	for _, sub := range root.Commands() {
 		// Use Name() to get just the first word of Use (e.g. "shell-setup").
 		if _, tracked := want[sub.Name()]; tracked {
