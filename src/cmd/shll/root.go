@@ -32,6 +32,7 @@ func newRootCmd() *cobra.Command {
 		newShellInitCmd(),
 		newShellSetupCmd(),
 		newVersionCmd(),
+		newHelpDumpCmd(),
 	)
 	return cmd
 }

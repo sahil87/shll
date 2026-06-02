@@ -10,3 +10,4 @@ Top-level command surface of the `shll` binary: the cobra root, the five subcomm
 | [shell-init](shell-init.md) | `shll shell-init <shell>` — composition rules across roster tools, eval-safety invariants, deterministic ordering. |
 | [shell-setup](shell-setup.md) | `shll shell-setup [shell]` (alias `shell-install`) — sentinel-wrapped rc-file block, idempotent install/`--print`/`--uninstall`, `--trust-tap` ceremony. |
 | [version](version.md) | `shll version` — column-aligned plain-text table, per-tool 2s timeout, ldflags-injected `shll` version. |
+| [help-dump-contract](help-dump-contract.md) | Hidden `shll help-dump` subcommand — the frozen `help/<tool>.json` JSON contract (shared 7-tool, `wt.json` reference) and producer rules (programmatic cobra walk, filter completion/help/Hidden, prune-before-render). |
