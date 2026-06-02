@@ -18,13 +18,15 @@ Per-tool CLIs continue to work standalone — `shll` wraps them, it does not rep
 From a clean machine to a fully wired toolkit:
 
 ```sh
-brew install sahil87/tap/shll   # or: brew install sahil87/tap/all
-shll install                    # brew-installs every roster tool you're missing
-shll shell-install              # appends the composed eval block to your rc file
-exec $SHELL                     # reload so the shell integration takes effect
+brew install sahil87/tap/shll       # or: brew install sahil87/tap/all
+shll install                        # brew-installs every roster tool you're missing
+shll shell-install --trust-tap      # wire your shell + record trust for sahil87/tap
+exec $SHELL                         # reload so the shell integration takes effect
 ```
 
 That's it. `hop`, `wt`, and the other tools are now installed and their shell integration is live.
+
+`--trust-tap` records genuine Homebrew trust for `sahil87/tap` so brew stops nagging about non-official taps — it also opts brew into `HOMEBREW_REQUIRE_TAP_TRUST=1`, which means *other* untrusted third-party taps you use will then need explicit trust too. Drop the flag (`shll shell-install`) if you'd rather not change brew's tap-trust posture; see [Troubleshooting](#tap-sahil87tap-is-allowed-by-default-warning) for the lighter alternatives.
 
 ## Install
 
