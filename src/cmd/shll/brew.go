@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/sahil87/shll/internal/proc"
 )
@@ -39,6 +40,85 @@ func hasBrew(ctx context.Context) bool {
 	// brew is on PATH — graceful degradation: only ErrNotFound is the "missing"
 	// signal.
 	return true
+}
+
+// brewTrustAvailable reports whether this Homebrew supports the `trust`
+// subcommand (it is newer; older brews lack it). It capability-probes via
+// `brew trust --help`, mirroring the read-only `<tool> update --help` substring
+// probe in update.go — never a version-floor check (the probe is the contract).
+//
+//   - brew absent (proc.ErrNotFound) → false (the caller degrades).
+//   - `trust` unrecognized → brew exits non-zero, so proc.Run returns a non-nil
+//     error → false.
+//   - `trust` recognized → exit 0, nil error → true.
+//
+// A captured non-ErrNotFound error means the subcommand is unknown on this brew,
+// so any error degrades to "unavailable". Routed through internal/proc per
+// Constitution I.
+func brewTrustAvailable(ctx context.Context) bool {
+	out, err := proc.Run(ctx, brewBinary, "trust", "--help")
+	if err != nil {
+		return false
+	}
+	// Defensive: a brew that prints help-style output but does not actually carry
+	// `trust` would be a contradiction (it exited 0 on `trust --help`), so the
+	// exit-0 signal alone is authoritative. The substring guard below is a belt-
+	// and-suspenders check that the help text concerns trust, costing nothing.
+	return strings.Contains(string(out), "trust")
+}
+
+// brewTrustTap runs the trust ceremony — `brew trust --tap sahil87/tap` — and
+// returns its exit code and any transport error. The tap argument comes from the
+// tapName constant (NOT a formula reference). Foregrounded so the user sees
+// brew's own "Trusted tap" / "Already trusted tap" output.
+//
+// Callers invoke this unconditionally during --trust-tap: `brew trust`/`untrust`
+// are idempotent (verified on brew 5.1.14 — re-run exits 0), so no pre-check for
+// existing trust is needed. Routed through internal/proc per Constitution I.
+func brewTrustTap(ctx context.Context) (int, error) {
+	return proc.RunForeground(ctx, brewBinary, "trust", "--tap", tapName)
+}
+
+// trustHatchHint names the lighter env-var escape hatches the user can set
+// themselves when genuine trust is unavailable. Used verbatim in the degradation
+// diagnostic so the user has an actionable alternative.
+const trustHatchHint = "set HOMEBREW_NO_REQUIRE_TAP_TRUST=1 or HOMEBREW_NO_ENV_HINTS=1 to silence the warning instead"
+
+// ensureTapTrust performs the full genuine-trust ceremony for --trust-tap and
+// reports whether the policy line (export HOMEBREW_REQUIRE_TAP_TRUST=1) should be
+// written. It is the single proc-touching seam the file-I/O-only shell_install.go
+// calls — keeping every subprocess invocation (capability probe + ceremony) in
+// brew.go, which legitimately imports internal/proc (Constitution I; the
+// TestNoProcImports guard pins shell_install.go to file I/O only).
+//
+// Degradation policy (Constitution V): the policy line is written ONLY when brew
+// is present, `brew trust` is available, AND the ceremony exits 0. In every other
+// case — brew absent, `trust` unrecognized on an older brew, or a non-zero/error
+// ceremony exit — writeExport is false and diag explains why, naming the lighter
+// env-var escape hatches. shell_install.go still writes the eval line regardless,
+// so the user keeps shell integration; only the trust half is skipped.
+//
+// Returns (writeExport, diag):
+//   - writeExport true, diag ""   → ceremony succeeded; caller includes export line.
+//   - writeExport false, diag set → degraded; caller skips export line, prints diag.
+func ensureTapTrust(ctx context.Context) (writeExport bool, diag string) {
+	if !hasBrew(ctx) {
+		return false, "shll shell-install: Homebrew is not installed, so the sahil87 tap cannot be trusted. " +
+			"Skipped the trust policy line (writing it without a trust record would block the tap). " +
+			"Install Homebrew from https://brew.sh, then re-run `shll shell-install --trust-tap`; or " + trustHatchHint + "."
+	}
+	if !brewTrustAvailable(ctx) {
+		return false, "shll shell-install: this Homebrew does not support `brew trust` (it requires a newer Homebrew). " +
+			"Skipped the trust policy line (writing it without a trust record would block the tap). " +
+			"Upgrade Homebrew, then re-run `shll shell-install --trust-tap`; or " + trustHatchHint + "."
+	}
+	code, err := brewTrustTap(ctx)
+	if err != nil || code != 0 {
+		return false, "shll shell-install: `brew trust --tap " + tapName + "` did not succeed, " +
+			"so the trust policy line was skipped (writing it without a trust record would block the tap). " +
+			"Re-run `shll shell-install --trust-tap` once brew can reach the tap; or " + trustHatchHint + "."
+	}
+	return true, ""
 }
 
 // isInstalled reports whether the named formula is installed. Detection is via
