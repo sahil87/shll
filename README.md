@@ -190,6 +190,7 @@ shll will **not** set these for you. Trusting a tap — or opting out of the war
 ## Reference
 
 - `shll --help` — full subcommand listing
+- **Command reference on [shll.ai](https://shll.ai)** — on every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to the [shll.ai](https://shll.ai) site, which renders it as an always-current command reference. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:
   [fab-kit](https://github.com/sahil87/fab-kit) ·
   [run-kit](https://github.com/sahil87/run-kit) ·
