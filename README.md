@@ -7,7 +7,7 @@ One command to install, update, and shell-wire every tool in the [@sahil87 toolk
 ## Why shll?
 
 - **One-shot install** — `shll install` runs `brew install sahil87/tap/<formula>` for every roster tool you don't already have. Idempotent and safe to re-run.
-- **One-line shell integration** — `shll shell-install` appends a single eval line to your rc file that wires up `hop`, `wt`, and any future toolkit shell-init in one block. No more managing four eval lines.
+- **One-line shell integration** — `shll shell-setup` appends a single eval line to your rc file that wires up `hop`, `wt`, and any future toolkit shell-init in one block. No more managing four eval lines.
 - **One update for everything** — `shll update` runs `brew update` once, then upgrades every installed roster tool in sequence. Skips ones you don't have. Skips itself if it wasn't installed via brew.
 - **Paste-friendly version dump** — `shll version` prints one row per tool, ideal for bug reports.
 
@@ -20,13 +20,13 @@ From a clean machine to a fully wired toolkit:
 ```sh
 brew install sahil87/tap/shll       # or: brew install sahil87/tap/all
 shll install                        # brew-installs every roster tool you're missing
-shll shell-install --trust-tap      # wire your shell + record trust for sahil87/tap
+shll shell-setup --trust-tap        # wire your shell + record trust for sahil87/tap
 exec $SHELL                         # reload so the shell integration takes effect
 ```
 
 That's it. `hop`, `wt`, and the other tools are now installed and their shell integration is live.
 
-`--trust-tap` records genuine Homebrew trust for `sahil87/tap` so brew stops nagging about non-official taps — it also opts brew into `HOMEBREW_REQUIRE_TAP_TRUST=1`, which means *other* untrusted third-party taps you use will then need explicit trust too. Drop the flag (`shll shell-install`) if you'd rather not change brew's tap-trust posture; see [Troubleshooting](#tap-sahil87tap-is-allowed-by-default-warning) for the lighter alternatives.
+`--trust-tap` records genuine Homebrew trust for `sahil87/tap` so brew stops nagging about non-official taps — it also opts brew into `HOMEBREW_REQUIRE_TAP_TRUST=1`, which means *other* untrusted third-party taps you use will then need explicit trust too. Drop the flag (`shll shell-setup`) if you'd rather not change brew's tap-trust posture; see [Troubleshooting](#tap-sahil87tap-is-allowed-by-default-warning) for the lighter alternatives.
 
 ## Install
 
@@ -64,14 +64,16 @@ shll update
 
 Runs `brew update --quiet` once, then `brew upgrade sahil87/tap/shll` (when shll itself was installed via brew), then `brew upgrade sahil87/tap/<formula>` for every roster tool currently installed. Brew's progress streams directly to your terminal.
 
-### `shll shell-install` — wire the rc file (recommended)
+### `shll shell-setup` — wire the rc file (recommended)
+
+> Still works under the legacy alias `shll shell-install` — same command, unchanged behavior.
 
 ```sh
-shll shell-install              # auto-detect shell, append eval block to your rc file
-shll shell-install --print      # dry-run: print the block to stdout, modify nothing
-shll shell-install --uninstall  # clean removal of the block
-shll shell-install --trust-tap  # also record genuine Homebrew trust for sahil87/tap
-shll shell-install --rc-file ~/.zshrc.local   # override the target path
+shll shell-setup              # auto-detect shell, append eval block to your rc file
+shll shell-setup --print      # dry-run: print the block to stdout, modify nothing
+shll shell-setup --uninstall  # clean removal of the block
+shll shell-setup --trust-tap  # also record genuine Homebrew trust for sahil87/tap
+shll shell-setup --rc-file ~/.zshrc.local   # override the target path
 ```
 
 The appended block is sentinel-wrapped and idempotent — re-running is a no-op when the lines are already present:
@@ -98,13 +100,13 @@ eval "$(shll shell-init zsh)"
 # <<< shll <<<
 ```
 
-It works whether or not you've already run `shll shell-install` — the export line is merged into your existing block (no duplicates, no second block). `--trust-tap --print` shows the resulting combined block without touching anything. `--uninstall` removes the whole block (both lines) but does **not** run `brew untrust` — the trust record is inert without the policy line and harmless to leave; reverse it yourself with `brew untrust --tap sahil87/tap` if you want.
+It works whether or not you've already run `shll shell-setup` — the export line is merged into your existing block (no duplicates, no second block). `--trust-tap --print` shows the resulting combined block without touching anything. `--uninstall` removes the whole block (both lines) but does **not** run `brew untrust` — the trust record is inert without the policy line and harmless to leave; reverse it yourself with `brew untrust --tap sahil87/tap` if you want.
 
 If your Homebrew is too old to ship `brew trust` (or brew isn't installed), `--trust-tap` degrades gracefully: it writes the eval line so you still get shell integration, **skips** the export line (setting it without a trust record would make brew *block* the tap), and tells you about the lighter env-var alternatives below.
 
 ### `shll shell-init <shell>` — composed shell-init
 
-If you'd rather wire the eval line by hand, this is what `shell-install` writes to your rc file:
+If you'd rather wire the eval line by hand, this is what `shll shell-setup` writes to your rc file:
 
 ```sh
 eval "$(shll shell-init zsh)"   # in ~/.zshrc
@@ -171,10 +173,10 @@ Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
 **Recommended fix — record genuine trust:**
 
 ```sh
-shll shell-install --trust-tap
+shll shell-setup --trust-tap
 ```
 
-This runs `brew trust --tap sahil87/tap` (you vouch for your own tap) and sets `HOMEBREW_REQUIRE_TAP_TRUST=1` so brew enforces explicit trust going forward — untrusted third-party taps then get *blocked* rather than silently allowed. See [`shll shell-install --trust-tap`](#--trust-tap--resolve-the-homebrew-tap-trust-warning) above.
+This runs `brew trust --tap sahil87/tap` (you vouch for your own tap) and sets `HOMEBREW_REQUIRE_TAP_TRUST=1` so brew enforces explicit trust going forward — untrusted third-party taps then get *blocked* rather than silently allowed. See [`shll shell-setup --trust-tap`](#--trust-tap--resolve-the-homebrew-tap-trust-warning) above.
 
 **Lighter alternatives (set these yourself if you prefer):**
 
