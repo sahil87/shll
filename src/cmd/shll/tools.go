@@ -4,6 +4,13 @@ package main
 // constant per code-quality.md (no magic strings).
 const formulaPrefix = "sahil87/tap/"
 
+// tapName is the Homebrew tap itself — the argument to `brew trust --tap`.
+// Distinct from formulaPrefix (`sahil87/tap/`, with the trailing slash used to
+// build *formula* references like `sahil87/tap/shll`): the trust ceremony acts
+// on the tap, not a formula, so it must NOT carry the trailing slash. Named
+// constant per code-quality.md (no magic strings).
+const tapName = "sahil87/tap"
+
 // Tool describes one entry in the hardcoded sahil87 toolkit roster. The list is
 // the source of truth for `shll update`, `shll shell-init`, and `shll version`
 // (Constitution III — Tool Roster Source of Truth). Adding a new tool requires
