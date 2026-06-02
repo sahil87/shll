@@ -179,3 +179,5 @@ The invariant test SHALL carry a comment clarifying that it guards the toolkit's
 | 9 | Certain | `shll version` needs no golden-string change | Upgraded from intake #9 (Confident → Certain, Open Question resolved) — verified by inspecting `version_test.go`: assertions are index-paired to `Roster` itself (`for i, tool := range Roster { ... lines[i+1] ... }`), so reorder moves expected and actual in lockstep. Carried as a verification item, not [NEEDS CLARIFICATION] | S:95 R:90 A:95 D:90 |
 
 9 assumptions (9 certain, 0 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

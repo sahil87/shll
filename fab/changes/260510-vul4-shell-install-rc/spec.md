@@ -416,3 +416,5 @@ For tests of macOS bash vs. Linux bash defaults, `runtime.GOOS` SHALL be abstrac
 | 23 | Certain | `--uninstall` removes the trailing `\n` that the install path produced after the close sentinel (does not leave a stray blank line) | Spec-level refinement; the install requirement says the block "terminates with a single `\n`", so symmetric removal removes that `\n` along with the block | S:90 R:90 A:90 D:85 |
 
 23 assumptions (23 certain, 0 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

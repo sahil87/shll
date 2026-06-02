@@ -2,22 +2,21 @@ agent:
     spawn_command: claude --dangerously-skip-permissions --effort xhigh -n "$(basename "$(pwd)")"
 checklist:
     extra_categories: []
-fab_version: 1.9.3
+fab_version: 2.0.1
 project:
     description: Meta-CLI for the sahil87 toolkit — update, shell-init, and version across all sahil87 tools.
     name: shll
 source_paths:
     - cmd
     - internal
-true_impact_exclude:
-    - fab/
-    - docs/
 stage_directives:
-    apply: []
+    apply:
+        - Use GIVEN/WHEN/THEN for scenarios
+        - Mark ambiguities with [NEEDS CLARIFICATION]
     hydrate: []
     intake: []
     review: []
-    spec:
-        - Use GIVEN/WHEN/THEN for scenarios
-        - Mark ambiguities with [NEEDS CLARIFICATION]
     tasks: []
+true_impact_exclude:
+    - fab/
+    - docs/

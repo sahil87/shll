@@ -174,3 +174,5 @@ The `Tool` struct (`src/cmd/shll/tools.go`) SHALL gain an `Update []string` fiel
 | 10 | Certain | shll self-upgrade unchanged (brew upgrade shllFormula, before roster loop, best-effort) | Confirmed from intake; shll has no update subcommand on itself; not in Roster | S:95 R:70 A:92 D:90 |
 
 10 assumptions (10 certain, 0 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

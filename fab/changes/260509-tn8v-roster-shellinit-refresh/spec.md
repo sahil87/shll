@@ -271,3 +271,5 @@ The eval-safety section, Design Decision #6 description, exit-code table, and cr
 | 13 | Certain | The Long help text in `shell_init.go` (`"Today, hop and wt are the only roster tools..."`) is updated to mention `tu`. | Discovered during spec generation: `shell_init.go:23` carries a Long help block naming the integrators. Leaving it stale would make `shll shell-init --help` documentation diverge from reality. Mechanical fix, low blast radius. | S:90 R:90 A:95 D:90 |
 
 13 assumptions (13 certain, 0 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

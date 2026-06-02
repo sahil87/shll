@@ -263,3 +263,5 @@ The existing verbatim-stdout assertions in `update_test.go`, `install_test.go`, 
 | 13 | Certain | Exact ANSI styling: hand-rolled standard SGR codes as named constants in `ui.go` (bold-cyan `▸`, green `✓`) — NO external color library | Confirmed from intake #13 (user confirmed in clarify); keeps dep footprint minimal; fits "named constants, no magic strings" | S:95 R:80 A:60 D:55 |
 
 13 assumptions (13 certain, 0 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

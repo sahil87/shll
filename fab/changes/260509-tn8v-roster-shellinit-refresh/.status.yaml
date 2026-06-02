@@ -6,7 +6,6 @@ change_type: feat
 issues: []
 progress:
     intake: done
-    spec: done
     apply: done
     review: done
     hydrate: done
@@ -31,7 +30,6 @@ confidence:
         disambiguation: 91.9
 stage_metrics:
     intake: {started_at: "2026-05-09T12:51:22Z", driver: fab-new, iterations: 1, completed_at: "2026-05-09T12:56:35Z"}
-    spec: {started_at: "2026-05-09T12:56:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-09T12:58:50Z"}
     apply: {started_at: "2026-05-09T12:58:50Z", driver: fab-continue, iterations: 1, completed_at: "2026-05-09T13:03:28Z"}
     review: {started_at: "2026-05-09T13:03:28Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-09T13:06:27Z"}
     hydrate: {started_at: "2026-05-09T13:06:27Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-09T13:08:56Z"}
@@ -39,4 +37,4 @@ stage_metrics:
     review-pr: {started_at: "2026-05-09T13:11:28Z", driver: git-pr, iterations: 1, completed_at: "2026-05-09T13:15:46Z"}
 prs:
     - https://github.com/sahil87/shll/pull/3
-last_updated: 2026-05-09T15:46:43Z
+last_updated: 2026-06-02T09:41:28Z

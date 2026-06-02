@@ -6,7 +6,6 @@ change_type: refactor
 issues: []
 progress:
     intake: done
-    spec: done
     apply: done
     review: done
     hydrate: done
@@ -31,7 +30,6 @@ confidence:
         disambiguation: 84.1
 stage_metrics:
     intake: {started_at: "2026-05-31T05:30:00Z", driver: fab-new, iterations: 1, completed_at: "2026-05-31T08:42:59Z"}
-    spec: {started_at: "2026-05-31T08:42:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T08:46:11Z"}
     apply: {started_at: "2026-05-31T08:46:11Z", driver: fab-continue, iterations: 1, completed_at: "2026-05-31T08:54:15Z"}
     review: {started_at: "2026-05-31T08:54:15Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T08:57:30Z"}
     hydrate: {started_at: "2026-05-31T08:57:30Z", driver: fab-fff, iterations: 1, completed_at: "2026-05-31T09:00:53Z"}
@@ -39,4 +37,4 @@ stage_metrics:
     review-pr: {started_at: "2026-05-31T09:03:31Z", driver: git-pr, iterations: 1, completed_at: "2026-05-31T09:11:01Z"}
 prs:
     - https://github.com/sahil87/shll/pull/8
-last_updated: 2026-05-31T09:11:01Z
+last_updated: 2026-06-02T09:34:16Z

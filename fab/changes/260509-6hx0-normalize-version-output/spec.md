@@ -211,3 +211,5 @@ The normalization helper SHALL only be applied to successful `proc.Run` output. 
 | 16 | Confident | Existing tests in `version_test.go` MUST update their version fixtures to match the normalized output (e.g., `tool.Name + " v0.1.0"` → asserts that the displayed value is `v0.1.0` after normalization, not the raw `tool.Name + " v0.1.0"`) | Code-quality signal — tests must conform to the implementation spec (Constitution: Test Integrity); existing tests assert on raw substrings, will need to assert on the normalized values to remain meaningful | S:75 R:75 A:85 D:75 |
 
 16 assumptions (14 certain, 2 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->

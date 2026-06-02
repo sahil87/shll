@@ -440,3 +440,5 @@ The repo SHALL include an MIT `LICENSE` file at the root.
 | 23 | Confident | Existing `fab/` and `docs/` directories are untouched by the scaffold | Spec-level analysis: scaffold creates new files, does not modify the workflow/docs structure that is already initialized | S:90 R:90 A:95 D:95 |
 
 23 assumptions (18 certain, 5 confident, 0 tentative, 0 unresolved).
+
+<!-- Merged into plan.md ## Requirements on 2026-06-02 — safe to delete. -->
