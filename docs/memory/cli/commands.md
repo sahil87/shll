@@ -17,18 +17,18 @@ Top-level command surface for the `shll` binary — the cobra root, the five sub
 - `Short: "meta-CLI for the sahil87 toolkit"`
 - A `Long` block listing the five subcommands and noting that per-tool CLIs continue to work standalone.
 - `SilenceUsage: true` and `SilenceErrors: true` — usage is not printed on RunE errors, and cobra's default error printer is suppressed. The `translateExit` layer in `main.go` owns stderr.
-- `AddCommand` for `newInstallCmd()`, `newUpdateCmd()`, `newShellInitCmd()`, `newShellInstallCmd()`, `newVersionCmd()`.
+- `AddCommand` for `newInstallCmd()`, `newUpdateCmd()`, `newShellInitCmd()`, `newShellSetupCmd()`, `newVersionCmd()`.
 
 Per Constitution VII (Minimal Surface Area), every top-level subcommand requires explicit justification in the change's intake. The current surface is five subcommands.
 
 ### Constitution VII justification per subcommand
 
-These were locked in at spec time (Design Decision #1 for the original three; `install` and `shell-install` were added later, each with its own Constitution VII justification — see [cli/install](install.md#constitution-vii-justification) and the `shell-install` bullet below) and are reproduced here:
+These were locked in at spec time (Design Decision #1 for the original three; `install` and `shell-setup` (formerly `shell-install`) were added later, each with its own Constitution VII justification — see [cli/install](install.md#constitution-vii-justification) and the `shell-setup` bullet below) and are reproduced here:
 
 - **`install`** — solves the bootstrap pain (a new user wants "get me the toolkit"). Distinct lifecycle from `update`: different precondition (not-installed vs. installed), different failure modes, different discoverability. Cannot cleanly fold into `update --install-missing` without inverting that command's installed-only precondition. See [cli/install](install.md) for the full justification and behavior.
 - **`update`** — solves the no-single-update-command pain (`brew upgrade sahil87/tap/all` does NOT propagate to deps). Cannot be a flag on an existing tool because the entry point itself is what's missing. Also self-upgrades shll itself when shll was brew-installed — see [cli/update](update.md#shll-self-upgrade).
 - **`shell-init`** — solves the cold-start cost and N-eval-line burden when multiple shell-integrating tools are installed. Per-tool `shell-init` keeps working standalone (Constitution IV).
-- **`shell-install`** — solves the manual-rc-edit cliff in the post-`brew install` onboarding flow. Cannot be a flag on `shell-init` (it *invokes* `shell-init`, so making it a sub-flag is structurally self-referential). Cannot live in a per-tool CLI (per-tool CLIs emit their own shell-init; this command writes the cross-tool composition `eval "$(shll shell-init <shell>)"`, which is exactly what shll exists for). Its `--trust-tap` flag (change l6lo) records genuine Homebrew tap-trust — an orthogonal selector, not a new command (Constitution VII) — see [cli/shell-install](shell-install.md#the-trust-tap-flag-and-the-ceremony-seam).
+- **`shell-setup`** (canonical name since change ri3h; `shell-install` retained as a back-compat alias) — solves the manual-rc-edit cliff in the post-`brew install` onboarding flow. Cannot be a flag on `shell-init` (it *invokes* `shell-init`, so making it a sub-flag is structurally self-referential). Cannot live in a per-tool CLI (per-tool CLIs emit their own shell-init; this command writes the cross-tool composition `eval "$(shll shell-init <shell>)"`, which is exactly what shll exists for). The `shell-setup` rename adds the alias without changing the surface-area count (still five commands). Its `--trust-tap` flag (change l6lo) records genuine Homebrew tap-trust — an orthogonal selector, not a new command (Constitution VII) — see [cli/shell-setup](shell-setup.md#the-trust-tap-flag-and-the-ceremony-seam).
 - **`version`** — solves the bug-report triage pain. Cannot live on a per-tool CLI because the value is the cross-tool aggregation.
 
 ## Exit-code translation
@@ -36,7 +36,7 @@ These were locked in at spec time (Design Decision #1 for the original three; `i
 `translateExit(err error) int` in `src/cmd/shll/main.go:38` is the single mapping from `RunE` errors to OS exit codes. It uses two error sentinels defined in `src/cmd/shll/main.go`:
 
 - `errSilent = errors.New("shll: silent error")` (`src/cmd/shll/main.go:58`) — returned by subcommands that have already written their own diagnostic to stderr. Maps to exit code 1; `translateExit` does not write anything else.
-- `errExitCode{code, msg}` (`src/cmd/shll/main.go:63`) — used when a subcommand needs an exit code other than 0 or 1. Today `shll shell-init` and `shll shell-install` use this, exiting 2 on bad/missing shell argument and on related user-invocation errors (missing rc file, mutually-exclusive flags). If `msg` is non-empty, `translateExit` writes it to stderr.
+- `errExitCode{code, msg}` (`src/cmd/shll/main.go:63`) — used when a subcommand needs an exit code other than 0 or 1. Today `shll shell-init` and `shll shell-setup` use this, exiting 2 on bad/missing shell argument and on related user-invocation errors (missing rc file, mutually-exclusive flags). If `msg` is non-empty, `translateExit` writes it to stderr.
 
 Default fallback: any other error is printed to stderr and exits 1.
 
@@ -44,7 +44,7 @@ This layered design keeps cobra's own error printing out of the way (`SilenceErr
 
 ## Subcommand factory pattern
 
-Every subcommand follows `newXxxCmd()` returning `*cobra.Command` (no globals, no init() side effects). The cobra command's `RunE` calls a thin top-level helper (`runUpdate`, `runShellInit`, `runShellInstall`, `runVersion`) that takes explicit `io.Writer` arguments — this is the test seam: tests drive these directly with `bytes.Buffer` writers and a fake `proc.Runner` (or, for `shell-install`, no fake — the command does file I/O only).
+Every subcommand follows `newXxxCmd()` returning `*cobra.Command` (no globals, no init() side effects). The cobra command's `RunE` calls a thin top-level helper (`runUpdate`, `runShellInit`, `runShellSetup`, `runVersion`) that takes explicit `io.Writer` arguments — this is the test seam: tests drive these directly with `bytes.Buffer` writers and a fake `proc.Runner` (or, for `shell-setup`, no fake — the command does file I/O only).
 
 ## Hardcoded tool roster
 
@@ -98,11 +98,11 @@ Traceability: change `260601-auvj-reorder-roster-leaves-first`. Output coherence
 | `main.go` | Entry point, version variable, `translateExit`, `errSilent`, `errExitCode`. |
 | `root.go` | `newRootCmd()` — cobra root with three subcommands wired in. |
 | `tools.go` | `Tool` struct (`Name`, `Formula`, `ShellInit`, `Update`), `Roster`, `formulaPrefix`, `shellPlaceholder`, and `tapName` (`"sahil87/tap"`, the `brew trust --tap` argument — distinct from `formulaPrefix`'s trailing-slash formula qualifier; added by change l6lo). |
-| `brew.go` | Shared brew helpers used by the brew-coupled subcommands (`install`, `update`): `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`, `installBrewMissingHint`, `shllFormula`. Also hosts the `shell-install --trust-tap` ceremony (change l6lo): `brewTrustAvailable` (capability probe), `brewTrustTap` (`brew trust --tap sahil87/tap`), `ensureTapTrust` (the function-value seam `shell_install.go` calls — keeps subprocess work out of the file-I/O-only `shell_install.go`), and `trustHatchHint`. `shell-init` and `version` are install-mechanism agnostic and do NOT consult brew — they detect runnable tools via `proc.ErrNotFound` from the sub-tool invocation itself. See [update](update.md) and [shell-install](shell-install.md#the-trust-tap-flag-and-the-ceremony-seam) for details. |
+| `brew.go` | Shared brew helpers used by the brew-coupled subcommands (`install`, `update`): `hasBrew`, `isInstalled`, `brewBinary`, `brewMissingHint`, `installBrewMissingHint`, `shllFormula`. Also hosts the `shell-setup --trust-tap` ceremony (change l6lo): `brewTrustAvailable` (capability probe), `brewTrustTap` (`brew trust --tap sahil87/tap`), `ensureTapTrust` (the function-value seam `shell_setup.go` calls — keeps subprocess work out of the file-I/O-only `shell_setup.go`), and `trustHatchHint`. `shell-init` and `version` are install-mechanism agnostic and do NOT consult brew — they detect runnable tools via `proc.ErrNotFound` from the sub-tool invocation itself. See [update](update.md) and [shell-setup](shell-setup.md#the-trust-tap-flag-and-the-ceremony-seam) for details. |
 | `install.go` | `newInstallCmd()` + `runInstall`. See [install](install.md). |
 | `update.go` | `newUpdateCmd()` + `runUpdate`. See [update](update.md). |
 | `shell_init.go` | `newShellInitCmd()` + `runShellInit`. See [shell-init](shell-init.md). |
-| `shell_install.go` | `newShellInstallCmd()` + `runShellInstall`. See [shell-install](shell-install.md). |
+| `shell_setup.go` | `newShellSetupCmd()` + `runShellSetup` (renamed from `shell_install.go`/`newShellInstallCmd`/`runShellInstall` by change ri3h; `shell-install` kept as a cobra alias). See [shell-setup](shell-setup.md). |
 | `version.go` | `newVersionCmd()` + `runVersion`. See [version](version.md). |
 | `ui.go` *(change y630)* | Shared UI helper — TTY/`NO_COLOR` detection (`colorEnabled`), the per-tool header printer (`printToolHeader` → `▸ <tool>` / `==> <tool>`), the summary-tail printer (`printSummaryTail`), the shell-init comment-separator emitter (`toolComment` → `# ── <tool> ──`), and the named ANSI SGR constants (`ansiReset`, `ansiBold`, `ansiBoldCyan`, `ansiGreen`). Holds presentation logic only — **no** subprocess calls, **no** command of its own. Consumed by `update.go`/`install.go` (header + tail + color) and `shell_init.go` (`toolComment` only — never the color/header path, per the [eval-safety exception](shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)). |
 
@@ -123,4 +123,4 @@ Three commands frame their per-tool output via the shared `ui.go` helper (change
 - Constitution I (Security First) → all subprocesses go through [`internal/proc`](../internal/proc.md). (`ui.go` makes no subprocess calls — it is pure presentation.)
 - Constitution III (Wrap, Don't Reinvent) + IV (Composition, Not Replacement) → every subcommand shells out; nothing reimplements brew or per-tool logic. shll's framing prints only *around* each subprocess; sub-tool bytes are never rewritten.
 - Constitution V (Graceful Degradation) → uninstalled tools never produce errors; missing tools are skipped silently. Eval-safety drives `shell-init`'s comment-separator exception (see [cli/shell-init](shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)).
-- Constitution VII (Minimal Surface Area) → subcommand list is closed at five for v0.1.0 (`install`, `update`, `shell-init`, `shell-install`, `version`); change y630 added behavior to existing commands and a non-command helper file (`ui.go`), not a new subcommand.
+- Constitution VII (Minimal Surface Area) → subcommand list is closed at five for v0.1.0 (`install`, `update`, `shell-init`, `shell-setup` (formerly `shell-install`, kept as an alias), `version`); change y630 added behavior to existing commands and a non-command helper file (`ui.go`), not a new subcommand; change ri3h renamed `shell-install` → `shell-setup` (alias preserves the old name) without changing the count.

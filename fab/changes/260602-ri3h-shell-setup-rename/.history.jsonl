@@ -1,0 +1,20 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-02T11:46:17Z"}
+{"args":"Rename shll shell-install command so shell-setup becomes the new canonical name, with shell-install retained as a backward-compatibility cobra alias. Full rename including Go identifiers (file, factory, run helpers, test file), plus a new test asserting the alias dispatches to the same command. Update README and docs/memory/cli/shell-install.md. Out of scope: sentinel block, shell-init eval line, migration machinery.","cmd":"fab-new","event":"command","ts":"2026-06-02T11:46:17Z"}
+{"delta":"+1.8","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-06-02T11:47:21Z"}
+{"delta":"+0.0","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-06-02T11:47:24Z"}
+{"delta":"+0.7","event":"confidence","score":2.5,"trigger":"calc-score","ts":"2026-06-02T11:47:39Z"}
+{"delta":"+0.0","event":"confidence","score":2.5,"trigger":"calc-score","ts":"2026-06-02T11:47:42Z"}
+{"delta":"+0.3","event":"confidence","score":2.8,"trigger":"calc-score","ts":"2026-06-02T11:47:56Z"}
+{"delta":"+0.3","event":"confidence","score":3.1,"trigger":"calc-score","ts":"2026-06-02T11:48:03Z"}
+{"delta":"+0.0","event":"confidence","score":3.1,"trigger":"calc-score","ts":"2026-06-02T11:48:06Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-06-02T11:48:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-02T11:49:32Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-02T11:50:38Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-02T11:57:32Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-02T11:58:19Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-02T11:59:53Z"}
+{"event":"review","result":"passed","ts":"2026-06-02T11:59:53Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-02T12:01:05Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-02T12:07:30Z"}
+{"cmd":"git-pr","event":"command","ts":"2026-06-02T12:08:42Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-06-02T12:09:55Z"}

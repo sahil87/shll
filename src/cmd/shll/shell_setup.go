@@ -52,7 +52,7 @@ const (
 	exportTrustLine = "export HOMEBREW_REQUIRE_TAP_TRUST=1"
 )
 
-func newShellInstallCmd() *cobra.Command {
+func newShellSetupCmd() *cobra.Command {
 	var (
 		printMode     bool
 		uninstallMode bool
@@ -60,22 +60,25 @@ func newShellInstallCmd() *cobra.Command {
 		rcFileFlag    string
 	)
 	cmd := &cobra.Command{
-		Use:   "shell-install [shell]",
-		Short: "append the shll shell-init eval line to your rc file",
+		Use:     "shell-setup [shell]",
+		Aliases: []string{"shell-install"},
+		Short:   "append the shll shell-init eval line to your rc file",
 		Long: `Append a sentinel-wrapped eval block that wires shll shell-init into your
 shell rc file. Idempotent — re-running is a no-op when the block is already
 present. Plain O_APPEND so dotfile-manager symlinks are preserved.
 
+Also available under the legacy alias ` + "`shll shell-install`" + ` (unchanged behavior).
+
 Modes:
-  shll shell-install [shell]            install the block (default mode)
-  shll shell-install --print [shell]    print the block to stdout, do not modify
-  shll shell-install --uninstall [shell] remove the block from the rc file
+  shll shell-setup [shell]            install the block (default mode)
+  shll shell-setup --print [shell]    print the block to stdout, do not modify
+  shll shell-setup --uninstall [shell] remove the block from the rc file
 
 The --trust-tap flag records genuine Homebrew trust for the sahil87 tap. It is
 not a mode — it composes with the default, --print, and --uninstall paths:
-  shll shell-install --trust-tap          run ` + "`brew trust --tap sahil87/tap`" + ` and add
-                                          ` + "`export HOMEBREW_REQUIRE_TAP_TRUST=1`" + ` to the block
-  shll shell-install --trust-tap --print  print the resulting combined block, change nothing
+  shll shell-setup --trust-tap          run ` + "`brew trust --tap sahil87/tap`" + ` and add
+                                        ` + "`export HOMEBREW_REQUIRE_TAP_TRUST=1`" + ` to the block
+  shll shell-setup --trust-tap --print  print the resulting combined block, change nothing
 If ` + "`brew trust`" + ` is unavailable (older brew) or brew is missing, the export line
 is skipped and only the eval line is written — shll never sets the policy line
 without a backing trust record.
@@ -91,7 +94,7 @@ Use --rc-file <path> to override derivation entirely.`,
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runShellInstall(cmd.Context(), args, rcFileFlag, printMode, uninstallMode, trustTap, ensureTapTrust, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runShellSetup(cmd.Context(), args, rcFileFlag, printMode, uninstallMode, trustTap, ensureTapTrust, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().BoolVar(&printMode, "print", false, "print the block to stdout, do not modify any file")
@@ -111,14 +114,14 @@ func resolveShell(args []string, env func(string) string) (string, error) {
 	if len(args) >= 1 {
 		shell := args[0]
 		if !isSupportedShell(shell) {
-			return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-install: unsupported shell %q. Supported: zsh, bash", shell)}
+			return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: unsupported shell %q. Supported: zsh, bash", shell)}
 		}
 		return shell, nil
 	}
 	raw := env("SHELL")
 	inferred := filepath.Base(raw)
 	if !isSupportedShell(inferred) {
-		return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-install: cannot infer shell from $SHELL=%s. Pass shell explicitly: shll shell-install zsh", raw)}
+		return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: cannot infer shell from $SHELL=%s. Pass shell explicitly: shll shell-setup zsh", raw)}
 	}
 	return inferred, nil
 }
@@ -188,7 +191,7 @@ func buildBlockBody(lines []string) []byte {
 // existing carries the parse result of the located block (zero value when no
 // block exists yet — the fresh-install case). The eval line is always desired,
 // so a block that somehow lacked it gains it; this also covers an export-only
-// block later running a plain `shll shell-install`.
+// block later running a plain `shll shell-setup`.
 func wantLines(existing blockMatch, shell string, wantExport bool) []string {
 	export := existing.hasExport || wantExport
 	lines := make([]string, 0, 2)
@@ -271,19 +274,19 @@ const evalLinePrefix = `eval "$(shll shell-init`
 // runner against ensureTapTrust.
 type ensureTrustFunc func(ctx context.Context) (writeExport bool, diag string)
 
-// runShellInstall is the implementation seam invoked by the cobra factory's
+// runShellSetup is the implementation seam invoked by the cobra factory's
 // RunE. Extracted so tests can drive it directly with bytes.Buffer writers and
 // controlled environment.
 //
 // trustTap is an orthogonal selector (NOT a mutually-exclusive mode): it composes
 // with the default and --print paths. ensureTrust is the ceremony seam (see
 // ensureTrustFunc) — invoked only on the default --trust-tap path.
-func runShellInstall(ctx context.Context, args []string, rcFileFlag string, printMode, uninstallMode, trustTap bool, ensureTrust ensureTrustFunc, stdout, stderr io.Writer) error {
+func runShellSetup(ctx context.Context, args []string, rcFileFlag string, printMode, uninstallMode, trustTap bool, ensureTrust ensureTrustFunc, stdout, stderr io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if printMode && uninstallMode {
-		return &errExitCode{code: 2, msg: "shll shell-install: --print and --uninstall are mutually exclusive"}
+		return &errExitCode{code: 2, msg: "shll shell-setup: --print and --uninstall are mutually exclusive"}
 	}
 	shell, err := resolveShell(args, os.Getenv)
 	if err != nil {
@@ -295,11 +298,11 @@ func runShellInstall(ctx context.Context, args []string, rcFileFlag string, prin
 	}
 	switch {
 	case printMode:
-		return runShellInstallPrint(shell, rcPath, trustTap, stdout, stderr)
+		return runShellSetupPrint(shell, rcPath, trustTap, stdout, stderr)
 	case uninstallMode:
-		return runShellInstallUninstall(shell, rcPath, stdout, stderr)
+		return runShellSetupUninstall(shell, rcPath, stdout, stderr)
 	default:
-		return runShellInstallDefault(ctx, shell, rcPath, rcFileFlag != "", trustTap, ensureTrust, stdout, stderr)
+		return runShellSetupDefault(ctx, shell, rcPath, rcFileFlag != "", trustTap, ensureTrust, stdout, stderr)
 	}
 }
 
@@ -320,7 +323,7 @@ func locateBlock(content []byte) (newM blockMatch, newOK bool, legacyM blockMatc
 	return newM, newOK, legacyM, legacyOK, np || lp
 }
 
-// runShellInstallDefault implements the default install path as a per-line MERGE
+// runShellSetupDefault implements the default install path as a per-line MERGE
 // into the single shll-managed block (new `# >>> shll >>>` sentinel). The flow:
 //
 //	stat (no O_CREATE) → read → locate block (new + legacy) → refuse on partial →
@@ -336,20 +339,20 @@ func locateBlock(content []byte) (newM blockMatch, newOK bool, legacyM blockMatc
 // userProvidedPath controls the missing-file error wording: with --rc-file the
 // user named the path explicitly, so the "shll won't create rc files" hint is
 // dropped.
-func runShellInstallDefault(ctx context.Context, shell, rcPath string, userProvidedPath, trustTap bool, ensureTrust ensureTrustFunc, stdout, stderr io.Writer) error {
+func runShellSetupDefault(ctx context.Context, shell, rcPath string, userProvidedPath, trustTap bool, ensureTrust ensureTrustFunc, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if userProvidedPath {
-				return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-install: %s does not exist.", rcPath)}
+				return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist.", rcPath)}
 			}
-			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-install: %s does not exist. shll won't create rc files. Create it first, or pass --rc-file <path>.", rcPath)}
+			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist. shll won't create rc files. Create it first, or pass --rc-file <path>.", rcPath)}
 		}
-		fmt.Fprintf(stderr, "shll shell-install: stat %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	content, err := os.ReadFile(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: read %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: read %s: %v\n", rcPath, err)
 		return errSilent
 	}
 
@@ -358,7 +361,7 @@ func runShellInstallDefault(ctx context.Context, shell, rcPath string, userProvi
 		// Open-without-close sentinel — corrupted/partial. Guessing the bounds
 		// risks corrupting the user's rc file, so refuse and direct manual cleanup
 		// (deliberate divergence from the legacy short-circuit-as-"already-installed").
-		return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-install: %s has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run.", rcPath)}
+		return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run.", rcPath)}
 	}
 
 	// Run the ceremony before composing the block: its outcome decides whether the
@@ -402,16 +405,16 @@ func appendBlock(rcPath string, content, block []byte, stdout, stderr io.Writer)
 	}
 	f, err := os.OpenFile(rcPath, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: open %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: open %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	if _, werr := f.Write(block); werr != nil {
 		_ = f.Close()
-		fmt.Fprintf(stderr, "shll shell-install: write %s: %v\n", rcPath, werr)
+		fmt.Fprintf(stderr, "shll shell-setup: write %s: %v\n", rcPath, werr)
 		return errSilent
 	}
 	if cerr := f.Close(); cerr != nil {
-		fmt.Fprintf(stderr, "shll shell-install: close %s: %v\n", rcPath, cerr)
+		fmt.Fprintf(stderr, "shll shell-setup: close %s: %v\n", rcPath, cerr)
 		return errSilent
 	}
 	fmt.Fprintf(stdout, "Installed shll shell integration to %s. Restart your shell or run: source %s\n", rcPath, rcPath)
@@ -463,45 +466,45 @@ func rewriteBlocks(rcPath string, content, block []byte, newM blockMatch, newOK 
 	merged = append(merged, work[insertAt:]...)
 
 	if bytes.Equal(merged, content) {
-		fmt.Fprintf(stderr, "shll shell-install: already installed in %s (no changes).\n", rcPath)
+		fmt.Fprintf(stderr, "shll shell-setup: already installed in %s (no changes).\n", rcPath)
 		return nil
 	}
 
 	resolved, err := filepath.EvalSymlinks(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: resolve symlink %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: resolve symlink %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	f, err := os.OpenFile(resolved, os.O_WRONLY|os.O_TRUNC, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: open %s: %v\n", resolved, err)
+		fmt.Fprintf(stderr, "shll shell-setup: open %s: %v\n", resolved, err)
 		return errSilent
 	}
 	if _, werr := f.Write(merged); werr != nil {
 		_ = f.Close()
-		fmt.Fprintf(stderr, "shll shell-install: write %s: %v\n", resolved, werr)
+		fmt.Fprintf(stderr, "shll shell-setup: write %s: %v\n", resolved, werr)
 		return errSilent
 	}
 	if cerr := f.Close(); cerr != nil {
-		fmt.Fprintf(stderr, "shll shell-install: close %s: %v\n", resolved, cerr)
+		fmt.Fprintf(stderr, "shll shell-setup: close %s: %v\n", resolved, cerr)
 		return errSilent
 	}
 	fmt.Fprintf(stdout, "Installed shll shell integration to %s. Restart your shell or run: source %s\n", rcPath, rcPath)
 	return nil
 }
 
-// runShellInstallPrint implements --print mode. Resolves shell + rc file the
+// runShellSetupPrint implements --print mode. Resolves shell + rc file the
 // same way as default, still errors on missing rc file (the user may be
 // debugging exactly that), then prints the exact block to stdout with no
 // surrounding messages. It runs NO ceremony and modifies NO file. With
 // --trust-tap the printed block is the combined block (export line before eval
 // line) so the dry-run reflects what a real --trust-tap install would write.
-func runShellInstallPrint(shell, rcPath string, trustTap bool, stdout, stderr io.Writer) error {
+func runShellSetupPrint(shell, rcPath string, trustTap bool, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-install: %s does not exist.", rcPath)}
+			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist.", rcPath)}
 		}
-		fmt.Fprintf(stderr, "shll shell-install: stat %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	block := buildBlock(shell)
@@ -511,13 +514,13 @@ func runShellInstallPrint(shell, rcPath string, trustTap bool, stdout, stderr io
 		block = buildBlockBody(wantLines(blockMatch{}, shell, true))
 	}
 	if _, err := stdout.Write(block); err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: write stdout: %v\n", err)
+		fmt.Fprintf(stderr, "shll shell-setup: write stdout: %v\n", err)
 		return errSilent
 	}
 	return nil
 }
 
-// runShellInstallUninstall implements --uninstall mode. It removes the ENTIRE
+// runShellSetupUninstall implements --uninstall mode. It removes the ENTIRE
 // shll-managed block (both managed lines, both sentinels) in one operation,
 // recognizing BOTH the new `# >>> shll >>>` sentinel AND a legacy
 // `# >>> shll shell-init >>>` block (so users who never re-installed can still
@@ -528,24 +531,24 @@ func runShellInstallPrint(shell, rcPath string, trustTap bool, stdout, stderr io
 // block is present, the symlink chain is resolved before the truncate-write so
 // dotfile-manager symlinks stay intact while the underlying source-of-truth file
 // is updated.
-func runShellInstallUninstall(shell, rcPath string, stdout, stderr io.Writer) error {
+func runShellSetupUninstall(shell, rcPath string, stdout, stderr io.Writer) error {
 	_ = shell // shell isn't used during uninstall — sentinels are shell-agnostic.
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(stderr, "shll shell-install: %s does not exist (nothing to uninstall).\n", rcPath)
+			fmt.Fprintf(stderr, "shll shell-setup: %s does not exist (nothing to uninstall).\n", rcPath)
 			return nil
 		}
-		fmt.Fprintf(stderr, "shll shell-install: stat %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	content, err := os.ReadFile(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: read %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: read %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	newM, newOK, legacyM, legacyOK, _ := locateBlock(content)
 	if !newOK && !legacyOK {
-		fmt.Fprintf(stderr, "shll shell-install: not installed in %s (nothing to uninstall).\n", rcPath)
+		fmt.Fprintf(stderr, "shll shell-setup: not installed in %s (nothing to uninstall).\n", rcPath)
 		return nil
 	}
 	// Splice out every shll block. Remove the later range first so earlier indices
@@ -571,21 +574,21 @@ func runShellInstallUninstall(shell, rcPath string, stdout, stderr io.Writer) er
 	}
 	resolved, err := filepath.EvalSymlinks(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: resolve symlink %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll shell-setup: resolve symlink %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	f, err := os.OpenFile(resolved, os.O_WRONLY|os.O_TRUNC, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-install: open %s: %v\n", resolved, err)
+		fmt.Fprintf(stderr, "shll shell-setup: open %s: %v\n", resolved, err)
 		return errSilent
 	}
 	if _, werr := f.Write(modified); werr != nil {
 		_ = f.Close()
-		fmt.Fprintf(stderr, "shll shell-install: write %s: %v\n", resolved, werr)
+		fmt.Fprintf(stderr, "shll shell-setup: write %s: %v\n", resolved, werr)
 		return errSilent
 	}
 	if cerr := f.Close(); cerr != nil {
-		fmt.Fprintf(stderr, "shll shell-install: close %s: %v\n", resolved, cerr)
+		fmt.Fprintf(stderr, "shll shell-setup: close %s: %v\n", resolved, cerr)
 		return errSilent
 	}
 	fmt.Fprintf(stdout, "Removed shll shell integration from %s.\n", rcPath)

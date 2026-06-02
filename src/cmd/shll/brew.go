@@ -86,16 +86,16 @@ const trustHatchHint = "set HOMEBREW_NO_REQUIRE_TAP_TRUST=1 or HOMEBREW_NO_ENV_H
 
 // ensureTapTrust performs the full genuine-trust ceremony for --trust-tap and
 // reports whether the policy line (export HOMEBREW_REQUIRE_TAP_TRUST=1) should be
-// written. It is the single proc-touching seam the file-I/O-only shell_install.go
+// written. It is the single proc-touching seam the file-I/O-only shell_setup.go
 // calls — keeping every subprocess invocation (capability probe + ceremony) in
 // brew.go, which legitimately imports internal/proc (Constitution I; the
-// TestNoProcImports guard pins shell_install.go to file I/O only).
+// TestNoProcImports guard pins shell_setup.go to file I/O only).
 //
 // Degradation policy (Constitution V): the policy line is written ONLY when brew
 // is present, `brew trust` is available, AND the ceremony exits 0. In every other
 // case — brew absent, `trust` unrecognized on an older brew, or a non-zero/error
 // ceremony exit — writeExport is false and diag explains why, naming the lighter
-// env-var escape hatches. shell_install.go still writes the eval line regardless,
+// env-var escape hatches. shell_setup.go still writes the eval line regardless,
 // so the user keeps shell integration; only the trust half is skipped.
 //
 // Returns (writeExport, diag):
@@ -103,20 +103,20 @@ const trustHatchHint = "set HOMEBREW_NO_REQUIRE_TAP_TRUST=1 or HOMEBREW_NO_ENV_H
 //   - writeExport false, diag set → degraded; caller skips export line, prints diag.
 func ensureTapTrust(ctx context.Context) (writeExport bool, diag string) {
 	if !hasBrew(ctx) {
-		return false, "shll shell-install: Homebrew is not installed, so the sahil87 tap cannot be trusted. " +
+		return false, "shll shell-setup: Homebrew is not installed, so the sahil87 tap cannot be trusted. " +
 			"Skipped the trust policy line (writing it without a trust record would block the tap). " +
-			"Install Homebrew from https://brew.sh, then re-run `shll shell-install --trust-tap`; or " + trustHatchHint + "."
+			"Install Homebrew from https://brew.sh, then re-run `shll shell-setup --trust-tap`; or " + trustHatchHint + "."
 	}
 	if !brewTrustAvailable(ctx) {
-		return false, "shll shell-install: this Homebrew does not support `brew trust` (it requires a newer Homebrew). " +
+		return false, "shll shell-setup: this Homebrew does not support `brew trust` (it requires a newer Homebrew). " +
 			"Skipped the trust policy line (writing it without a trust record would block the tap). " +
-			"Upgrade Homebrew, then re-run `shll shell-install --trust-tap`; or " + trustHatchHint + "."
+			"Upgrade Homebrew, then re-run `shll shell-setup --trust-tap`; or " + trustHatchHint + "."
 	}
 	code, err := brewTrustTap(ctx)
 	if err != nil || code != 0 {
-		return false, "shll shell-install: `brew trust --tap " + tapName + "` did not succeed, " +
+		return false, "shll shell-setup: `brew trust --tap " + tapName + "` did not succeed, " +
 			"so the trust policy line was skipped (writing it without a trust record would block the tap). " +
-			"Re-run `shll shell-install --trust-tap` once brew can reach the tap; or " + trustHatchHint + "."
+			"Re-run `shll shell-setup --trust-tap` once brew can reach the tap; or " + trustHatchHint + "."
 	}
 	return true, ""
 }

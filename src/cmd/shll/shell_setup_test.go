@@ -58,11 +58,11 @@ func envFunc(env map[string]string) func(string) string {
 	return func(key string) string { return env[key] }
 }
 
-// runShellInstallCmd builds a fresh cobra command, sets buffered stdout/stderr,
+// runShellSetupCmd builds a fresh cobra command, sets buffered stdout/stderr,
 // and executes with the provided argv. Returns (stdout, stderr, error).
-func runShellInstallCmd(t *testing.T, argv []string) (string, string, error) {
+func runShellSetupCmd(t *testing.T, argv []string) (string, string, error) {
 	t.Helper()
-	cmd := newShellInstallCmd()
+	cmd := newShellSetupCmd()
 	var stdout, stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
@@ -215,7 +215,7 @@ func makeRC(t *testing.T, content string) string {
 
 func TestInstall_AppendsBlockWhenAbsent(t *testing.T) {
 	rc := makeRC(t, "export FOO=bar\n")
-	stdout, stderr, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	stdout, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -235,7 +235,7 @@ func TestInstall_AppendsBlockWhenAbsent(t *testing.T) {
 func TestInstall_Idempotent(t *testing.T) {
 	original := "export FOO=bar\n" + tNewBlockZsh
 	rc := makeRC(t, original)
-	_, stderr, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
@@ -250,7 +250,7 @@ func TestInstall_Idempotent(t *testing.T) {
 
 func TestInstall_TrailingNewlineGuard(t *testing.T) {
 	rc := makeRC(t, "export FOO=bar")
-	_, stderr, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -268,7 +268,7 @@ func TestInstall_TrailingNewlineGuard(t *testing.T) {
 func TestInstall_EmptyFileNoLeadingNewline(t *testing.T) {
 	// Trailing-newline guard MUST NOT prepend \n on empty files.
 	rc := makeRC(t, "")
-	_, stderr, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -283,7 +283,7 @@ func TestInstall_ErrorsWhenRcMissingNoFlag(t *testing.T) {
 	t.Setenv("HOME", dir)
 	t.Setenv("ZDOTDIR", "")
 	t.Setenv("SHELL", "/bin/zsh")
-	_, _, err := runShellInstallCmd(t, []string{})
+	_, _, err := runShellSetupCmd(t, []string{})
 	if err == nil {
 		t.Fatal("expected error for missing rc file")
 	}
@@ -305,7 +305,7 @@ func TestInstall_ErrorsWhenRcMissingNoFlag(t *testing.T) {
 func TestInstall_ErrorsWhenRcMissingWithFlag(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing-rc")
-	_, _, err := runShellInstallCmd(t, []string{"--rc-file", missing, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", missing, "zsh"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -334,7 +334,7 @@ func TestInstall_PreservesSymlink(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
-	_, stderr, err := runShellInstallCmd(t, []string{"--rc-file", link, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", link, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -362,7 +362,7 @@ func TestInstall_UnreadableRcFile(t *testing.T) {
 		t.Fatalf("chmod: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(rc, 0o644) })
-	_, stderr, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
@@ -375,7 +375,7 @@ func TestInstall_UnreadableRcFile(t *testing.T) {
 
 func TestPrint_EmitsExactBlock(t *testing.T) {
 	rc := makeRC(t, "")
-	stdout, stderr, err := runShellInstallCmd(t, []string{"--print", "--rc-file", rc, "zsh"})
+	stdout, stderr, err := runShellSetupCmd(t, []string{"--print", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -392,7 +392,7 @@ func TestPrint_EmitsExactBlock(t *testing.T) {
 func TestPrint_AcceptsShellPositional(t *testing.T) {
 	rc := makeRC(t, "")
 	t.Setenv("SHELL", "/bin/zsh")
-	stdout, _, err := runShellInstallCmd(t, []string{"--print", "--rc-file", rc, "bash"})
+	stdout, _, err := runShellSetupCmd(t, []string{"--print", "--rc-file", rc, "bash"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -404,7 +404,7 @@ func TestPrint_AcceptsShellPositional(t *testing.T) {
 func TestPrint_ErrorsWhenRcMissing(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, ".zshrc")
-	_, _, err := runShellInstallCmd(t, []string{"--print", "--rc-file", missing, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--print", "--rc-file", missing, "zsh"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -422,7 +422,7 @@ func TestPrint_ErrorsWhenRcMissing(t *testing.T) {
 func TestUninstall_RemovesBlock(t *testing.T) {
 	original := "export FOO=bar\n" + tNewBlockZsh + "export BAR=baz\n"
 	rc := makeRC(t, original)
-	stdout, stderr, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
+	stdout, stderr, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -439,7 +439,7 @@ func TestUninstall_RemovesBlock(t *testing.T) {
 func TestUninstall_BlockAbsent(t *testing.T) {
 	original := "export FOO=bar\n"
 	rc := makeRC(t, original)
-	_, stderr, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -455,7 +455,7 @@ func TestUninstall_BlockAbsent(t *testing.T) {
 func TestUninstall_RcAbsent(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing-rc")
-	_, stderr, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", missing, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", missing, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -478,7 +478,7 @@ func TestUninstall_PreservesSymlink(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
-	_, _, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", link, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", link, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -497,7 +497,7 @@ func TestUninstall_PreservesSymlink(t *testing.T) {
 }
 
 func TestPrintAndUninstallMutuallyExclusive(t *testing.T) {
-	_, _, err := runShellInstallCmd(t, []string{"--print", "--uninstall", "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--print", "--uninstall", "zsh"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -516,12 +516,12 @@ func TestTrustTap_FlagRecognized(t *testing.T) {
 	// --help must mention --trust-tap, and the flag must not error as unknown.
 	installTrustSuccessRunner(t)
 	rc := makeRC(t, "export FOO=bar\n")
-	_, _, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("--trust-tap rejected: %v", err)
 	}
 	// Help text documents the flag.
-	cmd := newShellInstallCmd()
+	cmd := newShellSetupCmd()
 	if cmd.Flags().Lookup("trust-tap") == nil {
 		t.Fatal("--trust-tap flag not registered")
 	}
@@ -531,7 +531,7 @@ func TestTrustTap_FlagRecognized(t *testing.T) {
 }
 
 func TestTrustTap_MutualExclusionUnchangedWithTrustTap(t *testing.T) {
-	_, _, err := runShellInstallCmd(t, []string{"--print", "--uninstall", "--trust-tap", "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--print", "--uninstall", "--trust-tap", "zsh"})
 	var withCode *errExitCode
 	if !errors.As(err, &withCode) || withCode.code != 2 {
 		t.Fatalf("err = %v, want errExitCode{code:2}", err)
@@ -546,7 +546,7 @@ func TestTrustTap_MutualExclusionUnchangedWithTrustTap(t *testing.T) {
 func TestTrustTap_FreshCombinedBlock(t *testing.T) {
 	f := installTrustSuccessRunner(t)
 	rc := makeRC(t, "export FOO=bar\n")
-	stdout, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	stdout, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -567,7 +567,7 @@ func TestTrustTap_MergeExportIntoEvalOnlyBlock(t *testing.T) {
 	// Already-set-up user (eval-only block) adds trust → export merged in place.
 	f := installTrustSuccessRunner(t)
 	rc := makeRC(t, "export FOO=bar\n"+tNewBlockZsh)
-	_, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -586,11 +586,11 @@ func TestTrustTap_MergeExportIntoEvalOnlyBlock(t *testing.T) {
 }
 
 func TestTrustTap_MergeEvalIntoExportOnlyBlock(t *testing.T) {
-	// Trust-first user (export-only block) later runs plain shell-install →
+	// Trust-first user (export-only block) later runs plain shell-setup →
 	// eval merged in; export preserved.
 	exportOnly := "# >>> shll >>>\nexport HOMEBREW_REQUIRE_TAP_TRUST=1\n# <<< shll <<<\n"
 	rc := makeRC(t, "export FOO=bar\n"+exportOnly)
-	_, stderr, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -605,7 +605,7 @@ func TestTrustTap_FullReRunIsByteIdenticalNoop(t *testing.T) {
 	installTrustSuccessRunner(t)
 	original := "export FOO=bar\n" + tCombinedZsh
 	rc := makeRC(t, original)
-	_, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -619,10 +619,10 @@ func TestTrustTap_FullReRunIsByteIdenticalNoop(t *testing.T) {
 }
 
 func TestPlainInstall_NewSentinelEvalOnly(t *testing.T) {
-	// shll shell-install (no --trust-tap) on a fresh file uses the new sentinel
+	// shll shell-setup (no --trust-tap) on a fresh file uses the new sentinel
 	// and contains ONLY the eval line (no export line).
 	rc := makeRC(t, "")
-	_, _, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -640,7 +640,7 @@ func TestPlainInstall_NewSentinelEvalOnly(t *testing.T) {
 func TestMigration_LegacyEvalOnlyMigratesOnTrustTap(t *testing.T) {
 	installTrustSuccessRunner(t)
 	rc := makeRC(t, "export FOO=bar\n"+tLegacyBlockZsh+"export BAR=baz\n")
-	_, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -657,10 +657,10 @@ func TestMigration_LegacyEvalOnlyMigratesOnTrustTap(t *testing.T) {
 }
 
 func TestMigration_LegacyEvalOnlyMigratesOnPlainInstall(t *testing.T) {
-	// Plain shell-install also migrates the sentinel (carrying eval forward),
+	// Plain shell-setup also migrates the sentinel (carrying eval forward),
 	// without adding the export line.
 	rc := makeRC(t, tLegacyBlockZsh)
-	_, _, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -675,7 +675,7 @@ func TestMigration_BothSentinelsPresentMergeToOne(t *testing.T) {
 	// Hand-edited corrupted state: a legacy block AND a new block both present.
 	original := "export A=1\n" + tLegacyBlockZsh + "export B=2\n" + tNewBlockZsh + "export C=3\n"
 	rc := makeRC(t, original)
-	_, _, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -697,7 +697,7 @@ func TestMigration_BothSentinelsPresentReverseOrderMergeToOne(t *testing.T) {
 	// ordering in rewriteBlocks (insertAt picks the earliest start regardless).
 	original := "export A=1\n" + tNewBlockZsh + "export B=2\n" + tLegacyBlockZsh + "export C=3\n"
 	rc := makeRC(t, original)
-	_, _, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -719,7 +719,7 @@ func TestMigration_PartialUnclosedRefuses(t *testing.T) {
 	// Open sentinel without a matching close → refuse, exit 2, file untouched.
 	original := "export FOO=bar\n# >>> shll >>>\neval \"$(shll shell-init zsh)\"\n"
 	rc := makeRC(t, original)
-	_, _, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	var withCode *errExitCode
 	if !errors.As(err, &withCode) || withCode.code != 2 {
 		t.Fatalf("err = %v, want errExitCode{code:2}", err)
@@ -736,7 +736,7 @@ func TestMigration_PartialUnclosedRefuses(t *testing.T) {
 func TestMigration_PartialUnclosedLegacyRefuses(t *testing.T) {
 	original := "# >>> shll shell-init >>>\neval \"$(shll shell-init zsh)\"\n"
 	rc := makeRC(t, original)
-	_, _, err := runShellInstallCmd(t, []string{"--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
 	var withCode *errExitCode
 	if !errors.As(err, &withCode) || withCode.code != 2 {
 		t.Fatalf("err = %v, want errExitCode{code:2}", err)
@@ -751,7 +751,7 @@ func TestMigration_PartialUnclosedLegacyRefuses(t *testing.T) {
 func TestUninstall_RemovesLegacyBlock(t *testing.T) {
 	original := "export FOO=bar\n" + tLegacyBlockZsh + "export BAR=baz\n"
 	rc := makeRC(t, original)
-	_, stderr, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
 	}
@@ -765,7 +765,7 @@ func TestUninstall_RemovesLegacyBlock(t *testing.T) {
 func TestUninstall_RemovesBothSentinelBlocks(t *testing.T) {
 	original := "export A=1\n" + tLegacyBlockZsh + "export B=2\n" + tNewBlockZsh + "export C=3\n"
 	rc := makeRC(t, original)
-	_, _, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -779,7 +779,7 @@ func TestUninstall_RemovesBothSentinelBlocks(t *testing.T) {
 func TestUninstall_DoesNotUntrust(t *testing.T) {
 	f := installTrustSuccessRunner(t)
 	rc := makeRC(t, "export FOO=bar\n"+tCombinedZsh)
-	_, _, err := runShellInstallCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
+	_, _, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -795,7 +795,7 @@ func TestUninstall_DoesNotUntrust(t *testing.T) {
 func TestPrintTrustTap_CombinedNoFileNoCeremony(t *testing.T) {
 	f := installTrustSuccessRunner(t)
 	rc := makeRC(t, "export FOO=bar\n")
-	stdout, _, err := runShellInstallCmd(t, []string{"--print", "--trust-tap", "--rc-file", rc, "zsh"})
+	stdout, _, err := runShellSetupCmd(t, []string{"--print", "--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -827,7 +827,7 @@ func TestTrustTap_DegradesWhenTrustUnavailable(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 	rc := makeRC(t, "export FOO=bar\n")
-	stdout, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	stdout, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil (degraded success)", err)
 	}
@@ -851,7 +851,7 @@ func TestTrustTap_DegradesWhenBrewAbsent(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 	rc := makeRC(t, "export FOO=bar\n")
-	_, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil (degraded success)", err)
 	}
@@ -879,7 +879,7 @@ func TestTrustTap_DegradesWhenCeremonyNonZero(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 	rc := makeRC(t, "export FOO=bar\n")
-	_, stderr, err := runShellInstallCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
 	if err != nil {
 		t.Fatalf("err = %v, want nil (degraded success)", err)
 	}
@@ -904,11 +904,11 @@ func mustRead(t *testing.T, path string) []byte {
 
 // --- root wiring + import discipline -----------------------------------------
 
-func TestRoot_ShellInstallRegistered(t *testing.T) {
+func TestRoot_ShellSetupRegistered(t *testing.T) {
 	root := newRootCmd()
-	want := map[string]bool{"update": false, "shell-init": false, "shell-install": false, "version": false}
+	want := map[string]bool{"install": false, "update": false, "shell-init": false, "shell-setup": false, "version": false}
 	for _, sub := range root.Commands() {
-		// Use Name() to get just the first word of Use (e.g. "shell-install").
+		// Use Name() to get just the first word of Use (e.g. "shell-setup").
 		if _, tracked := want[sub.Name()]; tracked {
 			want[sub.Name()] = true
 		}
@@ -920,18 +920,40 @@ func TestRoot_ShellInstallRegistered(t *testing.T) {
 	}
 }
 
+// TestRoot_ShellInstallAliasResolves asserts the backward-compat `shell-install`
+// alias dispatches to the same *cobra.Command as the canonical `shell-setup`.
+// cobra's Find resolves aliases, so both lookups must return the identical
+// command pointer.
+func TestRoot_ShellInstallAliasResolves(t *testing.T) {
+	root := newRootCmd()
+	setupCmd, _, err := root.Find([]string{"shell-setup"})
+	if err != nil {
+		t.Fatalf("Find shell-setup: %v", err)
+	}
+	aliasCmd, _, err := root.Find([]string{"shell-install"})
+	if err != nil {
+		t.Fatalf("Find shell-install: %v", err)
+	}
+	if setupCmd != aliasCmd {
+		t.Fatalf("alias shell-install resolves to %p, want same command as shell-setup %p", aliasCmd, setupCmd)
+	}
+	if setupCmd.Name() != "shell-setup" {
+		t.Fatalf("resolved command Name() = %q, want \"shell-setup\"", setupCmd.Name())
+	}
+}
+
 func TestNoProcImports(t *testing.T) {
-	// Defensive: shell_install.go is file I/O only (Constitution I scope is
+	// Defensive: shell_setup.go is file I/O only (Constitution I scope is
 	// subprocess execution; this command does not invoke subprocesses). Guard
 	// against future regressions that import internal/proc or os/exec.
-	src, err := os.ReadFile("shell_install.go")
+	src, err := os.ReadFile("shell_setup.go")
 	if err != nil {
-		t.Fatalf("read shell_install.go: %v", err)
+		t.Fatalf("read shell_setup.go: %v", err)
 	}
 	if bytes.Contains(src, []byte("internal/proc")) {
-		t.Errorf("shell_install.go must not import internal/proc")
+		t.Errorf("shell_setup.go must not import internal/proc")
 	}
 	if bytes.Contains(src, []byte(`"os/exec"`)) {
-		t.Errorf("shell_install.go must not import os/exec")
+		t.Errorf("shell_setup.go must not import os/exec")
 	}
 }
