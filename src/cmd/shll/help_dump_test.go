@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -61,6 +60,12 @@ func TestHelpDump_ContractShape(t *testing.T) {
 		if bytes.Contains(raw, []byte(`"name": "`+excluded+`"`)) {
 			t.Errorf("dump must not contain filtered child %q; output:\n%s", excluded, raw)
 		}
+	}
+
+	// captured_at was removed from the envelope (shll.ai stamps it on pull);
+	// the key must be absent from the emitted document.
+	if bytes.Contains(raw, []byte(`"captured_at"`)) {
+		t.Errorf("dump must not contain captured_at (shll.ai-owned on pull); output:\n%s", raw)
 	}
 
 	// Leaf commands serialize as [], never null.
@@ -236,21 +241,13 @@ func TestHelpDump_VersionPassthrough(t *testing.T) {
 	}
 }
 
-var capturedAtRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T00:00:00Z$`)
-
-func TestHelpDump_CapturedAtShape(t *testing.T) {
-	_, doc := dump(t, newRootCmd())
-	if !capturedAtRE.MatchString(doc.CapturedAt) {
-		t.Errorf("captured_at = %q, want match %s", doc.CapturedAt, capturedAtRE)
-	}
-}
-
 func TestHelpDump_StructuralDeterminism(t *testing.T) {
 	root := newRootCmd()
 	root.Version = "v1.0.0"
 	first, _ := dump(t, root)
 	second, _ := dump(t, root)
-	// captured_at is date-granular, so two same-day dumps are byte-identical.
+	// The envelope carries no time-varying field, so two successive dumps of the
+	// same tree are byte-identical.
 	if !bytes.Equal(first, second) {
 		t.Errorf("two successive dumps differ:\n--- first ---\n%s\n--- second ---\n%s", first, second)
 	}

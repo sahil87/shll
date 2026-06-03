@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/spf13/cobra"
@@ -20,11 +19,6 @@ const helpDumpTool = "shll"
 // change to the JSON contract.
 const helpDumpSchemaVersion = 1
 
-// capturedAtLayout formats `captured_at` at date granularity
-// (YYYY-MM-DDT00:00:00Z) so same-day re-runs are byte-identical and the CI
-// no-op guard can suppress redundant shll.ai PRs.
-const capturedAtLayout = "2006-01-02T00:00:00Z"
-
 // Cobra auto-generates `completion` and `help` subcommands; both are excluded
 // from the dump (they are not part of shll's authored CLI surface).
 const (
@@ -37,7 +31,6 @@ const (
 type helpDoc struct {
 	Tool          string   `json:"tool"`
 	Version       string   `json:"version"`
-	CapturedAt    string   `json:"captured_at"`
 	SchemaVersion int      `json:"schema_version"`
 	Root          helpNode `json:"root"`
 }
@@ -91,7 +84,6 @@ func runHelpDump(root *cobra.Command, w io.Writer) error {
 	doc := helpDoc{
 		Tool:          helpDumpTool,
 		Version:       root.Version,
-		CapturedAt:    capturedAt(),
 		SchemaVersion: helpDumpSchemaVersion,
 		Root:          buildNode(root),
 	}
@@ -193,10 +185,4 @@ func nodeText(cmd *cobra.Command) string {
 		return usage
 	}
 	return blurb + "\n\n" + usage
-}
-
-// capturedAt returns the current UTC time at date granularity, formatted as
-// YYYY-MM-DDT00:00:00Z. Date-only granularity keeps same-day dumps identical.
-func capturedAt() string {
-	return time.Now().UTC().Format(capturedAtLayout)
 }
