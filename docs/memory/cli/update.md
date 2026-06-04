@@ -105,15 +105,85 @@ Design Decision #3 ("sequential, not parallel") governs **upgrades only**. Chang
 
 `shll update` frames each tool's foregrounded output with a labeled boundary so a multi-tool run is no longer one undifferentiated wall of text. All framing logic lives in the shared helper `src/cmd/shll/ui.go` (see [cli/commands](commands.md#file-layout-srccmdshll)); `update.go` only computes the color decision once and calls into it.
 
-- **Per-tool header.** Immediately before each tool's foregrounded output, `printToolHeader(stdout, name, color)` (`src/cmd/shll/ui.go:52`) writes `▸ <tool>` (bold-cyan arrow + bold name) on a color-enabled TTY, or `==> <tool>` in pure ASCII otherwise. The `==>` idiom matches Homebrew's convention so the plain form reads naturally alongside brew's own output. The self-upgrade step (step 7) gets a header labeled `shll (self)`; each roster tool (step 8) gets one labeled `t.Name`.
-- **Summary tail.** After the loop, `printSummaryTail(stdout, succeeded, total, color)` (`src/cmd/shll/ui.go:80`) writes exactly one line derived from **exit codes only**: `Done — N of M tools succeeded.` on full success (prefixed with a green `✓` when color), or `X succeeded, Y failed — see above.` on partial failure. `total` counts every tool attempted (self-upgrade + each installed roster tool); `succeeded` counts those that exited 0 — these mirror the same per-tool facts that drive `anyFailed`. The tail **never** claims "updated" vs. "up-to-date" (the honesty constraint — streamed sub-tool output means shll knows only exit codes), and never changes the process exit code.
+- **Per-tool header with `[N/M]` progress counter (change 6vuo).** Immediately before each tool's foregrounded output, `printToolHeader(stdout, name, pos, total, color)` (`src/cmd/shll/ui.go:56`) writes `▸ [N/M] <tool>` (bold-cyan arrow + bold name) on a color-enabled TTY, or `==> [N/M] <tool>` in pure ASCII otherwise. The `==>` idiom matches Homebrew's convention so the plain form reads naturally alongside brew's own output. `N` is the running 1-based position; `M` is the total tools acted on this run, **computed up front before the loop** (`update.go:194` — `total` is the count of `probes[i].installed` plus `1` when shll is brew-installed) so every header can carry a stable denominator. The self-upgrade step (step 7) gets the header `shll (self)` and is **`[1/M]`** — it counts as a tool like any other, so the counter agrees with the summary tail's `total` (which also includes the self step); each roster tool (step 8) gets `t.Name` at its position. (The header stays minimal — just `▸ [N/M] <tool>`; a dimmed command echo like `$ tu update --skip-brew-update` was considered and rejected as noise duplicating `--help`.) See [Worked header example](#worked-header-example-change-6vuo).
+- **Section spacing (change 6vuo).** A single blank line precedes each per-tool header **except the first**, and a single blank line precedes the summary tail — so each tool's streamed output is visually separated from the next header and from the tail. The loop emits the leading `\n` via the `updateHeader` closure (`update.go:206`, `if pos > 1`); the pre-tail blank is `fmt.Fprintln(stdout)` immediately before `printSummaryTail` (`update.go:264`). The empty/short-circuit case emits NO blank lines (its golden string is preserved — see [Empty case](#per-tool-output-separation-change-y630)).
+- **Summary tail with run duration (change 6vuo).** After the loop, `printSummaryTail(stdout, succeeded, total, elapsed, color)` (`src/cmd/shll/ui.go:96`) writes exactly one line derived from **exit codes only**, now with the wall-clock run duration appended to **both** forms: `Done — N of M tools succeeded in <dur>.` on full success (prefixed with a green `✓` when color), or `X succeeded, Y failed in <dur> — see above.` on partial failure (the duration sits **before** the em-dash). `total` counts every tool attempted (self-upgrade + each installed roster tool); `succeeded` counts those that exited 0 — these mirror the same per-tool facts that drive `anyFailed`. The duration is a **fact about the run, not an outcome claim** — the tail still **never** claims "updated" vs. "up-to-date" (the honesty constraint — streamed sub-tool output means shll knows only exit codes), and never changes the process exit code. Duration is rendered by `formatDuration` (`ui.go:80`) as `elapsed.Round(time.Second).String()` (e.g. `1m12s`; sub-second runs round to `0s`). See [Run duration and the clock seam](#run-duration-and-the-clock-seam-change-6vuo).
 - **Stream discipline (critical).** The header and tail are written to **stdout** — the same stream `proc.RunForeground` foregrounds sub-tool output onto (in production `cmd.OutOrStdout()` is `os.Stdout`). They are **never** written to stderr: a different buffer with independent flush timing would interleave unpredictably against the streamed output it labels. `TestUpdate_*` drive `runUpdate` with separate stdout/stderr buffers and assert header/tail text appears only in stdout.
-- **Color gating.** `colorEnabled(stdout)` (`src/cmd/shll/ui.go:35`) is evaluated once and reused for every header and the tail. It returns true only when **both** (1) stdout is a real terminal — the writer is an `*os.File` AND `term.IsTerminal(fd)` (from `golang.org/x/term`, the codebase's first terminal inspection), and (2) `NO_COLOR` is unset (no-color.org convention). A `bytes.Buffer` test writer is never an `*os.File`, so tests deterministically hit the plain-ASCII branch. The ASCII degrade swaps both the glyph (`▸`→`==>`) and any Unicode in shll's own framing; sub-tool bytes are passed through untouched in both forms.
-- **Empty case emits no header and no tail.** The nothing-to-do short-circuit (step 5, `No sahil87 tools installed.`) runs no per-tool loop, so there is nothing to separate or count. Its stdout is still **exactly** `Checking installed sahil87 tools…\nNo sahil87 tools installed.\n` — the `TestUpdate_NoToolsInstalled` golden string is preserved verbatim (no header, no tail). Only the loop path (step 8 reached) carries the new `==>`/tail markers in its golden strings.
+- **Color gating.** `colorEnabled(stdout)` (`src/cmd/shll/ui.go:37`) is evaluated once and reused for every header and the tail. It returns true only when **both** (1) stdout is a real terminal — the writer is an `*os.File` AND `term.IsTerminal(fd)` (from `golang.org/x/term`, the codebase's first terminal inspection), and (2) `NO_COLOR` is unset (no-color.org convention). A `bytes.Buffer` test writer is never an `*os.File`, so tests deterministically hit the plain-ASCII branch. The ASCII degrade swaps both the glyph (`▸`→`==>`) and any Unicode in shll's own framing; sub-tool bytes are passed through untouched in both forms.
+- **Empty case emits no header, no tail, no counter, no spacing, no duration.** The nothing-to-do short-circuit (step 5, `No sahil87 tools installed.`) runs no per-tool loop, so there is nothing to separate, count, or time. Its stdout is still **exactly** `Checking installed sahil87 tools…\nNo sahil87 tools installed.\n` — the `TestUpdate_NoToolsInstalled` and `TestUpdate_EmptyCaseNoHeaderNoTail` golden strings are preserved verbatim (no `[N/M]` header, no blank lines, no tail, no `in <dur>`). Only the loop path (step 8 reached) carries the `==> [N/M]`/blank-line/duration markers in its golden strings.
+
+### Worked header example (change 6vuo)
+
+With shll brew-installed and the full roster present, `shll update` (plain, non-TTY) frames the run as (blank lines shown explicitly):
+
+```
+Checking installed sahil87 tools…
+==> [1/7] shll (self)
+<shll's brew upgrade output…>
+
+==> [2/7] wt
+<wt's update output…>
+
+==> [3/7] idea
+
+==> [4/7] tu
+
+==> [5/7] rk
+
+==> [6/7] hop
+
+==> [7/7] fab-kit
+
+Done — 7 of 7 tools succeeded in 1m12s.
+```
+
+This exact sequence (status line, `[1/7] shll (self)` first, a blank line before each subsequent header and before the tail, and the duration-bearing tail) is the `TestUpdate_HeadersAndTail` golden at `src/cmd/shll/update_test.go:571` (which installs a deterministic clock returning `t0` then `t0+72s` so the tail reads `in 1m12s`). `TestUpdate_HeaderPrecedesOutput` pins that the `==> [1/1] hop` header is in the buffer *before* hop's foregrounded upgrade runs; `TestUpdate_PartialFailureTail` pins the partial-failure tail `1 succeeded, 1 failed in 1m12s — see above.` and asserts the honesty constraint (no "updated"/"up-to-date").
+
+### Run duration and the clock seam (change 6vuo)
+
+The duration in the summary tail is measured via an injectable package-level clock seam — `var nowFunc = time.Now` in `src/cmd/shll/clock.go`. This mirrors the `proc.Runner` package-level-swappable injection pattern (`src/internal/proc/proc.go`) exactly: production wiring uses the real `time.Now`; tests swap it through the `installFakeClock(t, times...)` t.Cleanup helper (`src/cmd/shll/clock_test.go:13`, mirroring `installFakeRunner`) to a deterministic clock that returns the supplied times in sequence (the last value repeats), so the duration-bearing golden strings stay exact rather than racing a real wall clock.
+
+`runUpdate` captures `start := nowFunc()` at `update.go:159` — **after** the nothing-to-do short-circuit *and* the dry-run branch have returned — so the measured elapsed (`nowFunc().Sub(start)` at `update.go:265`) covers only the write phase the tail summarizes (the metadata refresh + self-upgrade + roster loop), not the read-only probe phase. The seam keeps `runUpdate`'s signature stable; the only signature change is the new `dryRun bool` parameter (see [`--dry-run`](#dry-run-change-6vuo)). `TestInstallFakeClock_Sequences` unit-tests the helper's sequencing.
+
+## `--dry-run` (change 6vuo)
+
+`shll update --dry-run` previews the exact commands the run **would** execute, then exits 0 **without any write**. The flag is a cobra bool (`dryRunFlag = "dry-run"`, usage `dryRunFlagUsage`, both named constants in `update.go:66`), wired in `newUpdateCmd` and read in `RunE` into the new `dryRun bool` parameter on `runUpdate`.
+
+**Reads run; writes do not — the safety contract.** Dry-run is *not* a no-op: the read-only probes the command already runs still run (they are reads, and the preview accuracy depends on them) — `hasBrew`, the full `probeRoster` (`brew list --formula --versions` install detection + the `<tool> update --help` `--skip-brew-update` capability check), and the shll-self `brew list`. But **no write** is performed below the probe phase: NO `brew update --quiet` (it mutates brew's local metadata — itself a side effect), NO `brew upgrade`, NO `<tool> update`. The guarantee is **structural**: the dry-run branch (`update.go:140`) returns before `start := nowFunc()` and the whole write phase, so no write path is reachable. `TestUpdate_DryRunNoWrites` asserts both directions — the read-only probes (`brew list`, a `<tool> update --help`) ARE recorded, while `brew update --quiet`, `brew upgrade shllFormula`, every `<tool> update` write, and every `brew upgrade <formula>` are NOT — and additionally asserts **zero `TransportForeground` calls** (all writes are foreground, so their absence is a clean structural check).
+
+**The preview.** A header line `Would update N tools (brew metadata refresh first):` (`updatePreviewHeaderFmt`), then one aligned row per actionable tool. The "brew metadata refresh first" annotation reflects that the *real* run calls `brew update --quiet` once up front — but dry-run does NOT run it. Rows are built in `runUpdate` (`update.go:141`) from probe results: `shll (self)` first when brew-installed (`brew upgrade sahil87/tap/shll`), then each installed roster tool in roster order. The per-tool command string is `argvString(upgradeArgv(t, probes[i].supportsSkipFlag)...)` — i.e. rendered from the **same `upgradeArgv` the live run uses** (`update.go:340`, the single source of truth shared by `upgradeTool` and the preview), so the preview can never drift from what the run would do. Per-tool argv dispatch:
+
+- has `Update` argv + supports the flag → `<tool> update --skip-brew-update`
+- has `Update` argv, no flag (version skew) → `<tool> update`
+- no `Update` argv (hypothetical future tool) → `brew upgrade sahil87/tap/<formula>`
+- `shll (self)` (when brew-installed) → `brew upgrade sahil87/tap/shll`
+
+Formatting lives in `ui.go`'s `printUpdatePreview` → `printPreviewRows`: a 2-space row indent (`previewIndent`), tool labels left-padded to the **longest label present** (including `shll (self)`, the widest at 11 chars when present), then a 2-space gap (`previewGap`) before the command — so commands line up in a readable column. The preview rows carry **no `[N/M]` counter and no blank-line spacing** — those are streaming-loop concerns; the preview is a static aligned table.
+
+```
+Would update 7 tools (brew metadata refresh first):
+  shll (self)  brew upgrade sahil87/tap/shll
+  wt           wt update
+  idea         idea update
+  tu           tu update
+  rk           rk update
+  hop          hop update
+  fab-kit      fab-kit update
+```
+
+(`TestUpdate_DryRunPreviewWithSelf` golden — shll brew-installed, no tool advertises the flag.)
+
+**Graceful degradation (Constitution V).** The preview lists only actionable tools — uninstalled roster tools are omitted, exactly as they are skipped in the real upgrade loop. With only `hop` and `wt` installed and shll not brew-installed, the preview is exactly those two in roster order (`wt` then `hop`), header `Would update 2 tools (brew metadata refresh first):` (`TestUpdate_DryRunGracefulDegradation`). `TestUpdate_DryRunPreview` covers the full roster with shll *not* brew-installed and `rk`/`hop` advertising the flag (so they read `… update --skip-brew-update`).
+
+**Empty case.** When nothing is installed AND shll itself is not brew-installed, the dry-run path never reaches the preview builder — the shared nothing-to-do short-circuit (step 5) fires first, so stdout is exactly `Checking installed sahil87 tools…\nNo sahil87 tools installed.\n` (the `noToolsInstalledMsg` constant, shared with the non-dry-run short-circuit), exit 0, no preview table, no `brew update` (`TestUpdate_DryRunEmptyCase`).
+
+**Brew-missing precondition unchanged.** `--dry-run` does not relax the `hasBrew` bail — a missing brew still writes `brewMissingHint` to stderr and exits 1 (the brew-missing check at `update.go:92` precedes the dry-run branch).
+
+Exit code: always 0 in dry-run (no writes, nothing can fail) except the brew-missing precondition (exit 1).
 
 ## Leaves-first Roster order (change auvj)
 
-`shll update` probes and upgrades in `Roster` order (step 8 iterates `Roster`). Since change auvj, that order is **leaves-first**: `wt, idea, tu, rk, hop, fab-kit`. With shll itself brew-installed and the full roster present, the per-tool headers print as `==> shll (self)` then `==> wt`, `==> idea`, `==> tu`, `==> rk`, `==> hop`, `==> fab-kit` (`TestUpdate_HeadersAndTail` golden at `src/cmd/shll/update_test.go`, with the `Done — 7 of 7 tools succeeded.` tail).
+`shll update` probes and upgrades in `Roster` order (step 8 iterates `Roster`). Since change auvj, that order is **leaves-first**: `wt, idea, tu, rk, hop, fab-kit`. With shll itself brew-installed and the full roster present, the per-tool headers print as `==> [1/7] shll (self)` then `==> [2/7] wt`, `==> [3/7] idea`, `==> [4/7] tu`, `==> [5/7] rk`, `==> [6/7] hop`, `==> [7/7] fab-kit` (the `[N/M]` counters added by change 6vuo), each header after the first preceded by a blank line, with the `Done — 7 of 7 tools succeeded in 1m12s.` duration-bearing tail (`TestUpdate_HeadersAndTail` golden at `src/cmd/shll/update_test.go:571` — see [Worked header example](#worked-header-example-change-6vuo)).
 
 This ordering is **output coherence**, not correctness: it ensures each tool's `==> <tool>` section completes and is counted in the summary tail before a *dependent* tool's internal `brew upgrade` can re-touch a leaf already reported done under its own header. It is **not** a correctness fix — brew resolves formula deps idempotently and each `<tool> update` is self-update-only, so no tool's `update` cascades into another tool's upgrade during `shll update`; the order can neither break nor improve upgrade correctness. The full rationale, the dependency graph (brew-upgrade + runtime edges), the invariant test `TestRosterLeavesBeforeDependents`, and the "no `DependsOn` field" decision live in [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj). The order-independent update invariants (brew-missing bail, status line, single `brew update`, self-upgrade-before-roster, best-effort loop, summary tail, exit codes) are unaffected by the reorder; `TestUpdate_SelfUpgradeOrdering`/`TestUpdate_OneUpgradeFails` reference `Roster[0]` (now `wt`) dynamically and need no edit.
 
@@ -172,8 +242,17 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_NoUpdateArgvFallsBackToBrew` — a temporary single-entry roster with a `legacy` tool that has an empty `Update` argv → falls back to `brew upgrade <formula>`; no delegated update, no `--help` probe.
 - `TestUpdate_StatusLinePrecedesProbes` — stdout starts with `updateStatusLine` + `\n` before any probe/brew output.
 - `TestUpdate_BrewUpdateRunsExactlyOnce` — with `rk`/`hop`/`wt` installed, `brew update --quiet` runs exactly once for the whole run.
+- `TestUpdate_HeadersAndTail` *(change 6vuo, golden updated)* — shll + full roster installed; asserts the verbatim `[N/M]` headers (`==> [1/7] shll (self)` first), the blank line before each subsequent header and before the tail, and the duration-bearing `Done — 7 of 7 tools succeeded in 1m12s.` tail (installs a deterministic clock).
+- `TestUpdate_HeaderPrecedesOutput` *(change 6vuo)* — the `==> [1/1] hop` header is in the buffer before hop's foregrounded upgrade runs.
+- `TestUpdate_PartialFailureTail` *(change 6vuo)* — `hop`+`wt` installed (shll not brewed → `total=2`), hop fails → partial-failure tail `1 succeeded, 1 failed in 1m12s — see above.` with the duration before the em-dash; asserts the honesty constraint (no "updated"/"up-to-date").
+- `TestUpdate_EmptyCaseNoHeaderNoTail` *(change 6vuo)* — nothing installed → status line + `No sahil87 tools installed.` only, with no `==>` header and no `Done —`/duration tail.
+- `TestUpdate_DryRunPreview` *(change 6vuo)* — shll NOT brew-installed, full roster, `rk`/`hop` advertise the flag → verbatim aligned-column preview (`Would update 6 tools (brew metadata refresh first):` then padded rows, `rk`/`hop` reading `… update --skip-brew-update`).
+- `TestUpdate_DryRunPreviewWithSelf` *(change 6vuo)* — shll brew-installed + full roster, no flag advertised → preview lists `shll (self)` first (`brew upgrade sahil87/tap/shll`), `shll (self)` is the widest label so all commands align under it.
+- `TestUpdate_DryRunNoWrites` *(change 6vuo)* — read-only probes (`brew list`, a `<tool> update --help`) ARE recorded; `brew update --quiet`/`brew upgrade`/every `<tool> update`/every `brew upgrade <formula>` are NOT; and **zero** `TransportForeground` calls.
+- `TestUpdate_DryRunGracefulDegradation` *(change 6vuo)* — only `hop`+`wt` installed → preview lists exactly `wt`, `hop` (roster order), header `Would update 2 tools (brew metadata refresh first):`.
+- `TestUpdate_DryRunEmptyCase` *(change 6vuo)* — nothing installed → dry-run mirrors the nothing-to-do message, no preview table, no `brew update`, exit 0.
 
-Per-tool output separation (change y630) is unit-tested directly against the `ui.go` helpers in `ui_test.go` (`TestPrintToolHeader_PlainForm`/`_ColorForm`, `TestPrintSummaryTail_AllSucceeded*`/`_PartialFailure`, `TestColorEnabled_*`, `TestToolComment_*`); `update_test.go` additionally asserts that the `==> shll (self)` and per-tool `==> <tool>` headers and the plain summary tail appear in the **stdout** buffer and never in the stderr buffer (the stream-discipline guarantee).
+Per-tool output separation (change y630) plus the change-6vuo `[N/M]` counter, duration, and preview helpers are unit-tested directly against the `ui.go` helpers in `ui_test.go` (`TestPrintToolHeader_PlainForm`/`_ColorForm` now assert the `[N/M]` counter; `TestPrintSummaryTail_AllSucceeded*`/`_PartialFailure` assert the `in 1m12s` suffix; `TestFormatDuration`, `TestPrintUpdatePreview_AlignedColumns`, `TestPrintInstallPreview_AlignedColumns`, `TestColorEnabled_*`, `TestToolComment_*`); the clock seam helper is exercised by `TestInstallFakeClock_Sequences` (`clock_test.go`). `update_test.go` additionally asserts that the `==> [N/M] shll (self)` and per-tool `==> [N/M] <tool>` headers and the plain summary tail appear in the **stdout** buffer and never in the stderr buffer (the stream-discipline guarantee).
 
 ## Cross-references
 

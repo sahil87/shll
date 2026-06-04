@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sahil87/shll/internal/proc"
 )
@@ -20,7 +21,7 @@ func TestInstall_BrewMissing(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr)
+	err := runInstall(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent", err)
 	}
@@ -46,7 +47,7 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != "All sahil87 tools already installed.\n" {
@@ -73,7 +74,7 @@ func TestInstall_NoneInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	for _, tool := range Roster {
@@ -106,7 +107,7 @@ func TestInstall_PartialInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runInstall err = %v", err)
 	}
 	// Already-installed tools must NOT receive an install call.
@@ -145,7 +146,7 @@ func TestInstall_NoBrewUpdateInvoked(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runInstall err = %v", err)
 	}
 	if invocationsContain(f.calls, brewBinary, "update", "--quiet") {
@@ -171,7 +172,7 @@ func TestInstall_OneInstallFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr)
+	err := runInstall(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (overall failure)", err)
 	}
@@ -194,12 +195,21 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	// stdout is exactly shll's own framing.
 	f := &fakeRunner{respond: installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")}
 	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	want := "==> idea\n==> tu\n==> rk\n==> fab-kit\nDone — 4 of 4 tools succeeded.\n"
+	// Headers carry the [N/M] counter over the missing subset (M=4), each header
+	// after the first is preceded by a blank line, and a blank line precedes the
+	// duration-bearing tail.
+	want := "==> [1/4] idea\n" +
+		"\n==> [2/4] tu\n" +
+		"\n==> [3/4] rk\n" +
+		"\n==> [4/4] fab-kit\n" +
+		"\nDone — 4 of 4 tools succeeded in 1m12s.\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -218,7 +228,7 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != "All sahil87 tools already installed.\n" {
@@ -245,13 +255,120 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr)
+	err := runInstall(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (one install failed)", err)
 	}
-	if !strings.HasSuffix(stdout.String(), "5 succeeded, 1 failed — see above.\n") {
+	// Partial-failure tail carries the duration before the em-dash.
+	if !strings.HasSuffix(stdout.String(), "5 succeeded, 1 failed in 1m12s — see above.\n") {
 		t.Fatalf("stdout = %q, want to end with partial-failure tail (5/1)", stdout.String())
+	}
+}
+
+func TestInstall_DryRunPreview(t *testing.T) {
+	// hop and wt installed; idea, tu, rk, fab-kit missing. Dry-run prints the
+	// aligned-column preview of the `brew install` commands, in roster order, with
+	// NO install performed.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
+	}
+	// Longest missing label is "fab-kit" (7); shorter labels pad to 7.
+	want := "Would install 4 tools:\n" +
+		"  idea     brew install sahil87/tap/idea\n" +
+		"  tu       brew install sahil87/tap/tu\n" +
+		"  rk       brew install sahil87/tap/rk\n" +
+		"  fab-kit  brew install sahil87/tap/fab-kit\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("dry-run preview =\n%q\nwant\n%q", got, want)
+	}
+	if strings.Contains(stdout.String(), "metadata refresh") {
+		t.Fatalf("install dry-run must not mention metadata refresh, got %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestInstall_DryRunNoWrites(t *testing.T) {
+	// Dry-run runs the isInstalled probes but performs NO `brew install`. Everything
+	// missing → all six would be installed, but none actually are.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	// Read-only probe (brew list) IS present.
+	if !invocationsContain(calls, brewBinary, "list", "--formula", "--versions", formulaPrefix+"wt") {
+		t.Errorf("expected brew list probe, calls: %+v", calls)
+	}
+	// No `brew install` write, and no foreground transport at all.
+	for _, tool := range Roster {
+		if invocationsContain(calls, brewBinary, "install", tool.Formula) {
+			t.Errorf("brew install %s must NOT run in dry-run", tool.Formula)
+		}
+	}
+	for _, c := range calls {
+		if c.Transport == proc.TransportForeground {
+			t.Errorf("dry-run must spawn no foreground (write) subprocess, got %+v", c)
+		}
+	}
+}
+
+func TestInstall_DryRunEmptyCase(t *testing.T) {
+	// Everything already installed → dry-run mirrors the non-dry-run nothing-to-do
+	// message, exit 0, no preview table, no installs.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
+	}
+	if got := stdout.String(); got != allInstalledMsg+"\n" {
+		t.Fatalf("dry-run empty case stdout = %q, want the nothing-to-do note", got)
+	}
+	if strings.Contains(stdout.String(), "Would install") {
+		t.Fatalf("dry-run empty case must not print a preview table, got %q", stdout.String())
+	}
+}
+
+func TestInstall_CounterPartialInstall(t *testing.T) {
+	// Counter correctness: only idea installed → missing subset is wt, tu, rk, hop,
+	// fab-kit (5 tools, roster order), so headers read [1/5]..[5/5].
+	f := &fakeRunner{respond: installedOnly(formulaPrefix + "idea")}
+	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, false); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	want := "==> [1/5] wt\n" +
+		"\n==> [2/5] tu\n" +
+		"\n==> [3/5] rk\n" +
+		"\n==> [4/5] hop\n" +
+		"\n==> [5/5] fab-kit\n" +
+		"\nDone — 5 of 5 tools succeeded in 1m12s.\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }

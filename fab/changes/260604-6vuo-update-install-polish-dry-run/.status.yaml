@@ -1,0 +1,49 @@
+id: 6vuo
+name: 260604-6vuo-update-install-polish-dry-run
+created: 2026-06-04T10:42:48Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 13
+    acceptance_count: 19
+    acceptance_completed: 19
+confidence:
+    certain: 14
+    confident: 4
+    tentative: 0
+    unresolved: 0
+    score: 3.8
+    fuzzy: true
+    dimensions:
+        signal: 92.5
+        reversibility: 74.7
+        competence: 83.2
+        disambiguation: 82.2
+stage_metrics:
+    intake: {started_at: "2026-06-04T10:42:48Z", driver: fab-new, iterations: 1, completed_at: "2026-06-04T10:55:32Z"}
+    apply: {started_at: "2026-06-04T10:55:32Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-04T11:06:53Z"}
+    review: {started_at: "2026-06-04T11:06:53Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-04T11:10:23Z"}
+    hydrate: {started_at: "2026-06-04T11:10:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-04T11:15:16Z"}
+    ship: {started_at: "2026-06-04T11:15:16Z", driver: fab-fff, iterations: 1}
+prs: []
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-06-04T11:15:16Z"
+    computed_at_stage: hydrate
+# true_impact: lazily created on first apply-finish (no placeholder here).
+last_updated: 2026-06-04T11:15:16Z
