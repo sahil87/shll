@@ -39,7 +39,7 @@ const noToolsInstalledMsg = "No sahil87 tools installed."
 
 func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update",
+		Use:   "update [tool...]",
 		Short: "brew update + per-tool update for shll and every installed sahil87 tool",
 		Long: `Update shll itself and every installed sahil87 tool via Homebrew.
 
@@ -50,11 +50,19 @@ advertises it) so each tool's post-upgrade side effects (e.g. rk's daemon restar
 are preserved. A roster tool that exposes no ` + "`update`" + ` is upgraded via
 ` + "`brew upgrade sahil87/tap/<formula>`" + ` instead. Uninstalled tools (including shll
 itself, e.g. on a ` + "`go install`" + ` dev build) are skipped silently. Brew and per-tool
-progress output streams directly to your terminal.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+progress output streams directly to your terminal.
+
+With no arguments, shll update processes the whole roster as above. Pass one or
+more tool names to update only that subset (valid targets: shll, wt, idea, tu, rk,
+hop, fab-kit) — e.g. ` + "`shll update shll`" + ` to bump only shll itself, or
+` + "`shll update hop wt`" + ` for a pair. The subset is always processed in roster order
+regardless of the order given. An unknown name, or a named tool that is not
+installed, is a hard error (a named tool, unlike the whole-roster sweep, is not
+silently skipped).`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool(dryRunFlag)
-			return runUpdate(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun)
+			return runUpdate(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, args)
 		},
 	}
 	cmd.Flags().Bool(dryRunFlag, false, dryRunFlagUsage)
@@ -85,10 +93,30 @@ type probeResult struct {
 // writers and a fake proc.Runner. When dryRun is set, the read-only probes still
 // run (they are reads) but NO write is performed — no `brew update --quiet`, no
 // `brew upgrade`, no `<tool> update` — and the planned commands are previewed.
-func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool) error {
+//
+// args are the positional tool-name targets. Empty args = the whole-roster run
+// (unchanged behavior). One or more args restrict the run to that validated
+// subset (valid targets: the Roster names plus shll itself). An unknown name is a
+// hard error reported before any work; a named-but-not-installed target is an
+// error too (distinct from the whole-roster graceful skip — explicitly naming a
+// tool means the user expects it present).
+func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	// Resolve the subset UP FRONT — before hasBrew, the status line, and any
+	// probe — so an unknown target fails loudly with no brew/network side effect.
+	// allowShll=true: shll itself is a valid `update` target (the motivating
+	// `shll update shll` case). Empty args yields an empty selection and the
+	// subset==false path below keeps the whole-roster behavior.
+	subset := len(args) > 0
+	selected, selfSelected, err := resolveTargets(args, true)
+	if err != nil {
+		fmt.Fprintf(stderr, "shll update: %v\n", err)
+		return errSilent
+	}
+
 	if !hasBrew(ctx) {
 		fmt.Fprintln(stderr, brewMissingHint)
 		return errSilent
@@ -115,8 +143,55 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool) error
 	probes := probeRoster(ctx)
 
 	// Self-upgrade only when shll was installed via brew. A `go install` or
-	// local-build shll is not brew-managed and brew upgrade would error.
-	shllSelfInstalled := isInstalled(ctx, shllFormula)
+	// local-build shll is not brew-managed and brew upgrade would error. For a
+	// subset run, shll is acted on only when it was explicitly named.
+	shllInstalled := isInstalled(ctx, shllFormula)
+	shllSelfInstalled := shllInstalled
+	if subset {
+		shllSelfInstalled = selfSelected && shllInstalled
+	}
+
+	// Apply the subset to the probe results: a subset run acts on the named tools
+	// only. First enforce the named-but-not-installed error, THEN mark every
+	// non-selected roster tool as not-installed so the existing
+	// total/upgrade-loop/dry-run/tail code paths operate on the subset with no
+	// structural change (they all key off probes[i].installed). The whole-roster
+	// run leaves probes untouched.
+	if subset {
+		want := make(map[string]bool, len(selected))
+		for _, t := range selected {
+			want[t.Name] = true
+		}
+
+		// Named-but-not-installed is an error (distinct from the whole-roster
+		// graceful skip): explicitly naming a tool means the user expects it
+		// present, so its absence is surfaced rather than silently skipped. Probe
+		// results for selected tools still carry their true install status (only
+		// non-selected tools get zeroed, below). Check every selected target (incl.
+		// shll-self) before any brew write, and report all missing targets at once
+		// in roster order for a better one-shot fix.
+		var missingNamed []string
+		if selfSelected && !shllInstalled {
+			missingNamed = append(missingNamed, shllTargetToken)
+		}
+		for i, t := range Roster {
+			if want[t.Name] && !probes[i].installed {
+				missingNamed = append(missingNamed, t.Name)
+			}
+		}
+		if len(missingNamed) > 0 {
+			for _, name := range missingNamed {
+				fmt.Fprintf(stderr, "shll update: %s: not installed\n", name)
+			}
+			return errSilent
+		}
+
+		for i := range Roster {
+			if !want[Roster[i].Name] {
+				probes[i].installed = false
+			}
+		}
+	}
 
 	anyInstalled := false
 	for _, p := range probes {

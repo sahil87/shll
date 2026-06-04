@@ -92,7 +92,7 @@ func TestUpdate_BrewMissing(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false)
+	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent", err)
 	}
@@ -123,7 +123,7 @@ func TestUpdate_NoToolsInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	// The status line prints first (unconditionally, before the short-circuit),
@@ -162,7 +162,7 @@ func TestUpdate_AllInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -194,7 +194,7 @@ func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -275,7 +275,7 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -318,7 +318,7 @@ func TestUpdate_PartialInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 	calls := f.recordedCalls()
@@ -371,7 +371,7 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false)
+	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (brew update non-zero exit)", err)
 	}
@@ -402,7 +402,7 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false)
+	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (overall failure)", err)
 	}
@@ -459,7 +459,7 @@ func TestUpdate_FlagSupported(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -482,7 +482,7 @@ func TestUpdate_FlagUnsupportedVersionSkew(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -510,7 +510,7 @@ func TestUpdate_NoUpdateArgvFallsBackToBrew(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -535,7 +535,7 @@ func TestUpdate_StatusLinePrecedesProbes(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if !strings.HasPrefix(stdout.String(), updateStatusLine+"\n") {
@@ -554,7 +554,7 @@ func TestUpdate_BrewUpdateRunsExactlyOnce(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	count := 0
@@ -584,7 +584,7 @@ func TestUpdate_HeadersAndTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 
@@ -626,7 +626,7 @@ func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	// Only hop is installed (shll not brew-installed via installedOnly), so M=1 and
@@ -653,7 +653,7 @@ func TestUpdate_PartialFailureTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false)
+	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (one tool failed)", err)
 	}
@@ -683,7 +683,7 @@ func TestUpdate_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != updateStatusLine+"\nNo sahil87 tools installed.\n" {
@@ -711,7 +711,7 @@ func TestUpdate_DryRunPreview(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	// Longest label is "fab-kit" (7) since shll (self) is absent here; labels are
@@ -742,7 +742,7 @@ func TestUpdate_DryRunPreviewWithSelf(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	want := updateStatusLine + "\n" +
@@ -768,7 +768,7 @@ func TestUpdate_DryRunNoWrites(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -819,7 +819,7 @@ func TestUpdate_DryRunGracefulDegradation(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	want := updateStatusLine + "\n" +
@@ -828,6 +828,265 @@ func TestUpdate_DryRunGracefulDegradation(t *testing.T) {
 		"  hop  hop update\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("dry-run graceful preview =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// --- Subset targeting (`shll update [tool...]`, change b2vg) ---
+
+func TestUpdate_SubsetUnknownTargetHardErrors(t *testing.T) {
+	// A typo'd / unknown target must fail loudly BEFORE any brew work: exit
+	// non-zero, stderr names the unknown arg and lists valid targets, and NO brew
+	// subprocess (not even `brew --version`) runs.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hpo"})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent for unknown target", err)
+	}
+	if !strings.Contains(stderr.String(), `"hpo"`) {
+		t.Errorf("stderr = %q, want to name the unknown arg %q", stderr.String(), "hpo")
+	}
+	// The valid-target list is present so the user can self-correct (shll + roster).
+	for _, want := range []string{shllTargetToken, "wt", "fab-kit"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr = %q, want to list valid target %q", stderr.String(), want)
+		}
+	}
+	// No brew/network work — validation is up front.
+	if len(f.recordedCalls()) != 0 {
+		t.Fatalf("expected NO subprocess calls on unknown target, got %+v", f.recordedCalls())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty on unknown target", stdout.String())
+	}
+}
+
+func TestUpdate_SubsetMultipleUnknownAllReported(t *testing.T) {
+	// When multiple args are unknown, all are reported in one error (better
+	// one-shot fix).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{} }}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"foo", "bar"})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent", err)
+	}
+	if !strings.Contains(stderr.String(), `"foo"`) || !strings.Contains(stderr.String(), `"bar"`) {
+		t.Fatalf("stderr = %q, want to name BOTH unknown args", stderr.String())
+	}
+}
+
+func TestUpdate_SubsetNamedNotInstalledErrors(t *testing.T) {
+	// Only hop is installed; the user names `rk`, which is NOT installed → error
+	// (distinct from the whole-roster graceful skip). Exit non-zero, nothing
+	// upgraded.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix + "hop")}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"rk"})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent for named-not-installed", err)
+	}
+	if !strings.Contains(stderr.String(), "rk: not installed") {
+		t.Fatalf("stderr = %q, want to report `rk: not installed`", stderr.String())
+	}
+	calls := f.recordedCalls()
+	// No write: no brew update, no upgrade of any kind.
+	if invocationsContain(calls, brewBinary, "update", "--quiet") {
+		t.Error("brew update --quiet must NOT run when a named target is not installed")
+	}
+	if invocationsContain(calls, "rk", "update") || invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"rk") {
+		t.Error("nothing should be upgraded when a named target is not installed")
+	}
+}
+
+func TestUpdate_SubsetShllSelfTargetOnly(t *testing.T) {
+	// `shll update shll` with shll brew-installed → only the self-upgrade runs;
+	// no roster tool is upgraded. The single `brew update --quiet` still runs once.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{} }}
+	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0) // sub-second → "0s"
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{shllTargetToken}); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, brewBinary, "update", "--quiet") {
+		t.Error("brew update --quiet should still run once for a subset (incl. shll-only)")
+	}
+	if !invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
+		t.Error("expected the shll self-upgrade")
+	}
+	// No roster tool is acted on.
+	for _, tool := range Roster {
+		if invocationsContain(calls, tool.Update[0], tool.Update[1]) {
+			t.Errorf("roster tool %s must NOT be upgraded for `shll update shll`", tool.Name)
+		}
+		if invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
+			t.Errorf("roster tool %s must NOT be brew-upgraded for `shll update shll`", tool.Name)
+		}
+	}
+	// Subset of 1 → header [1/1] shll (self), tail M=1.
+	if !strings.Contains(stdout.String(), "==> [1/1] shll (self)\n") {
+		t.Errorf("stdout = %q, want `==> [1/1] shll (self)` header", stdout.String())
+	}
+	if !strings.HasSuffix(stdout.String(), "Done — 1 of 1 tools succeeded in 0s.\n") {
+		t.Errorf("stdout = %q, want `Done — 1 of 1 tools …` tail", stdout.String())
+	}
+}
+
+func TestUpdate_SubsetShllSelfNotBrewInstalledErrors(t *testing.T) {
+	// `shll update shll` on a dev build (shll not brew-installed) → named-but-not-
+	// installed error, the SAME error case as a roster tool.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" && req.Args[3] == shllFormula {
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{shllTargetToken})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent for `shll update shll` on a dev build", err)
+	}
+	if !strings.Contains(stderr.String(), "shll: not installed") {
+		t.Fatalf("stderr = %q, want to report `shll: not installed`", stderr.String())
+	}
+	if invocationsContain(f.recordedCalls(), brewBinary, "upgrade", shllFormula) {
+		t.Error("self-upgrade must NOT run when shll itself is not brew-installed")
+	}
+}
+
+func TestUpdate_SubsetSelfFirstThenRosterOrder(t *testing.T) {
+	// `shll update hop shll` → shll self-upgrade first, then hop. Arg order is
+	// (hop, shll) but processing is (shll-self, then roster order).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{} }}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hop", shllTargetToken}); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	selfIdx, hopIdx := -1, -1
+	for i, c := range calls {
+		if c.Name == brewBinary && len(c.Args) >= 2 && c.Args[0] == "upgrade" && c.Args[1] == shllFormula {
+			selfIdx = i
+		}
+		if c.Name == "hop" && len(c.Args) == 1 && c.Args[0] == "update" {
+			hopIdx = i
+		}
+	}
+	if selfIdx == -1 || hopIdx == -1 {
+		t.Fatalf("missing expected upgrades (self=%d, hop=%d), calls: %+v", selfIdx, hopIdx, calls)
+	}
+	if selfIdx >= hopIdx {
+		t.Fatalf("shll self-upgrade (%d) must come before hop (%d)", selfIdx, hopIdx)
+	}
+	// Subset of 2 → headers [1/2] shll (self), [2/2] hop.
+	if !strings.Contains(stdout.String(), "==> [1/2] shll (self)\n") || !strings.Contains(stdout.String(), "==> [2/2] hop\n") {
+		t.Errorf("stdout = %q, want [1/2] shll (self) and [2/2] hop headers", stdout.String())
+	}
+}
+
+func TestUpdate_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
+	// `shll update fab-kit wt` (both installed) → processed in roster order: wt
+	// before fab-kit, regardless of arg order. M=2.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix+"fab-kit", formulaPrefix+"wt")}
+	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0) // sub-second → "0s"
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"fab-kit", "wt"}); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	wtIdx, fabIdx := -1, -1
+	for i, c := range calls {
+		if c.Name == "wt" && len(c.Args) == 1 && c.Args[0] == "update" {
+			wtIdx = i
+		}
+		if c.Name == "fab-kit" && len(c.Args) == 1 && c.Args[0] == "update" {
+			fabIdx = i
+		}
+	}
+	if wtIdx == -1 || fabIdx == -1 {
+		t.Fatalf("missing wt/fab-kit upgrades (wt=%d, fab-kit=%d), calls: %+v", wtIdx, fabIdx, calls)
+	}
+	if wtIdx >= fabIdx {
+		t.Fatalf("wt (%d) must be processed before fab-kit (%d) — roster order, not arg order", wtIdx, fabIdx)
+	}
+	// Only the two named tools are acted on (shll not named → no self-upgrade; idea/tu/rk/hop untouched).
+	if invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
+		t.Error("shll self-upgrade must NOT run when shll is not named")
+	}
+	for _, name := range []string{"idea", "tu", "rk", "hop"} {
+		if invocationsContain(calls, name, "update") {
+			t.Errorf("unnamed tool %s must NOT be upgraded", name)
+		}
+	}
+	// Counter denominator M=2.
+	if !strings.Contains(stdout.String(), "==> [1/2] wt\n") || !strings.Contains(stdout.String(), "==> [2/2] fab-kit\n") {
+		t.Errorf("stdout = %q, want [1/2] wt and [2/2] fab-kit headers", stdout.String())
+	}
+	if !strings.HasSuffix(stdout.String(), "Done — 2 of 2 tools succeeded in 0s.\n") {
+		t.Errorf("stdout = %q, want `Done — 2 of 2 …` tail (M = subset size)", stdout.String())
+	}
+}
+
+func TestUpdate_SubsetBrewUpdateRunsOnce(t *testing.T) {
+	// `brew update --quiet` runs exactly once even for a single-tool subset.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix + "hop")}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hop"}); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	count := 0
+	for _, c := range f.recordedCalls() {
+		if c.Name == brewBinary && len(c.Args) >= 2 && c.Args[0] == "update" && c.Args[1] == "--quiet" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("brew update --quiet ran %d times for a single-tool subset, want exactly 1", count)
+	}
+}
+
+func TestUpdate_SubsetDryRunPreviewFiltered(t *testing.T) {
+	// `shll update --dry-run hop wt` (both installed, shll not named) → preview
+	// lists exactly the two-tool subset in roster order (wt then hop), M=2, no write.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, []string{"hop", "wt"}); err != nil {
+		t.Fatalf("runUpdate --dry-run subset err = %v, want nil", err)
+	}
+	want := updateStatusLine + "\n" +
+		"Would update 2 tools (brew metadata refresh first):\n" +
+		"  wt   wt update\n" +
+		"  hop  hop update\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("subset dry-run preview =\n%q\nwant\n%q", got, want)
+	}
+	// No write of any kind in dry-run.
+	for _, c := range f.recordedCalls() {
+		if c.Transport == proc.TransportForeground {
+			t.Errorf("subset dry-run must spawn no foreground (write) subprocess, got %+v", c)
+		}
 	}
 }
 
@@ -846,7 +1105,7 @@ func TestUpdate_DryRunEmptyCase(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != updateStatusLine+"\n"+noToolsInstalledMsg+"\n" {
