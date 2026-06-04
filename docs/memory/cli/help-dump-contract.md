@@ -1,30 +1,30 @@
 # cli/help-dump-contract
 
-The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of 7 sahil87 tools that each publish a machine-readable export of their CLI surface to `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`; shll's producer mirrors its exact shape. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
+The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of 7 sahil87 tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai now **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump`, rather than receiving a push (the old push transport was torn down in change 7huv — see [ci/release-workflow](../ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
 
-Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). The CI publishing flow lives in [ci/release-workflow](../ci/release-workflow.md).
+Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; shll.ai's scheduled puller (`scheduled-help-refresh.yml`, on shll.ai's side) consumes it. This repo's release workflow no longer publishes to shll.ai — the push transport was torn down in change 7huv (see [ci/release-workflow](../ci/release-workflow.md)).
 
 ## The JSON contract (frozen — schema_version 1)
 
-The document is a single JSON object:
+The **tool-emitted envelope** — exactly what `shll help-dump` writes to stdout — is a single JSON object:
 
 ```json
 {
   "tool": "shll",
   "version": "v0.5.0",
-  "captured_at": "2026-06-02T00:00:00Z",
   "schema_version": 1,
   "root": { "...Node..." }
 }
 ```
+
+`captured_at` is **shll.ai-owned**: shll.ai's puller stamps it onto the captured document post-capture, so the *stored* `help/<tool>.json` (e.g. the `wt.json` reference) does carry it — but the tool-emitted stdout envelope above MUST NOT. §3 of the contract and the pull-model teardown directive forbid the tool emitting it (a tool cannot know its own capture time). It was dropped from `help-dump`'s envelope in change 7huv (along with the `capturedAt()` helper, the `capturedAtLayout` constant, and the `"time"` import); its old purpose — a date-granular value powering the now-removed CI no-op guard — died with the push CI.
 
 Top-level field meanings (field order is contractual — encoded via Go struct field order, see below):
 
 | Field | Meaning |
 |-------|---------|
 | `tool` | literal `"shll"` (constant `helpDumpTool`). |
-| `version` | the binary's version — read from `cmd.Root().Version` (ldflags-stamped `main.version`), **never hardcoded**. In CI this is the clean release tag (`v0.5.0`); a local unstamped build emits `dev`. |
-| `captured_at` | ISO-8601 UTC at **date granularity** — `YYYY-MM-DDT00:00:00Z` (constant layout `capturedAtLayout`). Date-only so same-day re-runs are byte-identical (lets the CI no-op guard suppress redundant PRs). |
+| `version` | the binary's version — read from `cmd.Root().Version` (ldflags-stamped `main.version`), **never hardcoded**. When shll.ai's puller `brew install`s shll, this is the released tag (`v0.5.0`); a local unstamped build emits `dev`. |
 | `schema_version` | literal int `1` (constant `helpDumpSchemaVersion`). Bump only on a breaking shape change, coordinated across all 7 tools. |
 | `root` | the recursive `Node` tree, anchored at the cobra root command. |
 
@@ -110,22 +110,23 @@ Child order is whatever cobra's `Commands()` returns (its default alphabetical s
 - **I (Security First)** — N/A to the producer: it does a pure in-process tree walk with no subprocess execution (no `os/exec`, no `internal/proc`). Constitution I governs Go subprocess invocation; the CI git/gh shell-out lives in YAML, not Go.
 - **II (No State)** — the dump is re-derived from the live command tree on every invocation; no caching.
 - **VII (Minimal Surface Area)** — `Hidden` build tooling, not a user-facing addition to the `update`/`shell-init`/`version`/`install` surface.
-- **Dependencies** — standard library only (`encoding/json`, `time`, `strings`, `unicode`, `io`) plus the existing `github.com/spf13/cobra`. No new go.mod deps.
+- **Dependencies** — standard library only (`encoding/json`, `strings`, `unicode`, `io`) plus the existing `github.com/spf13/cobra`. No new go.mod deps. (The `"time"` import was dropped in change 7huv along with `captured_at`.)
 
 ## Test coverage
 
-`src/cmd/shll/help_dump_test.go` (8 tests):
+`src/cmd/shll/help_dump_test.go` (7 tests):
 
-- Contract-shape — synthetic root + visible/hidden/`completion`/`help` children: top-level keys present, `schema_version == 1`, `tool == "shll"`, leaf `commands` is `[]` (not null), filtered children absent.
+- Contract-shape — synthetic root + visible/hidden/`completion`/`help` children: top-level keys present, `schema_version == 1`, `tool == "shll"`, leaf `commands` is `[]` (not null), filtered children absent, **and `captured_at` is absent** (the envelope must not emit the shll.ai-owned field).
 - `text` byte-for-byte — every visible command in the real `newRootCmd()` compared against captured `cmd.Help()` output.
 - Self-exclusion — `help-dump` absent from the real-tree dump.
 - Version passthrough — `root.Version = "v9.9.9"` → `doc.version == "v9.9.9"`.
-- `captured_at` shape — matches `^\d{4}-\d{2}-\d{2}T00:00:00Z$` (regex, not a fixed date).
-- Structural determinism — two same-day dumps differ only in `captured_at` (here, byte-identical).
+- Structural determinism — the envelope carries no time-varying field, so two successive dumps of the same tree are byte-identical.
 - Execute-path regression — `TestHelpDump_RootTextExcludesAutoCommands` + `TestHelpDump_ExcludesAutoCommandsEverywhere`: drive via `dumpViaExecute` so cobra's lazy `completion`/`help` register exactly as on the shipped binary, then assert they appear in NEITHER `commands` NOR the rendered `text` `Available Commands:` block.
+
+(Change 7huv removed `TestHelpDump_CapturedAtShape` and its `capturedAtRE`/`regexp` dependency, dropping the count from 8 to 7, and added the `captured_at`-absence assertion to the contract-shape test.)
 
 ## Cross-references
 
-- CI publishing flow (native build → dump → validate → auto-merge PR to shll.ai): [ci/release-workflow](../ci/release-workflow.md).
+- Transport: `help-dump` writes to stdout; shll.ai's scheduled puller consumes it. The release workflow no longer publishes to shll.ai (push transport torn down in change 7huv): [ci/release-workflow](../ci/release-workflow.md).
 - Root command wiring, version ldflags injection: [cli/commands](commands.md).
 - The reference sample `help/wt.json` lives in `sahil87/shll.ai`, not this repo — the byte-for-byte `text` test against real `-h` is the enforceable fidelity contract.

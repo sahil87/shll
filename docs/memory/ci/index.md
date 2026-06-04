@@ -4,4 +4,4 @@ Continuous-integration and release automation for shll. Per Constitution VI, rel
 
 | Memory File | Description |
 |-------------|-------------|
-| [release-workflow](release-workflow.md) | `release.yml` — cross-compile, GitHub Release, Homebrew-tap update, and the help-dump → shll.ai auto-merge PR (native dump build, validate, `SHLLAI_TOKEN`, release-tag-only). |
+| [release-workflow](release-workflow.md) | `release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap. No longer pushes to shll.ai (help-push transport torn down in change 7huv; shll.ai now pulls via `shll help-dump`). |
