@@ -63,9 +63,21 @@ func TestHelpDump_ContractShape(t *testing.T) {
 	}
 
 	// captured_at was removed from the envelope (shll.ai stamps it on pull);
-	// the key must be absent from the emitted document.
-	if bytes.Contains(raw, []byte(`"captured_at"`)) {
-		t.Errorf("dump must not contain captured_at (shll.ai-owned on pull); output:\n%s", raw)
+	// the key must be absent from the emitted document. Assert on the parsed
+	// top-level object keys rather than a raw substring search, so a string
+	// value that happened to contain "captured_at" can't mask a regression.
+	var topLevel map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &topLevel); err != nil {
+		t.Fatalf("top-level unmarshal err = %v; output:\n%s", err, raw)
+	}
+	if _, ok := topLevel["captured_at"]; ok {
+		t.Errorf("envelope must not contain captured_at (shll.ai-owned on pull); output:\n%s", raw)
+	}
+	wantKeys := map[string]bool{"tool": true, "version": true, "schema_version": true, "root": true}
+	for k := range topLevel {
+		if !wantKeys[k] {
+			t.Errorf("unexpected top-level key %q; envelope must be {tool, version, schema_version, root}", k)
+		}
 	}
 
 	// Leaf commands serialize as [], never null.

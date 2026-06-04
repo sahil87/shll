@@ -1,12 +1,12 @@
 # cli/help-dump-contract
 
-The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of 7 sahil87 tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai now **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump`, rather than receiving a push (the old push transport was torn down in change 7huv — see [ci/release-workflow](../ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`; shll's producer mirrors its exact shape. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
+The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of 7 sahil87 tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai now **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump`, rather than receiving a push (the old push transport was torn down in change 7huv — see [ci/release-workflow](../ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
 
 Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; shll.ai's scheduled puller (`scheduled-help-refresh.yml`, on shll.ai's side) consumes it. This repo's release workflow no longer publishes to shll.ai — the push transport was torn down in change 7huv (see [ci/release-workflow](../ci/release-workflow.md)).
 
 ## The JSON contract (frozen — schema_version 1)
 
-The document is a single JSON object:
+The **tool-emitted envelope** — exactly what `shll help-dump` writes to stdout — is a single JSON object:
 
 ```json
 {
@@ -17,7 +17,7 @@ The document is a single JSON object:
 }
 ```
 
-> `captured_at` is **shll.ai-owned**: the puller stamps it on the captured document post-capture. The tool MUST NOT emit it — §3 of the contract and the pull-model teardown directive forbid it. It was dropped from `help-dump`'s envelope in change 7huv (along with the `capturedAt()` helper, the `capturedAtLayout` constant, and the `"time"` import); its old purpose — a date-granular value powering the CI no-op guard — died when the push CI was removed.
+`captured_at` is **shll.ai-owned**: shll.ai's puller stamps it onto the captured document post-capture, so the *stored* `help/<tool>.json` (e.g. the `wt.json` reference) does carry it — but the tool-emitted stdout envelope above MUST NOT. §3 of the contract and the pull-model teardown directive forbid the tool emitting it (a tool cannot know its own capture time). It was dropped from `help-dump`'s envelope in change 7huv (along with the `capturedAt()` helper, the `capturedAtLayout` constant, and the `"time"` import); its old purpose — a date-granular value powering the now-removed CI no-op guard — died with the push CI.
 
 Top-level field meanings (field order is contractual — encoded via Go struct field order, see below):
 
