@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/sahil87/shll/internal/proc"
 )
@@ -91,7 +92,7 @@ func TestUpdate_BrewMissing(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr)
+	err := runUpdate(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent", err)
 	}
@@ -122,7 +123,7 @@ func TestUpdate_NoToolsInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	// The status line prints first (unconditionally, before the short-circuit),
@@ -161,7 +162,7 @@ func TestUpdate_AllInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -193,7 +194,7 @@ func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 
@@ -243,7 +244,7 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -274,7 +275,7 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -317,7 +318,7 @@ func TestUpdate_PartialInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 	calls := f.recordedCalls()
@@ -370,7 +371,7 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr)
+	err := runUpdate(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (brew update non-zero exit)", err)
 	}
@@ -401,7 +402,7 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr)
+	err := runUpdate(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (overall failure)", err)
 	}
@@ -458,7 +459,7 @@ func TestUpdate_FlagSupported(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -481,7 +482,7 @@ func TestUpdate_FlagUnsupportedVersionSkew(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -509,7 +510,7 @@ func TestUpdate_NoUpdateArgvFallsBackToBrew(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -534,7 +535,7 @@ func TestUpdate_StatusLinePrecedesProbes(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if !strings.HasPrefix(stdout.String(), updateStatusLine+"\n") {
@@ -553,7 +554,7 @@ func TestUpdate_BrewUpdateRunsExactlyOnce(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	count := 0
@@ -578,16 +579,27 @@ func TestUpdate_HeadersAndTail(t *testing.T) {
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
+	// Deterministic clock: t0 then t0+72s → the tail reads `in 1m12s`.
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 
+	// Headers now carry the [N/M] counter (shll (self) is [1/7] and first), each
+	// header after the first is preceded by a blank line, and a blank line precedes
+	// the duration-bearing tail.
 	want := updateStatusLine + "\n" +
-		"==> shll (self)\n" +
-		"==> wt\n==> idea\n==> tu\n==> rk\n==> hop\n==> fab-kit\n" +
-		"Done — 7 of 7 tools succeeded.\n"
+		"==> [1/7] shll (self)\n" +
+		"\n==> [2/7] wt\n" +
+		"\n==> [3/7] idea\n" +
+		"\n==> [4/7] tu\n" +
+		"\n==> [5/7] rk\n" +
+		"\n==> [6/7] hop\n" +
+		"\n==> [7/7] fab-kit\n" +
+		"\nDone — 7 of 7 tools succeeded in 1m12s.\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -614,11 +626,13 @@ func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if !strings.Contains(seenAtHopUpgrade, "==> hop\n") {
-		t.Fatalf("at hop upgrade, stdout was %q, want it to already contain \"==> hop\\n\"", seenAtHopUpgrade)
+	// Only hop is installed (shll not brew-installed via installedOnly), so M=1 and
+	// hop is [1/1].
+	if !strings.Contains(seenAtHopUpgrade, "==> [1/1] hop\n") {
+		t.Fatalf("at hop upgrade, stdout was %q, want it to already contain \"==> [1/1] hop\\n\"", seenAtHopUpgrade)
 	}
 }
 
@@ -635,13 +649,16 @@ func TestUpdate_PartialFailureTail(t *testing.T) {
 		return base(req)
 	}}
 	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr)
+	err := runUpdate(context.Background(), &stdout, &stderr, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (one tool failed)", err)
 	}
-	if !strings.HasSuffix(stdout.String(), "1 succeeded, 1 failed — see above.\n") {
+	// Partial-failure tail carries the duration before the em-dash.
+	if !strings.HasSuffix(stdout.String(), "1 succeeded, 1 failed in 1m12s — see above.\n") {
 		t.Fatalf("stdout = %q, want to end with partial-failure tail", stdout.String())
 	}
 	// Honesty constraint: the tail never claims updated/up-to-date.
@@ -666,7 +683,7 @@ func TestUpdate_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr); err != nil {
+	if err := runUpdate(context.Background(), &stdout, &stderr, false); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != updateStatusLine+"\nNo sahil87 tools installed.\n" {
@@ -674,5 +691,171 @@ func TestUpdate_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {
 		t.Fatalf("empty case must emit no header and no tail, got %q", stdout.String())
+	}
+}
+
+func TestUpdate_DryRunPreview(t *testing.T) {
+	// shll itself NOT brew-installed (installedOnly); the full roster installed; rk
+	// and hop advertise --skip-brew-update, the rest do not. Dry-run prints the
+	// aligned-column preview with the exact per-tool argv, in roster order.
+	base := installedOnly(
+		formulaPrefix+"wt", formulaPrefix+"idea", formulaPrefix+"tu",
+		formulaPrefix+"rk", formulaPrefix+"hop", formulaPrefix+"fab-kit",
+	)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if (req.Name == "rk" || req.Name == "hop") && isUpdateHelpProbe(req) {
+			return helpAdvertisesSkipFlag()
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	// Longest label is "fab-kit" (7) since shll (self) is absent here; labels are
+	// padded to 7. rk and hop carry the flag; wt/idea/tu/fab-kit do not.
+	want := updateStatusLine + "\n" +
+		"Would update 6 tools (brew metadata refresh first):\n" +
+		"  wt       wt update\n" +
+		"  idea     idea update\n" +
+		"  tu       tu update\n" +
+		"  rk       rk update --skip-brew-update\n" +
+		"  hop      hop update --skip-brew-update\n" +
+		"  fab-kit  fab-kit update\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("dry-run preview =\n%q\nwant\n%q", got, want)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
+func TestUpdate_DryRunPreviewWithSelf(t *testing.T) {
+	// shll itself brew-installed + full roster; no tool advertises the flag. The
+	// preview lists shll (self) FIRST with `brew upgrade sahil87/tap/shll`, and
+	// "shll (self)" (11 chars) is the widest label, so commands align under it.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	want := updateStatusLine + "\n" +
+		"Would update 7 tools (brew metadata refresh first):\n" +
+		"  shll (self)  brew upgrade sahil87/tap/shll\n" +
+		"  wt           wt update\n" +
+		"  idea         idea update\n" +
+		"  tu           tu update\n" +
+		"  rk           rk update\n" +
+		"  hop          hop update\n" +
+		"  fab-kit      fab-kit update\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("dry-run preview with self =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestUpdate_DryRunNoWrites(t *testing.T) {
+	// Dry-run must run the read-only probes but perform NO write: no brew update,
+	// no brew upgrade, no `<tool> update`. shll itself + full roster installed.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+
+	// Read-only probes ARE present: brew list (install detection) and the
+	// `<tool> update --help` capability probe.
+	if !invocationsContain(calls, brewBinary, "list", "--formula", "--versions", shllFormula) {
+		t.Errorf("expected brew list probe for shll itself, calls: %+v", calls)
+	}
+	probedHelp := false
+	for _, c := range calls {
+		if isUpdateHelpProbe(c) {
+			probedHelp = true
+			break
+		}
+	}
+	if !probedHelp {
+		t.Errorf("expected at least one `<tool> update --help` probe, calls: %+v", calls)
+	}
+
+	// Writes are FORBIDDEN in dry-run.
+	if invocationsContain(calls, brewBinary, "update", "--quiet") {
+		t.Error("brew update --quiet must NOT run in dry-run")
+	}
+	if invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
+		t.Error("brew upgrade (self) must NOT run in dry-run")
+	}
+	for _, tool := range Roster {
+		if invocationsContain(calls, tool.Update[0], tool.Update[1]) {
+			t.Errorf("`%s update` write must NOT run in dry-run", tool.Name)
+		}
+		if invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
+			t.Errorf("brew upgrade %s must NOT run in dry-run", tool.Formula)
+		}
+	}
+	// No foreground transport at all in dry-run (all writes are foreground).
+	for _, c := range calls {
+		if c.Transport == proc.TransportForeground {
+			t.Errorf("dry-run must spawn no foreground (write) subprocess, got %+v", c)
+		}
+	}
+}
+
+func TestUpdate_DryRunGracefulDegradation(t *testing.T) {
+	// Only hop and wt installed, shll not brew-installed → the preview lists exactly
+	// those two (roster order: wt then hop), counter M=2 in the header.
+	f := &fakeRunner{respond: installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	want := updateStatusLine + "\n" +
+		"Would update 2 tools (brew metadata refresh first):\n" +
+		"  wt   wt update\n" +
+		"  hop  hop update\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("dry-run graceful preview =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestUpdate_DryRunEmptyCase(t *testing.T) {
+	// Nothing installed → dry-run mirrors the non-dry-run nothing-to-do message,
+	// exit 0, no preview table, no writes.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
+			return proc.Result{Stdout: []byte("Homebrew 4.0\n")}
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	if got := stdout.String(); got != updateStatusLine+"\n"+noToolsInstalledMsg+"\n" {
+		t.Fatalf("dry-run empty case stdout = %q, want status line + nothing-to-do", got)
+	}
+	if strings.Contains(stdout.String(), "Would update") {
+		t.Fatalf("dry-run empty case must not print a preview table, got %q", stdout.String())
+	}
+	if invocationsContain(f.recordedCalls(), brewBinary, "update", "--quiet") {
+		t.Fatal("brew update --quiet must NOT run in dry-run empty case")
 	}
 }
