@@ -37,11 +37,39 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 > **Slice-aliasing guard.** The roster's `Update` argvs are shared, read-only slices. `upgradeTool` appends the flag via `appendArg` (`src/cmd/shll/update.go:236`), which always allocates a fresh slice (`make` + `copy`) so a naive `append` can never write into the shared backing array when spare capacity exists. The same helper builds the `--help` probe argv.
 
+## Positional tool-name args — subset targeting (change b2vg)
+
+`shll update [tool...]` accepts zero or more positional tool-name args (`Args: cobra.ArbitraryArgs`, parsed args threaded into `runUpdate`). The grammar mirrors `brew upgrade <formula>` — positional, not a `--only` flag.
+
+- **Zero args → whole-roster run, byte-for-byte unchanged.** `subset := len(args) > 0` is false, so the contract above (probe whole roster + shll self-upgrade) holds verbatim. This is the back-compat anchor.
+- **One or more args → operate on just the named subset.** The args form a *set*, not a sequence.
+
+**Valid targets for `update`**: the six `Roster` names (`wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit`) **plus** the literal `shll`. `shll` is special — it is not in `Roster` (Constitution III — `Roster` is the sub-tool list), so the self-target name is the named constant `shllTargetToken = "shll"` (`src/cmd/shll/tools.go`). Naming `shll` engages the existing self-upgrade path (`brew upgrade sahil87/tap/shll`); see [shll self-upgrade](#shll-self-upgrade).
+
+**Roster-order processing.** A subset is always processed in `Roster` (leaves-first) order regardless of arg order — `resolveTargets` returns the selected `Tool`s in roster order. Example: `shll update fab-kit wt` processes `wt` then `fab-kit`. When `shll` is among the targets it keeps its position as the **first** step (self-upgrade before the roster loop), exactly as in a whole-roster run — `shll update shll hop` runs `shll (self)` first, then `hop`. (Why leaves-first is output coherence, not correctness: [Leaves-first Roster order](#leaves-first-roster-order-change-auvj).)
+
+**Validation is up front, before any work (`runUpdate` resolves the subset before `hasBrew`, the status line, and `probeRoster`).** Two error classes, both exit non-zero via `errSilent`:
+
+1. **Unknown / typo'd name** → `resolveTargets(args, true)` returns a non-nil error; `runUpdate` writes `shll update: <detail>` to stderr and returns `errSilent` with **zero brew/network side effect** (no probe, no `brew update`). All unknown args are reported at once (a better one-shot fix), e.g. `shll update: unknown targets "foo", "bar" (valid targets: shll, wt, idea, tu, rk, hop, fab-kit)`.
+2. **Named-but-not-installed** → distinct from the whole-roster *graceful skip*. Because the user named the tool explicitly, its absence is surfaced as an error, not silently skipped. Enforced **after** probing (where install facts exist): every selected target that probed not-installed — including `shll` itself on a non-brew dev build (e.g. a `go install` binary, where `isInstalled(shllFormula)` is false) — is reported as `shll update: <name>: not installed`, all missing targets at once in roster order, before any `brew update`/upgrade.
+
+**How the subset is applied (no parallel loop).** `runUpdate` reuses the existing whole-roster code paths: after enforcing the not-installed error, it marks `probes[i].installed = false` for every roster tool *not* in the selection, and overrides `shllSelfInstalled` to `selfSelected && shllInstalled`. The existing `total`/upgrade-loop/dry-run/tail code then operates on the subset with no structural change (Design Decision #3 of this change — smallest diff, preserves every order-independent invariant).
+
+**Counter denominator `M` = subset size.** For a subset run the per-tool header `[N/M]` denominator and the summary-tail `M` become the count of validated, processed targets (installed roster tools in the selection, plus 1 when `shll`-self was selected and installed) — not the whole-roster count. The [per-tool output separation](#per-tool-output-separation-change-y630) contract is otherwise unchanged: `M` is simply redefined as subset size, and the headers/tail still conform (the `per-tool-output-separation` spec stays valid as-is).
+
+**`brew update --quiet` still runs once for a subset.** Unconditional, exactly once, even for a single-tool target — it sits below the nothing-to-do short-circuit, which cannot fire for a validated *installed* subset (a named-but-not-installed target already errored out above). The `--skip-brew-update` per-tool delegation is unchanged.
+
+**`--dry-run` previews the filtered subset.** The dry-run branch runs after the subset filter, so it previews only the validated subset in roster order (shll-self first when selected), header `Would update N tools (brew metadata refresh first):` with `N` = subset size. See [`--dry-run`](#dry-run-change-6vuo).
+
+**Shared resolver, single-sourced with `Roster`.** Both `runUpdate` and `runInstall` call `resolveTargets(args, allowShll)` (`src/cmd/shll/tools.go`) — `update` passes `allowShll=true`, `install` passes `false`. It performs **name validation only** (no brew/subprocess calls — the install-status check stays in the run functions where brew facts exist), and derives its valid-name list from the live `Roster` (via `rosterHas`/`validTargets`) so the two commands can never drift. See [cli/install §positional args](install.md#positional-tool-name-args--subset-targeting-change-b2vg) for the symmetric (roster-only) install behavior.
+
 ## Exit codes
 
 | Condition | Exit code |
 |-----------|-----------|
 | All upgrades succeeded (or nothing-to-do branch) | 0 |
+| Unknown/typo'd positional target (change b2vg) | 1 (via `errSilent`, before any brew work) |
+| Named-but-not-installed positional target, incl. `shll` on a dev build (change b2vg) | 1 (via `errSilent`, after probing, before any upgrade) |
 | `brew` not on PATH | 1 (via `errSilent`, hint already on stderr) |
 | `brew update --quiet` failed (non-zero exit OR transport error) | 1 (via `errSilent`) |
 | `shll` self-upgrade failed | 1 (via `errSilent`, after roster also attempted) |
@@ -251,6 +279,17 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_DryRunNoWrites` *(change 6vuo)* — read-only probes (`brew list`, a `<tool> update --help`) ARE recorded; `brew update --quiet`/`brew upgrade`/every `<tool> update`/every `brew upgrade <formula>` are NOT; and **zero** `TransportForeground` calls.
 - `TestUpdate_DryRunGracefulDegradation` *(change 6vuo)* — only `hop`+`wt` installed → preview lists exactly `wt`, `hop` (roster order), header `Would update 2 tools (brew metadata refresh first):`.
 - `TestUpdate_DryRunEmptyCase` *(change 6vuo)* — nothing installed → dry-run mirrors the nothing-to-do message, no preview table, no `brew update`, exit 0.
+- `TestUpdate_SubsetUnknownTargetHardErrors` *(change b2vg)* — `shll update <typo>` → `errSilent`, stderr names the unknown arg and lists valid targets, and **no `brew` subprocess runs** (validated before `hasBrew`/probe).
+- `TestUpdate_SubsetMultipleUnknownAllReported` *(change b2vg)* — multiple unknown args → all reported in one error.
+- `TestUpdate_SubsetNamedNotInstalledErrors` *(change b2vg)* — a valid name that is not installed (`shll update rk` with rk uninstalled) → `shll update: rk: not installed`, `errSilent`, nothing upgraded (distinct from the whole-roster graceful skip).
+- `TestUpdate_SubsetShllSelfTargetOnly` *(change b2vg)* — `shll update shll` (shll brew-installed) → only the self-upgrade runs (`brew upgrade shllFormula`), no roster tool upgraded, `M=1`.
+- `TestUpdate_SubsetShllSelfNotBrewInstalledErrors` *(change b2vg)* — `shll update shll` on a dev build (shll not brew-installed) → the not-installed error for `shll`.
+- `TestUpdate_SubsetSelfFirstThenRosterOrder` *(change b2vg)* — `shll update shll hop` → `shll (self)` first, then `hop`.
+- `TestUpdate_SubsetArgOrderIndependentRosterOrder` *(change b2vg)* — `shll update fab-kit wt` → `wt` before `fab-kit` (roster order, not arg order).
+- `TestUpdate_SubsetBrewUpdateRunsOnce` *(change b2vg)* — a single-tool subset still runs `brew update --quiet` exactly once.
+- `TestUpdate_SubsetDryRunPreviewFiltered` *(change b2vg)* — `shll update --dry-run hop wt` → preview lists exactly the two-tool subset in roster order, header `Would update 2 tools (brew metadata refresh first):`, exit 0, no write.
+
+The shared resolver is unit-tested directly in `tools_test.go` (`TestResolveTargets_RosterOrderRegardlessOfArgOrder`, `TestResolveTargets_ShllGatedByAllowShll`, `TestResolveTargets_MultipleUnknownAllReported`, `TestResolveTargets_EmptyArgs`).
 
 Per-tool output separation (change y630) plus the change-6vuo `[N/M]` counter, duration, and preview helpers are unit-tested directly against the `ui.go` helpers in `ui_test.go` (`TestPrintToolHeader_PlainForm`/`_ColorForm` now assert the `[N/M]` counter; `TestPrintSummaryTail_AllSucceeded*`/`_PartialFailure` assert the `in 1m12s` suffix; `TestFormatDuration`, `TestPrintUpdatePreview_AlignedColumns`, `TestPrintInstallPreview_AlignedColumns`, `TestColorEnabled_*`, `TestToolComment_*`); the clock seam helper is exercised by `TestInstallFakeClock_Sequences` (`clock_test.go`). `update_test.go` additionally asserts that the `==> [N/M] shll (self)` and per-tool `==> [N/M] <tool>` headers and the plain summary tail appear in the **stdout** buffer and never in the stderr buffer (the stream-discipline guarantee).
 
