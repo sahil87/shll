@@ -139,7 +139,7 @@ Set `HOMEBREW_REQUIRE_TAP_TRUST=1` to require explicit trust now or
 Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
 ```
 
-This is a **Homebrew env-hint, not a shll error.** `shll` surfaces it only because it wraps `brew`. Because `shll update` shells out to brew several times (`brew update`, the shll self-upgrade, each per-tool upgrade), the same hint can print **2–3×** per command — it just means brew hasn't been told whether you trust the non-official `sahil87/tap`.
+This is a **Homebrew env-hint, not a shll error.** `shll` surfaces it only because it wraps `brew`. Because a single `shll update` touches brew several times across its own steps (`brew update`, the shll self-upgrade) plus whatever brew work each *delegated* per-tool `update` performs internally, the same hint can print **2–3×** per command — it just means brew hasn't been told whether you trust the non-official `sahil87/tap`.
 
 **Recommended fix — record genuine trust:**
 

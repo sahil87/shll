@@ -28,7 +28,7 @@ shll update
 
 One command to upgrade everything you have installed. The sequence:
 
-1. **`brew update --quiet`, exactly once.** A single metadata refresh for the whole run — `shll` tells each delegated per-tool update to skip its own internal `brew update`, so there's no redundant refresh.
+1. **`brew update --quiet`, exactly once.** A single metadata refresh for the whole run — `shll` tells each delegated per-tool update that *advertises* `--skip-brew-update` to skip its own internal `brew update`, so there's no redundant refresh. (A tool predating that flag runs its own `brew update`, costing one extra refresh for that tool — see [`shll update`](install.md).)
 2. **Self-upgrade.** If `shll` itself was installed via brew, it runs `brew upgrade sahil87/tap/shll` first. A from-source `shll` is skipped here (no formula to upgrade).
 3. **Per-tool upgrade, by delegation.** For each *installed* roster tool, `shll update` invokes that tool's **own `update` subcommand** (with `--skip-brew-update` when the tool advertises it) rather than calling `brew upgrade` directly. This preserves each tool's post-upgrade side effects — e.g. `rk`'s daemon restart — that a bare `brew upgrade` would silently drop. A tool that exposes no `update` subcommand falls back to `brew upgrade`.
 
