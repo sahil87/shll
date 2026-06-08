@@ -1,0 +1,51 @@
+id: xgc0
+name: 260608-xgc0-shll-ai-readme-contract
+created: 2026-06-08T09:57:42Z
+created_by: sahil-noon
+change_type: docs
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
+plan:
+    generated: true
+    task_count: 6
+    acceptance_count: 9
+    acceptance_completed: 9
+confidence:
+    certain: 5
+    confident: 3
+    tentative: 1
+    unresolved: 0
+    score: 3.1
+    fuzzy: true
+    dimensions:
+        signal: 86.1
+        reversibility: 83.9
+        competence: 90.6
+        disambiguation: 87.2
+stage_metrics:
+    intake: {started_at: "2026-06-08T09:57:42Z", driver: fab-new, iterations: 1, completed_at: "2026-06-08T09:59:16Z"}
+    apply: {started_at: "2026-06-08T10:10:00Z", driver: fab-fff, iterations: 2, completed_at: "2026-06-08T10:11:00Z"}
+    review: {started_at: "2026-06-08T10:11:00Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-08T10:13:09Z"}
+    hydrate: {started_at: "2026-06-08T10:13:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-08T10:13:52Z"}
+    ship: {started_at: "2026-06-08T10:13:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-08T10:15:26Z"}
+    review-pr: {started_at: "2026-06-08T10:15:26Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/18
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-06-08T10:13:52Z"
+    computed_at_stage: hydrate
+# true_impact: lazily created on first apply-finish (no placeholder here).
+last_updated: 2026-06-08T10:15:26Z
