@@ -50,7 +50,7 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
 ```
 
 - `repo` is the **full resolved URL** (not the bare slug), so consumers don't re-derive it and it matches what the table column shows. `installed` is the version-style PATH probe result. The serialized struct is `listItem` (`src/cmd/shll/list.go:37`).
-- Emitted via a `json.Encoder` (`writeListJSON`, `src/cmd/shll/list.go:155`) configured with `SetEscapeHTML(false)`, `SetIndent("", "  ")` (2-space indent), and `enc.Encode` (which appends a single trailing newline). **`SetEscapeHTML(false)` is load-bearing:** the default encoder HTML-escapes `&`/`<`/`>` (e.g. `&` → `&`), which would mangle fab-kit's `"Spec-driven workspace & workflow toolkit"` in the raw `--json` bytes and diverge from the table column. Disabling it keeps the literal characters so the scripting output stays legible and matches the table. It remains valid JSON either way; this is purely about the human-readable raw form. Guarded by `TestList_JSON` (asserts no `&`, asserts the literal `workspace & workflow`).
+- Emitted via a `json.Encoder` (`writeListJSON`, `src/cmd/shll/list.go:155`) configured with `SetEscapeHTML(false)`, `SetIndent("", "  ")` (2-space indent), and `enc.Encode` (which appends a single trailing newline). **`SetEscapeHTML(false)` is load-bearing:** the default encoder HTML-escapes `&`/`<`/`>` to their `\uXXXX` forms (`&` → the six characters `&`, `<` → `<`, `>` → `>`), which would mangle fab-kit's `"Spec-driven workspace & workflow toolkit"` in the raw `--json` bytes and diverge from the table column. Disabling it keeps the literal characters so the scripting output stays legible and matches the table. It remains valid JSON either way (a decoder turns `&` back into `&`); this is purely about the human-readable raw form. Guarded by `TestList_JSON`, which asserts the escaped `&` is **absent** from the raw bytes and the literal `workspace & workflow` is **present**.
 - **Plain JSON only** — no ANSI, no table framing, regardless of TTY. `TestList_JSON` asserts no `\x1b[` escapes and a trailing newline.
 
 ## Behavior contract
@@ -125,7 +125,7 @@ Regression-guarded by `TestList_RepoLinks`, which asserts every row's repo colum
 
 ### #5 Disable HTML escaping in `--json`
 
-> *Why*: the default encoder escapes `&`/`<`/`>` (e.g. `&` → `&`), mangling fab-kit's `"workspace & workflow"` description in the raw bytes and diverging from the table column. `SetEscapeHTML(false)` keeps the literal characters legible; the output stays valid JSON.
+> *Why*: the default encoder escapes `&`/`<`/`>` to their `\uXXXX` forms (e.g. `&` → the six characters `&`), mangling fab-kit's `"workspace & workflow"` description in the raw bytes and diverging from the table column. `SetEscapeHTML(false)` keeps the literal characters legible; the output stays valid JSON.
 > *Rejected*: leaving HTML escaping on (valid JSON, but the raw `--json` form is harder to read and inconsistent with the table).
 
 ## Test seam
@@ -137,7 +137,7 @@ Scenarios (`src/cmd/shll/list_test.go`):
 - `TestList_AllInstalled` — exactly `len(Roster)` rows in roster order, each carrying the installed ASCII marker (non-TTY path).
 - `TestList_SomeMissing` — `rk`'s `--version` fails → its row shows the `--` missing marker while `hop` shows `ok`; `runList` returns nil (must never error on a missing tool).
 - `TestList_RepoLinks` — every row's repo column is `https://github.com/sahil87/<Repo>`; `rk` resolves to `.../run-kit` and the dead `.../rk` link is absent (the 404 regression guard).
-- `TestList_JSON` — `--json` is valid JSON, `len == len(Roster)`, correct per-field `name`/`description`/`repo`/`installed`, `installed` reflects the probe (rk missing), trailing newline, no ANSI, and no `&` (literal `&` retained).
+- `TestList_JSON` — `--json` is valid JSON, `len == len(Roster)`, correct per-field `name`/`description`/`repo`/`installed`, `installed` reflects the probe (rk missing), trailing newline, no ANSI, and the HTML-escaped `&` is absent while the literal `workspace & workflow` is present (the `SetEscapeHTML(false)` guard).
 - `TestList_NoANSI_Plain` — default output to a `bytes.Buffer` (non-TTY) has no `\x1b[` escapes.
 - `TestList_Order` — JSON entries index-paired to the live `Roster`, so a future reorder moves expected and actual in lockstep (no edit needed — matching `version_test.go`).
 - `TestList_RosterFieldsNonEmpty` — guards that every roster `Description` and every `Repo` is non-empty (regression against adding a tool without filling the new fields).

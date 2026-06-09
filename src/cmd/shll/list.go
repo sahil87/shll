@@ -166,7 +166,7 @@ func writeListJSON(w io.Writer, installed []bool) error {
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(items); err != nil {
-		return fmt.Errorf("shll list: marshal: %w", err)
+		return fmt.Errorf("shll list: encode: %w", err)
 	}
 	return nil
 }
