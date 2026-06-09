@@ -15,6 +15,7 @@ Subcommands:
   shll shell-init <shell>     emit a single eval-safe shell-init blob for all installed tools
   shll shell-setup [shell]    append the shell-init eval line to your rc file (idempotent)
   shll version                print versions of shll and every installed sahil87 tool
+  shll list                   list the managed sahil87 tools with install status and repo links
 
 Per-tool CLIs continue to work standalone — shll wraps them, it does not replace them.`
 
@@ -32,6 +33,7 @@ func newRootCmd() *cobra.Command {
 		newShellInitCmd(),
 		newShellSetupCmd(),
 		newVersionCmd(),
+		newListCmd(),
 		newHelpDumpCmd(),
 	)
 	return cmd

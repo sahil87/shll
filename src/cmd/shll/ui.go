@@ -22,6 +22,7 @@ const (
 	ansiBold     = "\033[1m"
 	ansiBoldCyan = "\033[1;36m"
 	ansiGreen    = "\033[32m"
+	ansiRed      = "\033[31m"
 )
 
 // noColorEnv is the environment variable that, when set to any value, disables
