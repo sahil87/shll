@@ -6,10 +6,11 @@ Source: `src/cmd/shll/doctor.go`. Reuses the version probe primitives from `src/
 
 ## Output shape
 
-Text (default), one tabwriter-aligned line per tool in roster order, with a problem-count tail when any tool is non-OK:
+Text (default), a shll-first row then one tabwriter-aligned line per roster tool, with a problem-count tail when any tool is non-OK:
 
 ```
 $ shll doctor
+shll     OK    v0.1.0
 wt       OK    v1.4.0   wired
 idea     OK    v0.3.1
 tu       WARN  v2.0.0   not wired — run 'shll shell-setup' then 'exec $SHELL'
@@ -17,10 +18,11 @@ rk       OK    v0.9.2
 hop      FAIL           run 'brew install sahil87/tap/hop'
 fab-kit  FAIL           installed but 'fab-kit --version' failed — try 'brew reinstall sahil87/tap/fab-kit'
 
-3 of 6 tools have problems. Run the suggested commands above, then re-run shll doctor.
+2 of 6 tools have problems. Run the suggested commands above, then re-run shll doctor.
 ```
 
-- Roster order is `wt, idea, tu, rk, hop, fab-kit` (leaves-first, change auvj) — `doctor` walks `Roster` directly, so its line/object order is the roster order. See [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj).
+- Ordering is **shll-first, then leaves-first roster** (change bb7r): the always-OK `shll` row is prepended (`runDoctor`, `src/cmd/shll/doctor.go:133`), followed by the `Roster` in its declared `wt, idea, tu, rk, hop, fab-kit` order (leaves-first, change auvj). This makes the unified shll-first ordering established by `version`/`update` universal across the inspect/manage surface — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The `shll` row reads OK with a version and no detail; it never carries a wiring detail (`shell_init:false`).
+- **The shll row is excluded from the problem-count denominator.** In the example two roster tools FAIL, so the tail reads `2 of 6` — the denominator is `len(Roster)` (the checkable roster), NOT `len(results)` (`len(Roster)+1`, which would mis-report `2 of 7`). The always-OK shll row can never register a problem, so it is correctly excluded. See [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r) below.
 - Columns: `<name>  <MARKER>  <version>  <detail>`, aligned via `text/tabwriter` (`tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)` — same parameters as `version.go`).
 - The `<detail>` column is the suggestion on non-OK lines; on an OK wired shell-init tool it is the literal `wired`; on an OK non-shell-init tool (or an OK shell-init tool with no detail) it is empty.
 - Color: the **OK** marker MAY be colored green on a real TTY (`colorEnabled(stdout)` — TTY + `NO_COLOR` gated, via `markerGlyph`). WARN/FAIL are left plain in both modes (no green-equivalent affordance in `ui.go`'s palette, and the wording carries the signal). `doctor`'s stdout is human-facing, not eval-consumed, so the `shell-init` eval-safety color exception does NOT apply here — color is appropriate, mirroring `update`/`install`.
@@ -39,6 +41,34 @@ For each `Tool` in `Roster`, `doctor` runs up to three checks:
 **Which tools get the wiring check (derived from `Roster`, not the backlog prose).** "Ships shell-init" is `len(tool.ShellInit) > 0`, evaluated against the live `Roster`. The shell-init integrators are exactly **`wt`, `tu`, `hop`**. `idea`, `rk`, and `fab-kit` carry an empty `ShellInit` slice and get **checks 1+2 only** (`shell_init:false`, no wiring check). This **corrects the backlog prose**, which listed shell-init as "relevant for hop/wt/tu/**idea**" — `idea` ships no shell-init, so it is NOT wiring-checked. Per Constitution III (Tool Roster Source of Truth), `doctor` derives this from `Roster` so it stays correct as the roster evolves. ("run-kit" in the backlog prose is the roster tool `rk`.)
 
 The wiring fact is a **single rc-file fact** shared by every shell-init tool (shll's composed block covers them all), so `resolveWiringFact(env)` resolves it **once** up front and attributes it to each shell-init-shipping tool's line.
+
+## The prepended shll-first row (change bb7r)
+
+`doctor` prepends an always-OK `shll` row before walking the roster — `results = append(results, shllDoctorResult())` then the per-tool loop (`runDoctor`, `src/cmd/shll/doctor.go:133`). The row is built by `shllDoctorResult()` (`src/cmd/shll/doctor.go:268`), **directly — NOT via `evaluateTool`**, and is deliberately different from a roster tool in three load-bearing ways:
+
+1. **No self-subprocess.** `evaluateTool` always calls `probeVersion`, which spawns `<tool> --version`. `doctor` must not spawn `shll --version` on itself: shll is the running process, so its binary is definitionally on PATH and its version is read from the package `version` var via `shllSelfVersion()` (`src/cmd/shll/tools.go:143` → `normalizeVersion(version)`) — the same source as `shll version`'s own first row, so the two surfaces agree. Building the `doctorResult` directly avoids the circular, wasteful self-spawn.
+2. **Checks 1+2 only — no wiring check.** shll ships no shell-init of its own (shell-init is the [documented eval-safety exception](shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)), so it is treated like `idea`/`rk`/`fab-kit`: `ShellInit:false`, `Wired:false`, no wiring check applies.
+3. **Always OK, never touches `anyFail`.** The row's `Status` is hardcoded `markerOK` (binary present + version present), and the prepend in `runDoctor` does **not** run the `if res.Status == markerFail { anyFail = true }` branch that the roster loop runs. So the always-OK shll row **cannot perturb the scriptable any-FAIL→exit-1 contract**: a clean roster still exits 0, a roster with a FAIL still exits 1.
+
+```go
+func shllDoctorResult() doctorResult {
+    return doctorResult{
+        Tool:      shllSelf.Name,      // "shll" — the shared shllSelf descriptor
+        Status:    markerOK,
+        Version:   shllSelfVersion(),  // package version var, NOT a self-subprocess
+        OnPath:    true,
+        VersionOK: true,
+        ShellInit: false,
+        Wired:     false,
+    }
+}
+```
+
+The `Tool` name comes from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`) — the single source of truth for "shll as a displayable entry", reused by `list`/`install`/`doctor` (see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r)). Both the text and `--json` renderers consume the shll row through the **same `results` walk** as every roster tool — no special-casing in the renderers.
+
+### The problem-count denominator is `len(Roster)`, NOT `len(results)`
+
+`renderDoctorText` (`src/cmd/shll/doctor.go:308`) counts `problems` by walking `results` (which includes the always-OK shll row, so it never increments `problems`), but the summary-tail denominator is **`len(Roster)`** — the count of *checkable* roster tools — not `len(results)` (which is `len(Roster)+1`). The always-OK shll row is the +1, and it can never register a problem, so including it would mis-report e.g. `1 of 7` when only the 6 roster tools can ever fail; the correct read is `1 of 6`. (Change bb7r corrected this off-by-one during apply — see the `<!-- rework: ... -->` annotation on plan task T004; guarded by `TestDoctor_ProblemTailDenominatorExcludesShll`, which asserts the tail reads `1 of len(Roster)` and explicitly rejects the `1 of len(Roster)+1` off-by-one.)
 
 ## Marker derivation (worst-applicable-check wins: FAIL > WARN > OK)
 
@@ -116,7 +146,7 @@ type wiringFact struct {
 
 ## `--json` output mode
 
-`shll doctor --json` emits a machine-readable JSON array (one object per roster tool, roster order) instead of the aligned text table, so CI can parse structured per-tool results. `--json` is a cobra bool flag on the `doctor` command — a **flag on the command, not a second subcommand** (Constitution VII's "could this be a flag?" test is satisfied).
+`shll doctor --json` emits a machine-readable JSON array (a shll-first object, then one object per roster tool in roster order) instead of the aligned text table, so CI can parse structured per-tool results. `--json` is a cobra bool flag on the `doctor` command — a **flag on the command, not a second subcommand** (Constitution VII's "could this be a flag?" test is satisfied).
 
 The array is a marshal of the typed `doctorResult` struct (no hand-built JSON), so text and JSON derive from one source and cannot drift:
 
@@ -135,13 +165,15 @@ type doctorResult struct {
 
 ```json
 [
+  {"tool": "shll", "status": "OK",   "version": "v0.1.0", "on_path": true,  "version_ok": true,  "shell_init": false, "wired": false, "suggestion": ""},
   {"tool": "wt",  "status": "OK",   "version": "v1.4.0", "on_path": true,  "version_ok": true,  "shell_init": true,  "wired": true,  "suggestion": ""},
   {"tool": "tu",  "status": "WARN", "version": "v2.0.0", "on_path": true,  "version_ok": true,  "shell_init": true,  "wired": false, "suggestion": "not wired — run 'shll shell-setup' then 'exec $SHELL'"},
   {"tool": "hop", "status": "FAIL", "version": "",       "on_path": false, "version_ok": false, "shell_init": true,  "wired": false, "suggestion": "run 'brew install sahil87/tap/hop'"}
 ]
 ```
 
-- `shell_init` is `true` exactly when `len(tool.ShellInit) > 0` (so `idea`/`rk`/`fab-kit` are `false`, and `wired` is `false`/not meaningful for them).
+- **The first object is the always-OK shll-first object** (change bb7r): `tool:"shll"`, `status:"OK"`, version from the package var, `shell_init:false`, `wired:false`, empty suggestion — see [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r). The array length is `len(Roster)+1` (`TestDoctor_JSONShapeAndExit` asserts `len(results) == len(Roster)+1` and `results[0].Tool == shllSelf.Name`). The shll object carries no distinct self-marker in the doctor schema — the doctor `doctorResult` struct is unchanged; the shll-first *position* identifies it (unlike `list --json`, which adds a `self` field — the two surfaces serve different schemas).
+- `shell_init` is `true` exactly when `len(tool.ShellInit) > 0` (so `idea`/`rk`/`fab-kit` are `false`, and `wired` is `false`/not meaningful for them; `shll` is also `false`).
 - Rendered via `json.NewEncoder(stdout)` with `SetIndent("", "  ")` — **indented (two-space) output with a trailing newline**. (The intake speculated a compact array; the implementation chose indented for readability — `json.Encoder` always appends the trailing newline.)
 - **No ANSI color regardless of TTY** — machine consumers must get clean JSON. The `--json` path never touches `colorEnabled`.
 - `--json` is gated by the **same checks** and the **same any-FAIL→exit-1 contract** as text; only the rendering differs. Diagnostics that text prints inline are carried in the `suggestion` field; nothing extraneous is written to stdout.
@@ -152,8 +184,10 @@ type doctorResult struct {
 
 | Exit code | Condition |
 |-----------|-----------|
-| **0** | No tool is FAIL (every tool is OK or WARN). WARN alone NEVER affects the exit — returns nil. |
-| **1** | At least one tool is FAIL → returns `errSilent` (→ `translateExit` maps to 1). The per-tool diagnostics are already on stdout (text) or in the JSON `suggestion` fields, so `errSilent` suppresses a redundant stderr line. |
+| **0** | No roster tool is FAIL (every roster tool is OK or WARN). WARN alone NEVER affects the exit — returns nil. |
+| **1** | At least one roster tool is FAIL → returns `errSilent` (→ `translateExit` maps to 1). The per-tool diagnostics are already on stdout (text) or in the JSON `suggestion` fields, so `errSilent` suppresses a redundant stderr line. |
+
+The always-OK shll-first row (change bb7r) **never** sets `anyFail` — only the roster loop does — so it cannot move the exit code in either direction (`TestDoctor_ShllRowNeverPerturbsExit`).
 
 A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr and also returns `errSilent` (exit 1). The exit logic is **identical for text and `--json`** — `--json` changes only the rendering, never the check logic or the exit contract. See [cli/commands](commands.md#exit-code-translation) for `errSilent`.
 
@@ -176,9 +210,16 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - `TestDoctor_CorruptBlockWarnsWithDistinctSuggestion` — rc file with an unclosed shll sentinel (`writeCorruptRC`) → `wt`/`tu`/`hop` WARN with `suggestCorruptBlock` (NOT the plain `suggestNotWired`), exit 0.
 - `TestDoctor_MissingDominatesWiring` — `wt` missing AND unwired → FAIL (binary failure dominates the would-be wiring WARN).
 - `TestDoctor_UnresolvableShellDegradesToWarn` — `$SHELL=/bin/sh` → `wt`/`tu`/`hop` WARN with the `$SHELL is` suggestion, binary checks still run, `idea` stays OK, exit 0.
-- `TestDoctor_JSONShapeAndExit` — `--json` with `hop` missing + `tu` unwired → valid JSON, no ANSI, trailing newline, `len == len(Roster)`, roster order preserved, per-tool field values per marker (`hop` FAIL/missing, `tu` WARN/onpath/version_ok/unwired with `version:"v1.2.3"`, `idea` `shell_init:false`/OK), `hop` is FAIL → exit `errSilent` (same as text).
+- `TestDoctor_JSONShapeAndExit` — `--json` with `hop` missing + `tu` unwired → valid JSON, no ANSI, trailing newline, `len == len(Roster)+1` (shll-first object + one per roster tool), `results[0].Tool == shllSelf.Name`, roster order preserved (offset by 1), per-tool field values per marker (`hop` FAIL/missing, `tu` WARN/onpath/version_ok/unwired with `version:"v1.2.3"`, `idea` `shell_init:false`/OK), `hop` is FAIL → exit `errSilent` (same as text).
 - `TestDoctor_JSONAllOKExitZero` — `--json` all-OK + wired rc → every status OK, wired shell-init tools report `wired:true`, exit 0.
 - `TestDoctor_RegisteredOnRoot` — `doctor` is registered on `newRootCmd()` and `rootLong` documents `shll doctor`.
+
+shll-first row guards (change bb7r):
+
+- `TestDoctor_ShllFirstRowText` — text output's first row is `shll`, marked OK with the package-var version and no detail (binary always present, no wiring), even with the rest of the roster all-OK → exit 0.
+- `TestDoctor_ShllFirstObjectJSON` — `--json` first object is the shll-self object (`tool:"shll"`, `status:"OK"`, `shell_init:false`, `wired:false`, version present from the package var).
+- `TestDoctor_ShllRowNeverPerturbsExit` — the always-OK shll row does not set `anyFail`: a clean roster still exits 0 and a roster with a FAIL still exits 1 (the row cannot move the exit either way).
+- `TestDoctor_ProblemTailDenominatorExcludesShll` — one roster FAIL (`hop`) → the tail reads `1 of len(Roster)` (i.e. `1 of 6`), and the `1 of len(Roster)+1` (`1 of 7`) off-by-one is explicitly absent — the always-OK shll row is excluded from the denominator.
 
 `lineFor`/`lineHas` are line-scanning helpers; `resultByTool` indexes a decoded JSON result slice by tool name.
 
@@ -188,6 +229,7 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - Shared version probe: [cli/version](version.md) — `doctor`'s `probeVersion` reuses `version.go`'s `proc.Run`/`versionTimeout`/`normalizeVersion`, so the two share the version-probe contract and cannot drift.
 - Shared wiring detector: [cli/shell-setup](shell-setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths).
 - Registration, exit-code sentinels, and the `Roster`: [cli/commands](commands.md) — `doctor` is the sixth user-facing subcommand (the hidden `help-dump` is not counted).
+- The shared `shllSelf` descriptor + `shllSelfVersion()` (the single source of truth for the prepended shll-first row): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/list](list.md#the-prepended-shll-first-row-change-bb7r) (table row + `--json` `self:true`) and [cli/install](install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line). `version`/`update` were already shll-first (the established pattern this generalizes).
 - Constitution I (Security First) → the version probe routes through `internal/proc`; rc-file access is read-only `os.ReadFile`.
 - Constitution III (Wrap, Don't Reinvent + Tool Roster Source of Truth) → `doctor` reuses existing probe/wiring primitives rather than reimplementing them, and derives "ships shell-init" from the live `Roster` (`len(tool.ShellInit) > 0`), not the backlog prose.
 - Constitution V (Graceful Degradation) → an uninstalled or unwired tool degrades to FAIL/WARN with an actionable suggestion rather than crashing; an unresolvable `$SHELL` degrades wiring to WARN while binary checks proceed.

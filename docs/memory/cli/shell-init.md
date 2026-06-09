@@ -66,6 +66,15 @@ This is the single most important fact in this file for a future maintainer. `sh
 - **Why.** `shll shell-init` stdout is consumed by `eval "$(shll shell-init <shell>)"`. A bare `▸ <tool>` line would be eval'd as a command and break the user's shell; ANSI color escapes inside eval'd output would corrupt it. A `#`-prefixed line is a shell no-op — the only eval-safe separator here. This is mandated by **Constitution V (Graceful Degradation — `shll shell-init` output MUST always be eval-safe)**.
 - **This is NOT an oversight.** A future "consistency" refactor that unifies `shell-init` onto the `▸`/`==>` header (or adds color/TTY-gating to it) **reintroduces the eval-break** and MUST NOT be done. The inconsistency with `update`/`install` is the correct, guarded design — recorded here so the guard survives.
 
+### Also the one exception to the unified shll-self representation (change bb7r)
+
+`shell-init` is **also** the single command excluded from the unified shll-first representation that `version`/`update`/`list`/`doctor`/`install` share (the shared `shllSelf` descriptor — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r)). The other five commands prepend a shll-first row/object/line; `shell-init` prepends **nothing for shll**, for the same eval-safety reason as the comment-separator exception above:
+
+- shll has **no shell-init output of its own** to compose (shll is a meta-tool that concatenates *other* tools' shell-init — there is nothing for shll itself to emit).
+- `shell-init`'s stdout is `eval`'d, so any shll-first line (even an informational one) risks breaking the user's shell — Constitution V eval-safety.
+
+So `shell_init.go` was **not** touched by change bb7r. The exclusion is deliberate and documented, not a gap.
+
 ### Separator emitted only when the tool's output reaches stdout
 
 The separator is written **only** on the success-write path — the tool is installed (binary on PATH) **and** its `shell-init` did not error:

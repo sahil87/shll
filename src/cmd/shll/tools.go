@@ -104,6 +104,46 @@ var Roster = []Tool{
 // the running orchestrator). Named per code-quality.md (no magic strings).
 const shllTargetToken = "shll"
 
+// shllSelfDescription is the manager-framing one-liner printed for the shll-self
+// entry by every command that shows the toolkit. Named per code-quality.md (no
+// magic strings).
+const shllSelfDescription = "the manager for the shll toolkit"
+
+// shllSelf is the single shared descriptor representing shll ITSELF as a
+// displayable entry — the one source of truth reused by every command that shows
+// the toolkit as a family (`list`, `doctor`, `install`; `version`/`update`
+// already lead with shll via their own self-handling). Each such command PREPENDS
+// this descriptor, rendering shll FIRST, then the leaves-first Roster
+// (`shll, wt, idea, tu, rk, hop, fab-kit`).
+//
+// It reuses the Tool struct shape but is deliberately NOT a Roster entry: Roster
+// is the *managed sub-tool* list (Constitution III — Tool Roster Source of Truth),
+// and adding shll there would break the leaves-first invariant guarded by
+// TestRosterLeavesBeforeDependents and make install/update/shell-init try to
+// operate on the running orchestrator itself (e.g. brew-install the live binary).
+// Only Name, Description, and Repo are populated: shll has no managed Formula, no
+// own ShellInit to compose (shell-init is the documented exception — its stdout is
+// eval'd, Constitution V), and is self-upgraded via update.go's own path rather
+// than a Roster Update argv.
+//
+// shll's version is NOT read from this descriptor; it comes from shllSelfVersion()
+// (the package-level version var), never a `shll --version` self-subprocess.
+var shllSelf = Tool{
+	Name:        shllTargetToken,
+	Description: shllSelfDescription,
+	Repo:        shllTargetToken,
+}
+
+// shllSelfVersion returns shll's own normalized version for the shll-self entry.
+// It reads the package-level version var (set via -ldflags at build time) rather
+// than spawning `shll --version` on the running binary: shll is always present (it
+// is the running process), so a self-subprocess would be wasteful and circular.
+// normalizeVersion gives the same display shape `shll version` uses for its first
+// row, so the two surfaces agree.
+func shllSelfVersion() string {
+	return normalizeVersion(version)
+}
+
 // resolveTargets maps the positional tool-name args of `shll update`/`shll install`
 // to the work set, single-sourced with Roster so the valid-name list cannot drift
 // between the two commands. It performs NAME validation only — it does not consult

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,6 +156,29 @@ func TestDoctor_MissingBinaryFails(t *testing.T) {
 	}
 }
 
+// TestDoctor_ProblemTailDenominatorExcludesShll guards that the summary-tail
+// denominator counts only the checkable roster tools (len(Roster)), NOT the
+// prepended always-OK shll row. With exactly one roster failure (hop) the tail
+// must read "1 of 6 tools have problems", never "1 of 7" — the shll row can
+// never register a problem, so including it in the denominator would misreport.
+func TestDoctor_ProblemTailDenominatorExcludesShll(t *testing.T) {
+	installFakeRunner(t, doctorFake(map[string]doctorVersionState{"hop": dvMissing}))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	_ = runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	out := stdout.String()
+
+	want := fmt.Sprintf("1 of %d tools have problems", len(Roster))
+	if !strings.Contains(out, want) {
+		t.Errorf("problem tail denominator wrong: want %q in output:\n%s", want, out)
+	}
+	// Explicitly reject the off-by-one that includes the always-OK shll row.
+	if strings.Contains(out, fmt.Sprintf("1 of %d tools have problems", len(Roster)+1)) {
+		t.Errorf("problem tail counted the always-OK shll row in the denominator:\n%s", out)
+	}
+}
+
 func TestDoctor_UnreportableVersionFails(t *testing.T) {
 	for _, state := range []doctorVersionState{dvUnreportable, dvEmpty} {
 		installFakeRunner(t, doctorFake(map[string]doctorVersionState{"fab-kit": state}))
@@ -301,13 +325,17 @@ func TestDoctor_JSONShapeAndExit(t *testing.T) {
 	if err := json.Unmarshal(raw, &results); err != nil {
 		t.Fatalf("JSON unmarshal err = %v\noutput:\n%s", err, raw)
 	}
-	if len(results) != len(Roster) {
-		t.Fatalf("JSON has %d objects, want %d (one per roster tool)", len(results), len(Roster))
+	// One shll-first object plus one per roster tool.
+	if len(results) != len(Roster)+1 {
+		t.Fatalf("JSON has %d objects, want %d (shll + one per roster tool)", len(results), len(Roster)+1)
 	}
-	// Roster order preserved.
+	// shll-first object, then roster order preserved (offset by 1).
+	if results[0].Tool != shllSelf.Name {
+		t.Errorf("JSON[0].tool = %q, want %q (shll-first)", results[0].Tool, shllSelf.Name)
+	}
 	for i, tool := range Roster {
-		if results[i].Tool != tool.Name {
-			t.Errorf("JSON[%d].tool = %q, want %q (roster order)", i, results[i].Tool, tool.Name)
+		if results[i+1].Tool != tool.Name {
+			t.Errorf("JSON[%d].tool = %q, want %q (roster order)", i+1, results[i+1].Tool, tool.Name)
 		}
 	}
 	by := resultByTool(results)
@@ -368,6 +396,87 @@ func TestDoctor_JSONAllOKExitZero(t *testing.T) {
 			t.Errorf("%s.wired = false, want true (block present)", name)
 		}
 	}
+}
+
+// --- shll-first self row (change bb7r) ----------------------------------------
+
+func TestDoctor_ShllFirstRowText(t *testing.T) {
+	installFakeRunner(t, doctorFake(nil)) // all roster tools OK
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil (all OK incl. shll)", err)
+	}
+	out := stdout.String()
+	// shll is the FIRST line and is OK.
+	firstLine := strings.SplitN(out, "\n", 2)[0]
+	if !strings.HasPrefix(firstLine, shllSelf.Name+" ") {
+		t.Errorf("first line = %q, want to start with %q (shll-first)", firstLine, shllSelf.Name)
+	}
+	if !lineHas(out, shllSelf.Name, markerOK) {
+		t.Errorf("shll row not OK:\n%s", out)
+	}
+	// shll ships no shell-init → its row must NOT say "wired".
+	if strings.Contains(firstLine, "wired") {
+		t.Errorf("shll row = %q, must not show wiring detail (shll ships no shell-init)", firstLine)
+	}
+}
+
+func TestDoctor_ShllFirstObjectJSON(t *testing.T) {
+	installFakeRunner(t, doctorFake(nil))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), true, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor(json) err = %v, want nil", err)
+	}
+	var results []doctorResult
+	if err := json.Unmarshal(stdout.Bytes(), &results); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(results) == 0 || results[0].Tool != shllSelf.Name {
+		t.Fatalf("results[0] = %+v, want shll-first object", results)
+	}
+	shll := results[0]
+	if shll.Status != markerOK || !shll.OnPath || !shll.VersionOK {
+		t.Errorf("shll json = %+v, want OK/onpath/version_ok", shll)
+	}
+	if shll.ShellInit {
+		t.Errorf("shll.shell_init = true, want false (shll ships no shell-init)")
+	}
+	if shll.Wired {
+		t.Errorf("shll.wired = true, want false (no wiring check applies to shll)")
+	}
+	if strings.TrimSpace(shll.Version) == "" {
+		t.Errorf("shll.version = %q, want a non-empty version from the package var", shll.Version)
+	}
+}
+
+func TestDoctor_ShllRowNeverPerturbsExit(t *testing.T) {
+	// The always-OK shll row must NOT mask a roster FAIL: a missing roster tool
+	// still drives exit 1, and an all-clean roster still exits 0 — the shll row
+	// is transparent to the any-FAIL→exit-1 contract.
+	t.Run("roster FAIL still exits non-zero", func(t *testing.T) {
+		installFakeRunner(t, doctorFake(map[string]doctorVersionState{"hop": dvMissing}))
+		dir := writeWiredRC(t)
+		var stdout, stderr bytes.Buffer
+		err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+		if !errors.Is(err, errSilent) {
+			t.Fatalf("err = %v, want errSilent (a roster tool FAILs despite the OK shll row)", err)
+		}
+		if !lineHas(stdout.String(), shllSelf.Name, markerOK) {
+			t.Errorf("shll row should still be OK even when the run fails:\n%s", stdout.String())
+		}
+	})
+	t.Run("clean roster still exits 0", func(t *testing.T) {
+		installFakeRunner(t, doctorFake(nil))
+		dir := writeWiredRC(t)
+		var stdout, stderr bytes.Buffer
+		if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+			t.Fatalf("err = %v, want nil", err)
+		}
+	})
 }
 
 // --- registration -------------------------------------------------------------

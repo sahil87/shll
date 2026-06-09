@@ -50,13 +50,17 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	if got := stdout.String(); got != "All sahil87 tools already installed.\n" {
-		t.Fatalf("stdout = %q, want \"All sahil87 tools already installed.\\n\"", got)
+	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 	for _, tool := range Roster {
 		if invocationsContain(f.calls, brewBinary, "install", tool.Formula) {
 			t.Errorf("brew install for %s should NOT be invoked when already installed", tool.Formula)
 		}
+	}
+	// shll is never a brew-install target — it is informational only.
+	if invocationsContain(f.calls, brewBinary, "install", formulaPrefix+"shll") {
+		t.Errorf("shll must NOT be brew-installed (it is the running orchestrator)")
 	}
 }
 
@@ -205,7 +209,8 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	// Headers carry the [N/M] counter over the missing subset (M=4), each header
 	// after the first is preceded by a blank line, and a blank line precedes the
 	// duration-bearing tail.
-	want := "==> [1/4] idea\n" +
+	want := shllSelfInstallNote + "\n" +
+		"==> [1/4] idea\n" +
 		"\n==> [2/4] tu\n" +
 		"\n==> [3/4] rk\n" +
 		"\n==> [4/4] fab-kit\n" +
@@ -231,8 +236,8 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	if got := stdout.String(); got != "All sahil87 tools already installed.\n" {
-		t.Fatalf("stdout = %q, want the one-line note only (no header, no tail)", got)
+	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"; got != want {
+		t.Fatalf("stdout = %q, want the shll-first note + one-line note only (no header, no tail)", got)
 	}
 	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {
 		t.Fatalf("empty case must emit no header and no tail, got %q", stdout.String())
@@ -280,8 +285,10 @@ func TestInstall_DryRunPreview(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
-	// Longest missing label is "fab-kit" (7); shorter labels pad to 7.
-	want := "Would install 4 tools:\n" +
+	// Longest missing label is "fab-kit" (7); shorter labels pad to 7. The shll-
+	// first informational line precedes the preview.
+	want := shllSelfInstallNote + "\n" +
+		"Would install 4 tools:\n" +
 		"  idea     brew install sahil87/tap/idea\n" +
 		"  tu       brew install sahil87/tap/tu\n" +
 		"  rk       brew install sahil87/tap/rk\n" +
@@ -342,11 +349,43 @@ func TestInstall_DryRunEmptyCase(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
-	if got := stdout.String(); got != allInstalledMsg+"\n" {
-		t.Fatalf("dry-run empty case stdout = %q, want the nothing-to-do note", got)
+	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
+		t.Fatalf("dry-run empty case stdout = %q, want the shll-first note + nothing-to-do note", got)
 	}
 	if strings.Contains(stdout.String(), "Would install") {
 		t.Fatalf("dry-run empty case must not print a preview table, got %q", stdout.String())
+	}
+}
+
+// --- shll-first informational line (change bb7r) ---
+
+func TestInstall_ShllFirstInformationalLine(t *testing.T) {
+	// Whole-roster run, all missing: the shll-first informational line is the
+	// FIRST stdout line, and shll is NEVER brew-installed (it is informational).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	firstLine := strings.SplitN(stdout.String(), "\n", 2)[0]
+	if firstLine != shllSelfInstallNote {
+		t.Errorf("first stdout line = %q, want the shll-first informational line %q", firstLine, shllSelfInstallNote)
+	}
+	if invocationsContain(f.recordedCalls(), brewBinary, "install", formulaPrefix+"shll") {
+		t.Error("shll must NOT be brew-installed — the line is informational only")
+	}
+	// The informational line must go to stdout, not stderr.
+	if strings.Contains(stderr.String(), shllSelfInstallNote) {
+		t.Errorf("shll informational line must go to stdout, not stderr; stderr = %q", stderr.String())
 	}
 }
 
@@ -436,8 +475,10 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 			t.Errorf("unnamed tool %s must NOT be installed", name)
 		}
 	}
-	// Counter M=2 over the subset; success tail.
-	want := "==> [1/2] wt\n" +
+	// Counter M=2 over the subset; success tail. The shll-first informational line
+	// leads regardless of the named subset.
+	want := shllSelfInstallNote + "\n" +
+		"==> [1/2] wt\n" +
 		"\n==> [2/2] fab-kit\n" +
 		"\nDone — 2 of 2 tools succeeded in 1m12s.\n"
 	if got := stdout.String(); got != want {
@@ -458,8 +499,8 @@ func TestInstall_SubsetNamedAlreadyInstalled(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, false, []string{"hop"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	if got := stdout.String(); got != allInstalledMsg+"\n" {
-		t.Fatalf("stdout = %q, want the nothing-to-do note for a named-already-installed target", got)
+	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
+		t.Fatalf("stdout = %q, want the shll-first note + nothing-to-do note for a named-already-installed target", got)
 	}
 	if invocationsContain(f.recordedCalls(), brewBinary, "install", formulaPrefix+"hop") {
 		t.Fatal("already-installed named target must NOT be re-installed")
@@ -481,7 +522,8 @@ func TestInstall_SubsetDryRunPreviewFiltered(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, true, []string{"fab-kit", "idea"}); err != nil {
 		t.Fatalf("runInstall --dry-run subset err = %v, want nil", err)
 	}
-	want := "Would install 2 tools:\n" +
+	want := shllSelfInstallNote + "\n" +
+		"Would install 2 tools:\n" +
 		"  idea     brew install sahil87/tap/idea\n" +
 		"  fab-kit  brew install sahil87/tap/fab-kit\n"
 	if got := stdout.String(); got != want {
@@ -506,7 +548,8 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	want := "==> [1/5] wt\n" +
+	want := shllSelfInstallNote + "\n" +
+		"==> [1/5] wt\n" +
 		"\n==> [2/5] tu\n" +
 		"\n==> [3/5] rk\n" +
 		"\n==> [4/5] hop\n" +

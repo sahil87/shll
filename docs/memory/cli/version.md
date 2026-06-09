@@ -76,6 +76,8 @@ The `shll` row's version comes from the package-level `version = "dev"` declared
 
 Tests override the variable directly (`TestVersion_LdflagsInjection`) — no special build hook needed for testing.
 
+> **The shll-first row is the canonical instance of the shared display pattern (change bb7r — no behavior change).** `version` has always led with a `shll` row (step 2 of the behavior contract), reading shll's version from the package `version` var via `normalizeVersion` — never a `shll --version` self-subprocess. Change bb7r introduced the shared `shllSelf` descriptor (`src/cmd/shll/tools.go`) and `shllSelfVersion()` (which is exactly `normalizeVersion(version)`) so that `list`/`doctor`/`install` could *generalize* the shll-first ordering `version`/`update` already had. **`version.go` was NOT changed**: it still writes its own `shll\t…` row inline rather than consuming `shllSelf`, and its version source is the same package var `shllSelfVersion()` reads — so the two surfaces agree by construction. See [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r).
+
 ## Per-tool timeout
 
 `versionTimeout = 2 * time.Second` (`src/cmd/shll/version.go:20`) — a named constant; magic numbers are forbidden by `code-quality.md`.
@@ -128,3 +130,4 @@ Unit scenarios pinning the normalization contract (12 cases, all named `TestNorm
 - Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).
 - The shared `toolInstalled` helper's other consumer: [cli/list](list.md#the-install-probe-shared-toolinstalled) — `shll list` reuses the same `probeToolVersion` probe (as a bool) for its install-status column.
 - Shared version probe: [cli/doctor](doctor.md) — `doctor`'s `probeVersion` reuses `proc.Run`/`versionTimeout`/`normalizeVersion` (the same primitives as `toolVersion`), keeping the missing-vs-unreportable distinction that `toolVersion` collapses; the two cannot drift.
+- The shared `shllSelf` display descriptor + `shllSelfVersion()` (change bb7r): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). `version`'s shll-first row is the established pattern that descriptor generalizes to `list`/`doctor`/`install`; `version.go` itself is unchanged.
