@@ -1,10 +1,11 @@
 # cli — Memory Index
 
-Top-level command surface of the `shll` binary: the cobra root, the six user-facing subcommands (`install`, `update`, `shell-init`, `shell-setup`, `version`, `list`) plus the hidden `help-dump`, and the hardcoded tool roster they share. (`shell-setup` is the canonical name for the rc-file installer; `shell-install` is retained as a back-compat alias.)
+Top-level command surface of the `shll` binary: the cobra root, the seven user-facing subcommands (`doctor`, `install`, `update`, `shell-init`, `shell-setup`, `version`, `list`) plus the hidden `help-dump`, and the hardcoded tool roster they share. (`shell-setup` is the canonical name for the rc-file installer; `shell-install` is retained as a back-compat alias.)
 
 | Memory File | Description |
 |-------------|-------------|
 | [commands](commands.md) | Root command, subcommand wiring, exit-code sentinels (`errSilent`, `errExitCode`), version ldflags injection, and the hardcoded `Roster` slice. |
+| [doctor](doctor.md) | `shll doctor` — read-only per-tool verification (binary on PATH, reports a version, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe and `shell-setup`'s wiring detector. |
 | [install](install.md) | `shll install` — brew detection, bootstrap of missing roster tools via `brew install`, idempotent re-run. |
 | [update](update.md) | `shll update` — brew detection, installed-tool filtering, sequential `brew upgrade`, exit-code aggregation. |
 | [shell-init](shell-init.md) | `shll shell-init <shell>` — composition rules across roster tools, eval-safety invariants, deterministic ordering. |

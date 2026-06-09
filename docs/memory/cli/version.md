@@ -38,6 +38,8 @@ fab-kit   v0.1.0
 
 "Installed" is detected via `proc.ErrNotFound` (binary not on PATH) rather than a brew probe — install-mechanism agnostic, and saves ~400ms per tool (no Homebrew/Ruby startup tax).
 
+`shll doctor` (change d0ct) reuses the **same probe primitives** — `proc.Run` + `versionTimeout` + `normalizeVersion` — through its own `probeVersion` helper, so the two share the version-probe contract and cannot drift. `doctor` does NOT call `toolVersion` directly because `toolVersion` collapses the missing case and the unreportable (stale-brew-link) case into the single `notInstalledLabel`, whereas `doctor` needs them apart (install vs. reinstall suggestion); `probeVersion` keeps the three states distinct while leaving `toolVersion` untouched. See [cli/doctor](doctor.md#the-version-probe--probeversion-why-a-local-helper).
+
 `normalizeVersion(raw string) string` (`src/cmd/shll/version.go:121`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
 
 The normalization pipeline runs in this order on the input:
@@ -125,3 +127,4 @@ Unit scenarios pinning the normalization contract (12 cases, all named `TestNorm
 - Roster definition: [cli/commands](commands.md#hardcoded-tool-roster).
 - Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).
 - The shared `toolInstalled` helper's other consumer: [cli/list](list.md#the-install-probe-shared-toolinstalled) — `shll list` reuses the same `probeToolVersion` probe (as a bool) for its install-status column.
+- Shared version probe: [cli/doctor](doctor.md) — `doctor`'s `probeVersion` reuses `proc.Run`/`versionTimeout`/`normalizeVersion` (the same primitives as `toolVersion`), keeping the missing-vs-unreportable distinction that `toolVersion` collapses; the two cannot drift.

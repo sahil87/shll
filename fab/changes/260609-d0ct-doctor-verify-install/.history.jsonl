@@ -1,0 +1,25 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-09T06:40:04Z"}
+{"args":"Add a shll doctor command that verifies the toolkit is correctly installed and wired. For every roster tool (idea, hop, fab-kit, wt, run-kit, tu), check: (1) the binary is on PATH, (2) it reports a version (so a half-installed/stale brew link is caught), and (3) its shell integration is wired where applicable. Output one line per tool with a clear OK / WARN / FAIL marker; each non-OK line MUST carry an actionable suggestion. Exit non-zero if any tool is FAIL so it's scriptable in CI.","cmd":"fab-new","event":"command","ts":"2026-06-09T06:40:04Z"}
+{"delta":"+1.5","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T06:42:02Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T06:42:07Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:25:14Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:25:35Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:25:56Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:26:02Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:26:09Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:26:21Z"}
+{"delta":"+0.0","event":"confidence","score":1.5,"trigger":"calc-score","ts":"2026-06-09T07:26:29Z"}
+{"delta":"+0.3","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-06-09T07:26:37Z"}
+{"delta":"+1.7","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-06-09T07:26:49Z"}
+{"delta":"+0.0","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-06-09T07:26:54Z"}
+{"delta":"+0.0","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-06-09T07:26:59Z"}
+{"delta":"+0.0","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-06-09T07:27:08Z"}
+{"delta":"+0.0","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-06-09T07:27:19Z"}
+{"delta":"+0.0","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-06-09T07:27:25Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-06-09T07:30:15Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-09T07:30:38Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-09T07:32:29Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-09T07:37:35Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-09T07:40:50Z"}
+{"event":"review","result":"passed","ts":"2026-06-09T07:40:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-09T07:45:36Z"}
