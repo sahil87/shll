@@ -79,6 +79,18 @@ func writeUnwiredRC(t *testing.T) string {
 	return dir
 }
 
+// writeCorruptRC creates a .zshrc with an shll open sentinel but NO matching
+// close sentinel (locateBlock reports partial) and returns its dir.
+func writeCorruptRC(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	corrupt := "export FOO=bar\n" + openSentinel + "\neval \"$(shll shell-init zsh)\"\n" // open, no close
+	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(corrupt), 0o644); err != nil {
+		t.Fatalf("write rc: %v", err)
+	}
+	return dir
+}
+
 // resultByTool indexes a JSON-decoded result slice by tool name.
 func resultByTool(results []doctorResult) map[string]doctorResult {
 	m := make(map[string]doctorResult, len(results))
@@ -188,6 +200,33 @@ func TestDoctor_UnwiredShellInitWarnsExitZero(t *testing.T) {
 	}
 	if !strings.Contains(out, suggestNotWired) {
 		t.Errorf("missing not-wired suggestion:\n%s", out)
+	}
+}
+
+func TestDoctor_CorruptBlockWarnsWithDistinctSuggestion(t *testing.T) {
+	// An rc file with an unclosed shll sentinel: shell-setup would refuse to
+	// modify it, so doctor must surface the corrupt-block suggestion (manual
+	// cleanup) — NOT the plain "run shll shell-setup" not-wired hint — and stay
+	// exit 0 (WARN, not FAIL).
+	installFakeRunner(t, doctorFake(nil)) // all installed + runnable
+	dir := writeCorruptRC(t)
+
+	var stdout, stderr bytes.Buffer
+	err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("err = %v, want nil (corrupt block is WARN, not FAIL)", err)
+	}
+	out := stdout.String()
+	for _, name := range []string{"wt", "tu", "hop"} {
+		if !lineHas(out, name, markerWarn) {
+			t.Errorf("%s not WARN on corrupt block:\n%s", name, out)
+		}
+	}
+	if !strings.Contains(out, suggestCorruptBlock) {
+		t.Errorf("missing corrupt-block suggestion:\n%s", out)
+	}
+	if strings.Contains(out, suggestNotWired) {
+		t.Errorf("corrupt block should NOT emit the plain not-wired suggestion:\n%s", out)
 	}
 }
 

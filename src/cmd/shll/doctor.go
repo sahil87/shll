@@ -52,6 +52,11 @@ const (
 	suggestNotWired = "not wired — run 'shll shell-setup' then 'exec $SHELL'"
 	// suggestShellUnresolvableFmt takes the raw $SHELL value.
 	suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll shell-setup zsh'"
+	// suggestCorruptBlock is fixed text for a corrupted shll block (open sentinel
+	// without a matching close). doctor must NOT tell the user to run
+	// `shll shell-setup` here, because shell-setup refuses to modify a corrupted
+	// block (exit 2) — the actionable fix is manual cleanup first.
+	suggestCorruptBlock = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll shell-setup'"
 )
 
 // doctorResult is the typed per-tool record. It is the single source for BOTH the
@@ -130,7 +135,7 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	if jsonOut {
 		renderErr = renderDoctorJSON(stdout, results)
 	} else {
-		renderDoctorText(stdout, results)
+		renderErr = renderDoctorText(stdout, results)
 	}
 	if renderErr != nil {
 		fmt.Fprintf(stderr, "shll doctor: %v\n", renderErr)
@@ -153,7 +158,12 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 type wiringFact struct {
 	shellResolved bool
 	wired         bool
-	rawShell      string
+	// corrupt is true when the rc file holds an shll block with an opening
+	// sentinel but no matching close (locateBlock's partial signal). shell-setup
+	// refuses to touch such a block, so doctor surfaces a distinct WARN rather
+	// than the plain "not wired, run shll shell-setup" hint that would mislead.
+	corrupt  bool
+	rawShell string
 }
 
 // resolveWiringFact computes the shared wiring fact: resolve the shell from $SHELL,
@@ -174,7 +184,12 @@ func resolveWiringFact(env func(string) string) wiringFact {
 		// so this is a plain "not wired" rather than the unresolvable-shell case.
 		return wiringFact{shellResolved: true, wired: false}
 	}
-	m, newOK, legacyM, legacyOK, _ := locateBlock(content)
+	m, newOK, legacyM, legacyOK, partial := locateBlock(content)
+	if partial {
+		// Open-without-close sentinel — shell-setup would refuse to modify it, so
+		// "not wired, run shll shell-setup" would send the user down a dead end.
+		return wiringFact{shellResolved: true, corrupt: true}
+	}
 	wired := (newOK && m.hasEval) || (legacyOK && legacyM.hasEval)
 	return wiringFact{shellResolved: true, wired: wired}
 }
@@ -216,6 +231,13 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact) doctorResult 
 		res.Suggestion = fmt.Sprintf(suggestShellUnresolvableFmt, fact.rawShell)
 		return res
 	}
+	if fact.corrupt {
+		// Corrupted shll block — distinct from plain "not wired": shell-setup
+		// would refuse to repair it, so the suggestion points at manual cleanup.
+		res.Status = markerWarn
+		res.Suggestion = suggestCorruptBlock
+		return res
+	}
 	if !fact.wired {
 		res.Status = markerWarn
 		res.Suggestion = suggestNotWired
@@ -254,7 +276,7 @@ func probeVersion(ctx context.Context, tool Tool) (string, versionState) {
 // MAY be colored green on a real TTY (ui.go's colorEnabled — doctor is
 // human-facing, not eval'd, so the shell-init eval-safety exception does not
 // apply); markers are plain ASCII otherwise.
-func renderDoctorText(stdout io.Writer, results []doctorResult) {
+func renderDoctorText(stdout io.Writer, results []doctorResult) error {
 	color := colorEnabled(stdout)
 	w := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
 	problems := 0
@@ -268,10 +290,18 @@ func renderDoctorText(stdout io.Writer, results []doctorResult) {
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Tool, markerGlyph(r.Status, color), r.Version, detail)
 	}
-	_ = w.Flush()
-	if problems > 0 {
-		fmt.Fprintf(stdout, "\n%d of %d tools have problems. Run the suggested commands above, then re-run shll doctor.\n", problems, len(results))
+	// Propagate Flush errors (e.g. broken pipe when piping to `head`) — mirrors
+	// runVersion's Flush handling so a write failure surfaces as exit 1 rather
+	// than being silently swallowed under a success return.
+	if err := w.Flush(); err != nil {
+		return err
 	}
+	if problems > 0 {
+		if _, err := fmt.Fprintf(stdout, "\n%d of %d tools have problems. Run the suggested commands above, then re-run shll doctor.\n", problems, len(results)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // markerGlyph renders a status marker, optionally colorizing the OK marker green

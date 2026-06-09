@@ -14,10 +14,10 @@ wt       OK    v1.4.0   wired
 idea     OK    v0.3.1
 tu       WARN  v2.0.0   not wired — run 'shll shell-setup' then 'exec $SHELL'
 rk       OK    v0.9.2
-hop      FAIL           not installed-equivalent — run 'brew install sahil87/tap/hop'
+hop      FAIL           run 'brew install sahil87/tap/hop'
 fab-kit  FAIL           installed but 'fab-kit --version' failed — try 'brew reinstall sahil87/tap/fab-kit'
 
-2 of 6 tools have problems. Run the suggested commands above, then re-run shll doctor.
+3 of 6 tools have problems. Run the suggested commands above, then re-run shll doctor.
 ```
 
 - Roster order is `wt, idea, tu, rk, hop, fab-kit` (leaves-first, change auvj) — `doctor` walks `Roster` directly, so its line/object order is the roster order. See [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj).
@@ -49,6 +49,7 @@ The wiring fact is a **single rc-file fact** shared by every shell-init tool (sh
 | Binary missing (`versionMissing`) | **FAIL** | first | `on_path:false`, `version_ok:false`, `version:""` |
 | Binary present but version unreportable (`versionUnreportable`) | **FAIL** | first | `on_path:true`, `version_ok:false`, `version:""` |
 | Checks 1+2 pass; shell-init tool whose `$SHELL` is unresolvable | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
+| Checks 1+2 pass; shell-init tool whose rc file has a **corrupted** shll block (open sentinel, no close) | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
 | Checks 1+2 pass; shell-init tool whose wiring is absent | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
 | Checks 1+2 pass; non-shell-init tool (`idea`/`rk`/`fab-kit`) | **OK** | — | `shell_init:false`, `wired:false` |
 | All applicable checks pass (incl. wired shell-init tool) | **OK** | — | `wired:true` for shell-init tools |
@@ -74,7 +75,10 @@ suggestMissingFmt           = "run 'brew install %s'"                           
 suggestUnreportableFmt      = "installed but '%s --version' failed — try 'brew reinstall %s'"                                                  // (tool.Name, tool.Formula)
 suggestNotWired             = "not wired — run 'shll shell-setup' then 'exec $SHELL'"                                                          // fixed text
 suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll shell-setup zsh'"   // %q = raw $SHELL value
+suggestCorruptBlock         = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll shell-setup'" // fixed text
 ```
+
+`suggestCorruptBlock` is deliberately distinct from `suggestNotWired`: when `locateBlock` reports `partial` (an opening `# >>> shll >>>` sentinel with no matching close), `shll shell-setup` would **refuse** to modify the file (exit 2), so telling the user to "run `shll shell-setup`" plainly would send them into a dead end. The corrupt-block hint points at manual cleanup first.
 
 OK tools carry no suggestion (empty string).
 
@@ -97,12 +101,13 @@ It reuses the **same primitives** as `version.go`'s `toolVersion` — `proc.Run`
 1. `resolveShell([]string{}, env)` — infer the shell from `$SHELL` (no positional). On error → `wiringFact{shellResolved:false, rawShell:env("SHELL")}` (the unresolvable-`$SHELL` case).
 2. `resolveRcFile(shell, env)` — derive the rc path.
 3. `os.ReadFile(rcPath)` — **read-only**. A missing/unreadable rc file → `wiringFact{shellResolved:true, wired:false}` (the shell resolved fine; wiring simply isn't there yet — a plain "not wired", not the unresolvable-shell case).
-4. `locateBlock(content)` → `wired := (newOK && m.hasEval) || (legacyOK && legacyM.hasEval)` — true when shll's eval block is present under either the new or the legacy sentinel.
+4. `locateBlock(content)` → `(m, newOK, legacyM, legacyOK, partial)`. If `partial` (an open sentinel with no matching close) → `wiringFact{shellResolved:true, corrupt:true}` (the corrupted-block case — `shell-setup` would refuse to repair it, so the plain not-wired hint would mislead). Otherwise `wired := (newOK && m.hasEval) || (legacyOK && legacyM.hasEval)` — true when shll's eval block is present under either the new or the legacy sentinel.
 
 ```go
 type wiringFact struct {
     shellResolved bool   // false when $SHELL is unset/unsupported
     wired         bool
+    corrupt       bool   // true when locateBlock reports partial (unclosed sentinel)
     rawShell      string // the unresolved $SHELL value, for the suggestion
 }
 ```
@@ -157,16 +162,18 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - **Unwired shell-init tool** (binary OK, but shll's eval block absent from the rc file) → **WARN**, exit unaffected. The tool *works* when invoked directly; wiring is a convenience, not function — so it stays green-for-CI. (`TestDoctor_UnwiredShellInitWarnsExitZero`.)
 - **Unresolvable / unsupported `$SHELL`** (e.g. CI with `$SHELL=/bin/sh`, or unset) → the wiring check cannot resolve an rc path, so shell-init tools degrade to **WARN** with the `suggestShellUnresolvableFmt` explanation; the binary checks (1+2) still run normally and the exit code is unaffected. Non-shell-init tools are untouched (still OK). (`TestDoctor_UnresolvableShellDegradesToWarn`.)
 - **Missing / unreadable rc file** (but `$SHELL` resolved) → treated as "not wired" (a plain WARN with `suggestNotWired`), distinct from the unresolvable-shell case — the shell resolved, the wiring just isn't there yet.
+- **Corrupted shll block** (rc file has an opening `# >>> shll >>>` sentinel with no matching close — `locateBlock` reports `partial`) → shell-init tools → **WARN** with `suggestCorruptBlock` (manual-cleanup hint), exit unaffected. Distinct from plain "not wired" because `shell-setup` refuses to modify a corrupted block (exit 2), so the plain "run `shll shell-setup`" hint would dead-end. (`TestDoctor_CorruptBlockWarnsWithDistinctSuggestion`.)
 - **Binary FAIL on a shell-init tool** → FAIL dominates; no wiring WARN is shown.
 
 ## Test seam
 
-`doctor_test.go` (test-alongside, per `code-quality.md`) drives `runDoctor` with `bytes.Buffer` writers, a fake `proc.Runner` (`doctorFake(states map[string]doctorVersionState)` — per-tool `--version` behavior, defaulting absent tools to `dvOK`), and a map-backed env (`rcEnv(rcDir)` resolves zsh and points `ZDOTDIR`/`HOME` at a `t.TempDir()` rc file, so the wiring check NEVER touches the real `~/.zshrc`). `writeWiredRC`/`writeUnwiredRC` build the rc fixtures (wired uses `tNewBlockZsh`).
+`doctor_test.go` (test-alongside, per `code-quality.md`) drives `runDoctor` with `bytes.Buffer` writers, a fake `proc.Runner` (`doctorFake(states map[string]doctorVersionState)` — per-tool `--version` behavior, defaulting absent tools to `dvOK`), and a map-backed env (`rcEnv(rcDir)` resolves zsh and points `ZDOTDIR`/`HOME` at a `t.TempDir()` rc file, so the wiring check NEVER touches the real `~/.zshrc`). `writeWiredRC`/`writeUnwiredRC`/`writeCorruptRC` build the rc fixtures (wired uses `tNewBlockZsh`; corrupt writes an `openSentinel` with no matching close).
 
 - `TestDoctor_AllOKWired` — all tools installed + a wired rc → every line OK, no problem tail; shell-init tools show `wired`, others do not.
 - `TestDoctor_MissingBinaryFails` — `hop` missing → FAIL line, install suggestion (`brew install sahil87/tap/hop`), problem tail, exit `errSilent`.
 - `TestDoctor_UnreportableVersionFails` — `fab-kit` both `dvUnreportable` (proc error) and `dvEmpty` (empty normalize) → FAIL, reinstall suggestion (`fab-kit --version' failed`, `brew reinstall sahil87/tap/fab-kit`), exit `errSilent`.
 - `TestDoctor_UnwiredShellInitWarnsExitZero` — installed but unwired rc → `wt`/`tu`/`hop` WARN, `idea`/`rk`/`fab-kit` OK (no wiring check), not-wired suggestion, exit 0.
+- `TestDoctor_CorruptBlockWarnsWithDistinctSuggestion` — rc file with an unclosed shll sentinel (`writeCorruptRC`) → `wt`/`tu`/`hop` WARN with `suggestCorruptBlock` (NOT the plain `suggestNotWired`), exit 0.
 - `TestDoctor_MissingDominatesWiring` — `wt` missing AND unwired → FAIL (binary failure dominates the would-be wiring WARN).
 - `TestDoctor_UnresolvableShellDegradesToWarn` — `$SHELL=/bin/sh` → `wt`/`tu`/`hop` WARN with the `$SHELL is` suggestion, binary checks still run, `idea` stays OK, exit 0.
 - `TestDoctor_JSONShapeAndExit` — `--json` with `hop` missing + `tu` unwired → valid JSON, no ANSI, trailing newline, `len == len(Roster)`, roster order preserved, per-tool field values per marker (`hop` FAIL/missing, `tu` WARN/onpath/version_ok/unwired with `version:"v1.2.3"`, `idea` `shell_init:false`/OK), `hop` is FAIL → exit `errSilent` (same as text).
