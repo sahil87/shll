@@ -99,7 +99,7 @@ Use --rc-file <path> to override derivation entirely.`,
 	}
 	cmd.Flags().BoolVar(&printMode, "print", false, "print the block to stdout, do not modify any file")
 	cmd.Flags().BoolVar(&uninstallMode, "uninstall", false, "remove the shll-managed block from the rc file")
-	cmd.Flags().BoolVar(&trustTap, "trust-tap", false, "run `brew trust --tap sahil87/tap` and add the require-tap-trust policy line to the block")
+	cmd.Flags().BoolVar(&trustTap, "trust-tap", false, "run 'brew trust --tap sahil87/tap' and add the require-tap-trust policy line to the block")
 	cmd.Flags().StringVar(&rcFileFlag, "rc-file", "", "override the rc file path (escape hatch for non-standard layouts)")
 	return cmd
 }
