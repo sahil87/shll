@@ -155,16 +155,22 @@ func statusMarker(installed, color bool) string {
 	return statusASCIIMissing
 }
 
-// writeListJSON emits the roster as a bare JSON array — one object per tool in
-// roster order — 2-space-indented with a single trailing newline (the Encoder
-// appends it) so it diffs cleanly and pipes into jq. Plain JSON only: no ANSI,
-// no table framing, regardless of TTY. The repo field is the full resolved URL.
+// writeListJSON emits the roster as a bare JSON array — a shll-first self object
+// (see below) followed by one object per roster tool in roster order, so
+// len(Roster)+1 objects total — 2-space-indented with a single trailing newline
+// (the Encoder appends it) so it diffs cleanly and pipes into jq. Plain JSON
+// only: no ANSI, no table framing, regardless of TTY. The repo field is the
+// full resolved URL.
 //
 // HTML escaping is disabled (SetEscapeHTML(false)) so a description containing
 // `&`, `<`, or `>` (e.g. fab-kit's "workspace & workflow toolkit") serializes as
-// the literal character rather than `&` — keeping the --json output byte-for-
-// byte legible and matching what the default table column shows. The output stays
-// valid JSON either way; this is purely about the human-readable scripting form.
+// the literal character. With the default encoder these would instead be emitted
+// as their JSON Unicode escapes — `&` becomes the six bytes backslash-u-0026,
+// `<` backslash-u-003c, `>` backslash-u-003e — which mangles the raw --json bytes
+// and diverges from the table column. Disabling escaping keeps the output
+// byte-for-byte legible and matching the table. It stays valid JSON either way
+// (a decoder restores the same string); this is purely about the human-readable
+// scripting form.
 func writeListJSON(w io.Writer, installed []bool) error {
 	items := make([]listItem, 0, len(Roster)+1)
 	// shll-first object: Self:true (omitempty, so absent on the managed tools
