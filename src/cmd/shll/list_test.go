@@ -44,16 +44,33 @@ func TestList_AllInstalled(t *testing.T) {
 		t.Fatalf("runList err = %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
-	if len(lines) != len(Roster) {
-		t.Fatalf("line count = %d, want %d. output:\n%s", len(lines), len(Roster), stdout.String())
+	// One shll-first row plus one row per roster tool.
+	if len(lines) != len(Roster)+1 {
+		t.Fatalf("line count = %d, want %d. output:\n%s", len(lines), len(Roster)+1, stdout.String())
 	}
-	// Rows follow roster order; each carries the installed ASCII marker (non-TTY).
+	// Row 0 is the shll-first row: installed marker, manager description, repo URL.
+	shllLine := lines[0]
+	if !strings.HasPrefix(strings.TrimSpace(shllLine), statusASCIIInstalled) {
+		t.Errorf("shll row = %q, want installed marker %q", shllLine, statusASCIIInstalled)
+	}
+	if fields := strings.Fields(shllLine); len(fields) < 2 || fields[1] != shllSelf.Name {
+		t.Errorf("shll row = %q, want name %q as the second field", shllLine, shllSelf.Name)
+	}
+	if !strings.Contains(shllLine, shllSelf.Description) {
+		t.Errorf("shll row = %q, want manager description %q", shllLine, shllSelf.Description)
+	}
+	if !strings.Contains(shllLine, githubOrgBase+shllSelf.Repo) {
+		t.Errorf("shll row = %q, want repo URL %q", shllLine, githubOrgBase+shllSelf.Repo)
+	}
+	// Remaining rows follow roster order (offset by 1 for the shll row); each
+	// carries the installed ASCII marker (non-TTY).
 	for i, tool := range Roster {
-		if !strings.Contains(lines[i], tool.Name) {
-			t.Errorf("line %d = %q, want to contain %q", i, lines[i], tool.Name)
+		line := lines[i+1]
+		if !strings.Contains(line, tool.Name) {
+			t.Errorf("line %d = %q, want to contain %q", i+1, line, tool.Name)
 		}
-		if !strings.HasPrefix(strings.TrimSpace(lines[i]), statusASCIIInstalled) {
-			t.Errorf("line %d = %q, want installed marker %q", i, lines[i], statusASCIIInstalled)
+		if !strings.HasPrefix(strings.TrimSpace(line), statusASCIIInstalled) {
+			t.Errorf("line %d = %q, want installed marker %q", i+1, line, statusASCIIInstalled)
 		}
 	}
 }
@@ -144,27 +161,56 @@ func TestList_JSON(t *testing.T) {
 		t.Errorf("JSON should contain the literal `&` from fab-kit's description, got:\n%s", out)
 	}
 
+	// The `self` field is `omitempty`: it must appear exactly ONCE in the raw
+	// bytes (the shll object), never on the 6 managed-tool objects.
+	if n := strings.Count(out, `"self"`); n != 1 {
+		t.Errorf(`raw JSON has %d "self" keys, want 1 (only the shll object), got:\n%s`, n, out)
+	}
+
 	var items []listItem
 	if err := json.Unmarshal([]byte(out), &items); err != nil {
 		t.Fatalf("output is not valid JSON: %v\noutput:\n%s", err, out)
 	}
-	if len(items) != len(Roster) {
-		t.Fatalf("JSON array len = %d, want %d", len(items), len(Roster))
+	// One shll-first object plus one per roster tool.
+	if len(items) != len(Roster)+1 {
+		t.Fatalf("JSON array len = %d, want %d", len(items), len(Roster)+1)
 	}
+	// Object 0 is the shll-first object: self:true, installed:true, manager desc.
+	shll := items[0]
+	if shll.Name != shllSelf.Name {
+		t.Errorf("item 0 name = %q, want %q (shll-first)", shll.Name, shllSelf.Name)
+	}
+	if !shll.Self {
+		t.Errorf("item 0 self = false, want true (shll-self marker)")
+	}
+	if !shll.Installed {
+		t.Errorf("item 0 installed = false, want true (shll is the running binary)")
+	}
+	if shll.Description != shllSelf.Description {
+		t.Errorf("item 0 description = %q, want %q", shll.Description, shllSelf.Description)
+	}
+	if shll.Repo != githubOrgBase+shllSelf.Repo {
+		t.Errorf("item 0 repo = %q, want %q", shll.Repo, githubOrgBase+shllSelf.Repo)
+	}
+	// Managed-tool objects follow in roster order (offset by 1) and MUST NOT carry
+	// the self flag — so `select(.self != true)` yields exactly the managed tools.
 	for i, tool := range Roster {
-		got := items[i]
+		got := items[i+1]
 		if got.Name != tool.Name {
-			t.Errorf("item %d name = %q, want %q (roster order)", i, got.Name, tool.Name)
+			t.Errorf("item %d name = %q, want %q (roster order)", i+1, got.Name, tool.Name)
+		}
+		if got.Self {
+			t.Errorf("item %d (%s) self = true, want false (only shll is self)", i+1, tool.Name)
 		}
 		if got.Description != tool.Description {
-			t.Errorf("item %d description = %q, want %q", i, got.Description, tool.Description)
+			t.Errorf("item %d description = %q, want %q", i+1, got.Description, tool.Description)
 		}
 		if got.Repo != githubOrgBase+tool.Repo {
-			t.Errorf("item %d repo = %q, want full URL %q", i, got.Repo, githubOrgBase+tool.Repo)
+			t.Errorf("item %d repo = %q, want full URL %q", i+1, got.Repo, githubOrgBase+tool.Repo)
 		}
 		wantInstalled := tool.Name != "rk"
 		if got.Installed != wantInstalled {
-			t.Errorf("item %d (%s) installed = %v, want %v", i, tool.Name, got.Installed, wantInstalled)
+			t.Errorf("item %d (%s) installed = %v, want %v", i+1, tool.Name, got.Installed, wantInstalled)
 		}
 	}
 }
@@ -196,12 +242,16 @@ func TestList_Order(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &items); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if len(items) != len(Roster) {
-		t.Fatalf("len = %d, want %d", len(items), len(Roster))
+	// shll-first, then the roster (leaves-first) — len(Roster)+1 total.
+	if len(items) != len(Roster)+1 {
+		t.Fatalf("len = %d, want %d", len(items), len(Roster)+1)
+	}
+	if items[0].Name != shllSelf.Name {
+		t.Errorf("position 0 = %q, want %q (shll-first)", items[0].Name, shllSelf.Name)
 	}
 	for i, tool := range Roster {
-		if items[i].Name != tool.Name {
-			t.Errorf("position %d = %q, want %q (Roster order)", i, items[i].Name, tool.Name)
+		if items[i+1].Name != tool.Name {
+			t.Errorf("position %d = %q, want %q (Roster order)", i+1, items[i+1].Name, tool.Name)
 		}
 	}
 }

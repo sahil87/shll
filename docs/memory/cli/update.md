@@ -86,6 +86,8 @@ The self-upgrade is **unaffected by the delegation change** — shll has no `upd
 
 Ordering rationale: self-upgrade runs *before* the roster loop so the on-disk binary is updated as early as possible. Subsequent operations within the same invocation still execute the original mapped image (POSIX semantics — replacing the file on disk doesn't affect a running process), so there is no risk of partial-version mixing within one run.
 
+> **The `shll (self)` first step is the manage-side instance of the shared display pattern (change bb7r — no behavior change).** `update` has always led with a `shll (self)` step as `[1/M]` before the roster loop. Change bb7r introduced the shared `shllSelf` descriptor (`src/cmd/shll/tools.go`) so that `list`/`doctor`/`install` could *generalize* the shll-first ordering `version`/`update` already had. **`update.go` was NOT changed**: shll is still self-upgraded via this dedicated `brew upgrade shllFormula` path (it has no `update` subcommand to delegate to), not via `shllSelf` — the descriptor is a *display* source of truth for the inspect surface, while update's self-step is a *brew action*. See [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r).
+
 ## Detection
 
 `isInstalled(ctx, formula)` in `src/cmd/shll/brew.go:52` is the single source of truth for "is this brew formula installed":
@@ -297,6 +299,7 @@ Per-tool output separation (change y630) plus the change-6vuo `[N/M]` counter, d
 
 - Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
 - The hardcoded roster and the `Update` capability field: [cli/commands](commands.md#hardcoded-tool-roster).
+- The shared `shllSelf` display descriptor (change bb7r): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). `update`'s `shll (self)` first step is the established manage-side pattern that descriptor generalizes to `list`/`doctor`/`install`; `update.go` itself is unchanged (self-upgrade stays a dedicated `brew upgrade`, not a `shllSelf` consumer).
 - Shared UI helper (`ui.go`) for the header/tail/color logic: [cli/commands](commands.md#file-layout-srccmdshll); the sibling [cli/install](install.md#per-tool-output-separation-change-y630) mirrors this header/tail behavior.
 - Constitution III (Wrap, Don't Reinvent) and IV (Composition, Not Replacement) — the delegation in step 8 is the direct expression of both.
 - Constitution V (Graceful Degradation) — uninstalled tools are skipped during probing; version-skew tools degrade to a flagless `<tool> update`.

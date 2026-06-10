@@ -8,7 +8,9 @@ Source: `src/cmd/shll/install.go`, with shared brew helpers in `src/cmd/shll/bre
 
 The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd/shll/install.go`):
 
-1. **Brew missing.** If `hasBrew(ctx)` returns false, write `installBrewMissingHint` to stderr and return `errSilent`. Exit code: 1. The literal hint is `"shll install requires Homebrew. Install from https://brew.sh"` (`src/cmd/shll/brew.go`). It is intentionally separate from `brewMissingHint` (used by `shll update`) so each command's error tells the user which command they ran — the update spec scenario asserts its verbatim text, so reusing the same constant for both commands would either violate that lock or mislead `shll install` users.
+1. **Brew missing.** If `hasBrew(ctx)` returns false, write `installBrewMissingHint` to stderr and return `errSilent`. Exit code: 1. The literal hint is `"shll install requires Homebrew. Install from https://brew.sh"` (`src/cmd/shll/brew.go`). It is intentionally separate from `brewMissingHint` (used by `shll update`) so each command's error tells the user which command they ran — the update spec scenario asserts its verbatim text, so reusing the same constant for both commands would either violate that lock or mislead `shll install` users. (Subset resolution via `resolveTargets(args, false)` runs *before* this guard — an unknown/`shll` target errors first, with no brew side effect; see [Positional tool-name args](#positional-tool-name-args--subset-targeting-change-b2vg).)
+
+   **Then — shll-first informational line** (change bb7r): immediately after this brew-missing guard passes, `runInstall` writes `shllSelfInstallNote` (`"shll — already present / self-managed"`) to stdout. Placed *after* the brew-missing/unknown-target guards, so it leads the nothing-to-do, dry-run, and install-loop paths but **not** the early-error paths. Informational only — shll is never a `brew install` target. See [The prepended shll-first informational line](#the-prepended-shll-first-informational-line-change-bb7r).
 
 2. **Partition the roster.** Iterate `Roster` in order, calling `isInstalled(ctx, t.Formula)`; collect the *missing* entries into a local `missing` slice.
 
@@ -19,6 +21,24 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, "brew", "install", t.Formula)`. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
 
 6. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
+
+## The prepended shll-first informational line (change bb7r)
+
+`runInstall` prepends a single shll-first line to stdout — `fmt.Fprintln(stdout, shllSelfInstallNote)` (`src/cmd/shll/install.go:94`) — so the toolkit reads as one family with `shll` as its manager-member (the discoverability goal shared with `list`/`doctor`). It is the install-side instance of the unified shll-first ordering — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r).
+
+```go
+// install.go
+const shllSelfInstallNote = "shll — already present / self-managed"
+```
+
+Two load-bearing properties:
+
+- **Never a brew install action on the running binary.** You cannot `brew install` the running orchestrator, so the line is **informational only** — no subprocess, no `brew install sahil87/tap/shll`. shll is also rejected as an explicit positional install target (`resolveTargets(args, false)`, `allowShll=false`; change b2vg), so it can never enter the `missing` set. `TestInstall_ShllFirstInformationalLine` asserts no `brew install` of the shll formula is ever recorded.
+- **Placement: after the guards, before the roster framing.** The line is written *after* the brew-missing guard (and after the up-front `resolveTargets` unknown-target check) but *before* the roster is partitioned. So it leads the three terminal paths that reach the install decision — **nothing-to-do** (`All sahil87 tools already installed.`), **`--dry-run` preview**, and the **install loop** — but is **NOT** emitted on the early-error paths (brew missing → only the stderr hint; unknown/`shll` target → only the stderr error). It goes to **stdout**, never stderr (`TestInstall_ShllFirstInformationalLine` also asserts this).
+
+This is a deliberate *informational* exception to the symmetry between the inspect surface (`list`/`doctor`, which render shll as a full row/object) and `install` (which *acts*): shll cannot be acted on, so its representation here is a leading note rather than an actionable row.
+
+> **Note — the empty/nothing-to-do golden is no longer just `allInstalledMsg`.** Before change bb7r, the all-already-installed stdout was exactly `All sahil87 tools already installed.\n`. With the prepended informational line, that path's stdout is now `shll — already present / self-managed\n` then `All sahil87 tools already installed.\n`. The [Per-tool output separation §empty case](#per-tool-output-separation-change-y630) statement that the empty-case stdout is "**exactly** `allInstalledMsg`" holds for the install-loop framing only (no `==>` header, no tail, no blank lines); the bb7r informational line precedes it on every non-early-error path.
 
 ## Exit codes
 
@@ -38,7 +58,7 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 - **Summary tail with run duration (change 6vuo).** After the loop, `printSummaryTail(stdout, succeeded, total, elapsed, color)` (`install.go:129`, `total = len(missing)`) writes `Done — N of M tools succeeded in <dur>.` (green `✓` when color) or `X succeeded, Y failed in <dur> — see above.` (duration before the em-dash), by **exit code only** — `succeeded` counts installs that exited 0, mirroring the same per-tool facts that drive `anyFailed`. The duration is a run fact, not an outcome claim — the tail still never claims "installed" vs. "up-to-date" (the honesty constraint). Presentation-only; does not change the exit code. Elapsed is measured via the injectable `nowFunc` clock seam (`clock.go`), captured at `install.go:101` **after** the short-circuit and the dry-run branch return, so it covers only the install phase.
 - **Stream discipline.** Header and tail go to **stdout** (the stream `brew install` is foregrounded onto), never stderr.
 - **Color gating.** One `colorEnabled(stdout)` decision (TTY via `golang.org/x/term` AND `NO_COLOR` unset), reused for headers and tail; `bytes.Buffer` test writers hit the plain-ASCII branch.
-- **Empty case emits no header, no tail, no counter, no spacing, no duration.** The all-already-installed short-circuit (step 3) runs no loop, so its stdout stays **exactly** `All sahil87 tools already installed.\n` (the `allInstalledMsg` constant, `install.go:140`) — the `TestInstall_AllAlreadyInstalled` and `TestInstall_EmptyCaseNoHeaderNoTail` golden strings are preserved verbatim. Only the install-loop path carries the `==> [N/M]`/blank-line/duration markers.
+- **Empty case emits no header, no tail, no counter, no spacing, no duration.** The all-already-installed short-circuit (step 3) runs no loop, so the *install-loop framing* it would emit is absent — no `==> [N/M]` header, no tail, no blank lines, no duration; only the install-loop path carries those markers. Its install-message line stays `All sahil87 tools already installed.\n` (the `allInstalledMsg` constant). **Since change bb7r the shll-first informational line precedes it** (`shll — already present / self-managed\n` then `All sahil87 tools already installed.\n`) on this non-early-error path — see [The prepended shll-first informational line](#the-prepended-shll-first-informational-line-change-bb7r); the `TestInstall_AllAlreadyInstalled`/`TestInstall_EmptyCaseNoHeaderNoTail` goldens were updated for the prepended line.
 
 The helper details (named SGR constants, the `colorEnabled` gating, the honesty constraint on the tail, the `[N/M]` counter, the `formatDuration` form, and the `nowFunc` clock seam) are documented once under [cli/update](update.md#per-tool-output-separation-change-y630); `install` consumes the identical helpers.
 
@@ -48,7 +68,7 @@ The helper details (named SGR constants, the `colorEnabled` gating, the honesty 
 
 **Reads run; writes do not.** The `isInstalled` probes (`brew list --formula --versions`) that partition the roster still run in dry-run (they are reads, and the preview depends on them) — but **no `brew install`** is performed. The guarantee is structural: the dry-run branch (`install.go:80`) returns before the install loop and before `start := nowFunc()`. `TestInstall_DryRunNoWrites` asserts the `brew list` probe IS recorded, no `brew install <formula>` runs for any tool, and there are **zero `TransportForeground`** calls.
 
-**The preview.** A header line `Would install N tools:` (`installPreviewHeaderFmt`) — **no metadata-refresh annotation**, since `install` runs no `brew update` (consistent with [Design Decision #2](#2-no-metadata-refresh)) — then one aligned row per missing tool, in roster order, each reading `brew install sahil87/tap/<formula>` (built as `argvString(brewBinary, "install", t.Formula)`, `install.go:83`). Formatting reuses the same `ui.go` `printInstallPreview` → `printPreviewRows` aligned-column layout as `update`: 2-space indent, labels left-padded to the longest *missing* label present, 2-space gap before the command. No `[N/M]` counter, no blank-line spacing (the preview is a static table).
+**The preview.** Preceded by the shll-first informational line (change bb7r — the dry-run path reaches the install decision, so it leads with `shllSelfInstallNote`), then a header line `Would install N tools:` (`installPreviewHeaderFmt`) — **no metadata-refresh annotation**, since `install` runs no `brew update` (consistent with [Design Decision #2](#2-no-metadata-refresh)) — then one aligned row per missing tool, in roster order, each reading `brew install sahil87/tap/<formula>` (built as `argvString(brewBinary, "install", t.Formula)`). Formatting reuses the same `ui.go` `printInstallPreview` → `printPreviewRows` aligned-column layout as `update`: 2-space indent, labels left-padded to the longest *missing* label present, 2-space gap before the command. No `[N/M]` counter, no blank-line spacing (the preview is a static table).
 
 ```
 Would install 4 tools:
@@ -62,7 +82,7 @@ Would install 4 tools:
 
 **Graceful degradation (Constitution V).** Only the missing subset is listed; already-installed tools are omitted (they are filtered out into `missing` before the preview builds).
 
-**Empty case.** When every roster tool is already installed, the dry-run path never reaches the preview builder — the shared all-already-installed short-circuit (step 3) fires first, so stdout is exactly `All sahil87 tools already installed.\n` (the `allInstalledMsg` constant), exit 0, no preview table, no install (`TestInstall_DryRunEmptyCase`).
+**Empty case.** When every roster tool is already installed, the dry-run path never reaches the preview builder — the shared all-already-installed short-circuit (step 3) fires first, so stdout is the shll-first informational line then `All sahil87 tools already installed.\n` (i.e. `shllSelfInstallNote + "\n" + allInstalledMsg + "\n"`, change bb7r), exit 0, no preview table, no install (`TestInstall_DryRunEmptyCase`).
 
 **Brew-missing precondition unchanged.** A missing brew still writes `installBrewMissingHint` to stderr and exits 1 (the `hasBrew` check precedes the dry-run branch).
 
@@ -115,13 +135,14 @@ All `install_test.go` tests inject a fake via `proc.Runner` (`installFakeRunner`
 Covered scenarios (`src/cmd/shll/install_test.go`):
 
 - `TestInstall_BrewMissing` — `proc.Run("brew", "--version")` returns `ErrNotFound` → stderr hint, exit 1, no install attempted.
-- `TestInstall_AllAlreadyInstalled` — every `brew list` succeeds → stdout `"All sahil87 tools already installed."`, no install calls, exit 0.
+- `TestInstall_ShllFirstInformationalLine` *(change bb7r)* — whole-roster run, all missing → the **first** stdout line is `shllSelfInstallNote` (`"shll — already present / self-managed"`), no `brew install` of the shll formula is ever recorded (informational only), and the line goes to stdout, never stderr.
+- `TestInstall_AllAlreadyInstalled` — every `brew list` succeeds → stdout `shllSelfInstallNote + "\nAll sahil87 tools already installed.\n"` (the bb7r informational line precedes the nothing-to-do note), no install calls, exit 0.
 - `TestInstall_NoneInstalled` — every `brew list` exit-1 → install all six roster tools, exit 0.
 - `TestInstall_PartialInstalled` — only `hop` and `wt` installed → install the other four, skip hop/wt, no stderr.
 - `TestInstall_NoBrewUpdateInvoked` — pin the no-metadata-refresh contract: `brew update --quiet` MUST NOT appear in the recorded calls.
 - `TestInstall_OneInstallFails` — one roster install (the `fab-kit` formula, now last in the leaves-first order) exits non-zero → loop continues and attempts all six, exit 1. The test pins the formula by name (`fab-kit`), not by roster position, and asserts total install attempts == `len(Roster)`, so it is robust to the reorder.
 - `TestInstall_HeadersAndTail` *(change 6vuo, golden updated)* — `hop`+`wt` installed; asserts the verbatim `[N/M]` headers over the missing subset (`==> [1/4] idea` … `==> [4/4] fab-kit`), the blank line before each subsequent header and before the tail, and the duration-bearing `Done — 4 of 4 tools succeeded in 1m12s.` tail (installs a deterministic clock).
-- `TestInstall_EmptyCaseNoHeaderNoTail` *(change 6vuo)* — all installed → the one-line note only, no `==>` header and no `Done —`/duration tail.
+- `TestInstall_EmptyCaseNoHeaderNoTail` *(change 6vuo; golden updated by bb7r)* — all installed → the shll-first informational line then the nothing-to-do note (`shllSelfInstallNote + "\nAll sahil87 tools already installed.\n"`), no `==>` header and no `Done —`/duration tail.
 - `TestInstall_PartialFailureTail` *(change 6vuo)* — all six missing, `fab-kit` fails → partial-failure tail `5 succeeded, 1 failed in 1m12s — see above.` (duration before the em-dash).
 - `TestInstall_CounterPartialInstall` *(change 6vuo)* — only `idea` installed → missing subset `wt, tu, rk, hop, fab-kit` (5 tools, roster order) yields headers `[1/5]`..`[5/5]` and the `Done — 5 of 5 …` tail (counter correctness).
 - `TestInstall_DryRunPreview` *(change 6vuo)* — `hop`+`wt` installed → verbatim aligned-column preview `Would install 4 tools:` then `brew install sahil87/tap/<formula>` rows; asserts no "metadata refresh" mention.
@@ -141,6 +162,7 @@ Per-tool header/tail behavior (change y630) plus the change-6vuo `[N/M]` counter
 
 - Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
 - The hardcoded roster: [cli/commands](commands.md#hardcoded-tool-roster).
+- The shared `shllSelf` descriptor + the unified shll-first ordering (the informational line is install's instance): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling inspect surfaces that render shll as a full entry: [cli/list](list.md#the-prepended-shll-first-row-change-bb7r) and [cli/doctor](doctor.md#the-prepended-shll-first-row-change-bb7r).
 - Sibling lifecycle command: [cli/update](update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`.
 - Shared UI helper (`ui.go`): [cli/commands](commands.md#file-layout-srccmdshll).
 - Constitution III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation), VII (Minimal Surface Area).

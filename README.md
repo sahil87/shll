@@ -164,6 +164,7 @@ One row for `shll` itself plus each roster tool, in roster order. Uninstalled to
 
 ```sh
 $ shll list
+ok  shll     the manager for the shll toolkit                                        https://github.com/sahil87/shll
 ok  wt       Git worktree management — create, list, open, delete worktrees          https://github.com/sahil87/wt
 ok  idea     Backlog idea management from the terminal                               https://github.com/sahil87/idea
 ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)  https://github.com/sahil87/tu
@@ -172,18 +173,19 @@ ok  hop      Fast directory/project jumping across worktrees                    
 ok  fab-kit  Spec-driven workspace & workflow toolkit (the `fab` CLI)                https://github.com/sahil87/fab-kit
 ```
 
-One row per managed tool, in roster order: an install-status marker (`ok` / `--`, or a green `✓` / red `✗` on a terminal), the name, a one-line description, and the source-repo URL. Install status reuses the same PATH probe as `shll version` (it's install-mechanism agnostic, not a Homebrew check); a missing tool is shown as missing, never an error, so `shll list` always exits 0. There's no `shll` self-row — `list` enumerates the *managed* tools, and `shll` is the manager.
+`shll` leads, then one row per managed tool in roster order: an install-status marker (`ok` / `--`, or a green `✓` / red `✗` on a terminal), the name, a one-line description, and the source-repo URL. The leading `shll` row is the manager itself — it's surfaced so the toolkit reads as one family with `shll` as its manager-member (the same shll-first ordering `shll version` and `shll update` already use). Install status reuses the same PATH probe as `shll version` (it's install-mechanism agnostic, not a Homebrew check); a missing tool is shown as missing, never an error, so `shll list` always exits 0.
 
 ```sh
 shll list --json    # JSON array, no color — pipe into jq
 ```
 
-`--json` emits a `{name, description, repo, installed}` array (repo is the full resolved URL), suitable for `shll list --json | jq`.
+`--json` emits a `{name, description, repo, installed}` array (repo is the full resolved URL), suitable for `shll list --json | jq`. The leading `shll` object additionally carries `"self": true` (absent on the six managed tools), so a script driving `brew install` can recover just the managed set with `jq 'map(select(.self != true))'`.
 
 ### `shll doctor` — verify install + wiring
 
 ```sh
 $ shll doctor
+shll     OK  v0.0.16
 wt       OK  v0.0.16  wired
 idea     OK  v0.0.7
 tu       OK  v0.4.17  wired
@@ -192,7 +194,7 @@ hop      OK  v0.1.16  wired
 fab-kit  OK  v2.1.1
 ```
 
-For every roster tool, `doctor` checks that (1) the binary is on `PATH`, (2) it reports a version (so a half-installed or stale brew link is caught), and (3) — for the tools that ship shell integration (`wt`, `tu`, `hop`) — shll's composed eval block is present in your rc file. Each tool gets one line with an `OK` / `WARN` / `FAIL` marker, and every non-OK line carries an actionable suggestion (e.g. `run 'brew install …'`, or `not wired — run 'shll shell-setup' then 'exec $SHELL'`).
+`shll` leads with an always-OK row (it's the running binary; version from the build, no wiring check), then for every roster tool `doctor` checks that (1) the binary is on `PATH`, (2) it reports a version (so a half-installed or stale brew link is caught), and (3) — for the tools that ship shell integration (`wt`, `tu`, `hop`) — shll's composed eval block is present in your rc file. Each tool gets one line with an `OK` / `WARN` / `FAIL` marker, and every non-OK line carries an actionable suggestion (e.g. `run 'brew install …'`, or `not wired — run 'shll shell-setup' then 'exec $SHELL'`). The always-OK `shll` row never affects the exit code or the problem count (a single roster failure still reads `1 of 6`, never `1 of 7`).
 
 A missing or non-running binary is `FAIL`; an installed-but-unwired tool is `WARN` (it still works when invoked directly). `doctor` is strictly **read-only** — it never installs, upgrades, or edits your rc file — and it **exits non-zero if any tool is FAIL**, so it's scriptable in CI. Pass `--json` for a machine-readable array (one object per tool) under the same checks and exit contract.
 

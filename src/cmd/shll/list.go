@@ -34,11 +34,17 @@ const (
 // lightweight, stable contract: name, description, repo (the FULL resolved URL,
 // not the bare slug, so consumers don't re-derive it and it matches the table
 // column), and installed (the version-style PATH probe result).
+//
+// Self marks the shll-self entry (the prepended manager row). It is `omitempty`,
+// so it is absent on the 6 managed tools and present (`true`) only on shll —
+// letting scripting consumers driving `brew install` filter shll out via
+// `select(.self != true)` before acting on the array.
 type listItem struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Repo        string `json:"repo"`
 	Installed   bool   `json:"installed"`
+	Self        bool   `json:"self,omitempty"`
 }
 
 func newListCmd() *cobra.Command {
@@ -70,8 +76,11 @@ Pass --json for a plain JSON array suitable for scripting (` + "`shll list --jso
 // then renders either the aligned table (default) or a plain JSON array
 // (jsonOut). A missing tool is reported as missing, never an error, and runList
 // returns nil regardless of install status (Constitution V — Graceful
-// Degradation). No `shll` self-row: list enumerates the managed sub-tools; shll
-// itself is the manager, not a managed tool.
+// Degradation). The output leads with a shll-first row (the shared shllSelf
+// descriptor) FOR DISCOVERABILITY — so a newcomer running `shll list` sees the
+// toolkit as one family with shll as its manager-member — followed by the managed
+// sub-tools in Roster order. (This reverses change lst7's earlier "no self-row"
+// decision; the reversal is for discoverability and is NOT a constitutional rule.)
 func runList(ctx context.Context, stdout io.Writer, jsonOut bool) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -119,6 +128,10 @@ func repoURL(t Tool) string {
 func writeListTable(w io.Writer, installed []bool) error {
 	color := colorEnabled(w)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	// shll-first row, with the PLAIN installed marker (same rendering as an
+	// installed tool — maximum visual uniformity was chosen over a distinct
+	// "self" marker). shll is always present (it is the running binary).
+	fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", statusMarker(true, color), shllSelf.Name, shllSelf.Description, repoURL(shllSelf))
 	for i, t := range Roster {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", statusMarker(installed[i], color), t.Name, t.Description, repoURL(t))
 	}
@@ -142,25 +155,41 @@ func statusMarker(installed, color bool) string {
 	return statusASCIIMissing
 }
 
-// writeListJSON emits the roster as a bare JSON array — one object per tool in
-// roster order — 2-space-indented with a single trailing newline (the Encoder
-// appends it) so it diffs cleanly and pipes into jq. Plain JSON only: no ANSI,
-// no table framing, regardless of TTY. The repo field is the full resolved URL.
+// writeListJSON emits the roster as a bare JSON array — a shll-first self object
+// (see below) followed by one object per roster tool in roster order, so
+// len(Roster)+1 objects total — 2-space-indented with a single trailing newline
+// (the Encoder appends it) so it diffs cleanly and pipes into jq. Plain JSON
+// only: no ANSI, no table framing, regardless of TTY. The repo field is the
+// full resolved URL.
 //
 // HTML escaping is disabled (SetEscapeHTML(false)) so a description containing
 // `&`, `<`, or `>` (e.g. fab-kit's "workspace & workflow toolkit") serializes as
-// the literal character rather than `&` — keeping the --json output byte-for-
-// byte legible and matching what the default table column shows. The output stays
-// valid JSON either way; this is purely about the human-readable scripting form.
+// the literal character. With the default encoder these would instead be emitted
+// as their JSON Unicode escapes — `&` becomes the six bytes backslash-u-0026,
+// `<` backslash-u-003c, `>` backslash-u-003e — which mangles the raw --json bytes
+// and diverges from the table column. Disabling escaping keeps the output
+// byte-for-byte legible and matching the table. It stays valid JSON either way
+// (a decoder restores the same string); this is purely about the human-readable
+// scripting form.
 func writeListJSON(w io.Writer, installed []bool) error {
-	items := make([]listItem, len(Roster))
+	items := make([]listItem, 0, len(Roster)+1)
+	// shll-first object: Self:true (omitempty, so absent on the managed tools
+	// below) and Installed:true (shll is the running binary). Consumers driving
+	// `brew install` filter it out via `select(.self != true)`.
+	items = append(items, listItem{
+		Name:        shllSelf.Name,
+		Description: shllSelf.Description,
+		Repo:        repoURL(shllSelf),
+		Installed:   true,
+		Self:        true,
+	})
 	for i, t := range Roster {
-		items[i] = listItem{
+		items = append(items, listItem{
 			Name:        t.Name,
 			Description: t.Description,
 			Repo:        repoURL(t),
 			Installed:   installed[i],
-		}
+		})
 	}
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)

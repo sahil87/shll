@@ -84,6 +84,15 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args
 		return errSilent
 	}
 
+	// shll-first informational line: shll is the manager-member of the toolkit and
+	// is always already present (it is the running orchestrator), so it leads the
+	// output for family-discoverability — but it is INFORMATIONAL only, never a
+	// `brew install` action (you cannot brew-install the running binary; shll is
+	// also rejected as an explicit install target above). Printed once, before any
+	// roster framing, on every path that reaches the install decision (nothing-to-
+	// do, dry-run preview, and the install loop).
+	fmt.Fprintln(stdout, shllSelfInstallNote)
+
 	// The roster to consider: the full Roster for a whole-roster run, or just the
 	// named subset (in roster order — resolveTargets returns selected in roster
 	// order) for a subset run.
@@ -173,3 +182,9 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args
 // already installed). Shared by the normal short-circuit and the dry-run empty case so
 // both read identically. Named per code-quality.md.
 const allInstalledMsg = "All sahil87 tools already installed."
+
+// shllSelfInstallNote is the shll-first informational line `shll install` prepends.
+// shll is the manager-member of the toolkit and is always already present (it is the
+// running orchestrator), so the line is informational — NOT a brew install action.
+// Named per code-quality.md (no magic strings).
+const shllSelfInstallNote = "shll — already present / self-managed"

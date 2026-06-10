@@ -121,8 +121,16 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// (shll's composed eval block covers them all), so resolve it ONCE up front.
 	fact := resolveWiringFact(env)
 
-	results := make([]doctorResult, 0, len(Roster))
+	results := make([]doctorResult, 0, len(Roster)+1)
 	anyFail := false
+	// shll-first row: shll is the running process, so its binary is always
+	// present and its version comes from the package var (shllSelfVersion, NOT a
+	// `shll --version` self-subprocess). shll ships no shell-init, so — like
+	// idea/rk/fab-kit — no wiring check applies (ShellInit:false). The row is thus
+	// effectively always OK and is built directly (never via evaluateTool, which
+	// would spawn a subprocess); it deliberately does NOT touch anyFail, so it
+	// cannot perturb the scriptable any-FAIL→exit-1 contract.
+	results = append(results, shllDoctorResult())
 	for _, tool := range Roster {
 		res := evaluateTool(ctx, tool, fact)
 		if res.Status == markerFail {
@@ -248,6 +256,27 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact) doctorResult 
 	return res
 }
 
+// shllDoctorResult builds the always-OK shll-first record for `shll doctor`. It
+// is NOT produced by evaluateTool: shll is the running process, so its binary is
+// definitionally on PATH and its version is read from the package var
+// (shllSelfVersion) rather than probed via a `shll --version` self-subprocess.
+// shll ships no shell-init (ShellInit:false), so no wiring check applies — like
+// idea/rk/fab-kit. The row is therefore always OK, and the caller deliberately
+// keeps it out of the anyFail tally so it cannot perturb the exit-1-on-any-FAIL
+// contract. Both the text and --json renderers consume it through the normal
+// results walk.
+func shllDoctorResult() doctorResult {
+	return doctorResult{
+		Tool:      shllSelf.Name,
+		Status:    markerOK,
+		Version:   shllSelfVersion(),
+		OnPath:    true,
+		VersionOK: true,
+		ShellInit: false,
+		Wired:     false,
+	}
+}
+
 // probeVersion runs a single `<tool> --version` probe (bounded by versionTimeout)
 // and classifies the outcome into the three-way versionState. It reuses the SAME
 // primitives as version.go's toolVersion (proc.Run + normalizeVersion) so the
@@ -297,7 +326,11 @@ func renderDoctorText(stdout io.Writer, results []doctorResult) error {
 		return err
 	}
 	if problems > 0 {
-		if _, err := fmt.Fprintf(stdout, "\n%d of %d tools have problems. Run the suggested commands above, then re-run shll doctor.\n", problems, len(results)); err != nil {
+		// Denominator is the count of *checkable* tools — the managed roster —
+		// NOT len(results), which includes the prepended always-OK shll row.
+		// Including it would mis-report "N of 7" when only the 6 roster tools can
+		// ever register a problem (the shll row never increments `problems`).
+		if _, err := fmt.Fprintf(stdout, "\n%d of %d tools have problems. Run the suggested commands above, then re-run shll doctor.\n", problems, len(Roster)); err != nil {
 			return err
 		}
 	}
