@@ -18,7 +18,7 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 4. **No `brew update --quiet`.** Unlike `shll update`, `shll install` does NOT refresh brew metadata first. `brew install sahil87/tap/<formula>` resolves the formula via the tap directly, and the spec freezes this distinction (Design Decision: install ≠ update). `TestInstall_NoBrewUpdateInvoked` pins the contract.
 
-5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, "brew", "install", t.Formula)`. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
+5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)` (`install.go:156`). `brewEnv()` carries the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` sandbox-trust workaround — see [Linux brew sandbox-trust workaround](#linux-brew-sandbox-trust-workaround-change-38a6). Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
 
 6. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
 
@@ -61,6 +61,16 @@ This is a deliberate *informational* exception to the symmetry between the inspe
 - **Empty case emits no header, no tail, no counter, no spacing, no duration.** The all-already-installed short-circuit (step 3) runs no loop, so the *install-loop framing* it would emit is absent — no `==> [N/M]` header, no tail, no blank lines, no duration; only the install-loop path carries those markers. Its install-message line stays `All sahil87 tools already installed.\n` (the `allInstalledMsg` constant). **Since change bb7r the shll-first informational line precedes it** (`shll — already present / self-managed\n` then `All sahil87 tools already installed.\n`) on this non-early-error path — see [The prepended shll-first informational line](#the-prepended-shll-first-informational-line-change-bb7r); the `TestInstall_AllAlreadyInstalled`/`TestInstall_EmptyCaseNoHeaderNoTail` goldens were updated for the prepended line.
 
 The helper details (named SGR constants, the `colorEnabled` gating, the honesty constraint on the tail, the `[N/M]` counter, the `formatDuration` form, and the `nowFunc` clock seam) are documented once under [cli/update](update.md#per-tool-output-separation-change-y630); `install` consumes the identical helpers.
+
+## Linux brew sandbox-trust workaround (change 38a6)
+
+The live `brew install <formula>` call routes through `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)` (`install.go:156`) so it carries `brewEnv()`'s extra environment entry. On Linux that entry is `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`; on macOS `brewEnv()` returns `nil`, so the call inherits the parent environment unchanged.
+
+**This is a TEMPORARY workaround** for a Homebrew 6.0 bug, **not** a permanent design choice. Homebrew 6.0's Linux bubblewrap sandbox masks `~/.homebrew` (`HOMEBREW_USER_CONFIG_HOME`, where `trust.json` lives) via `deny_read_home`, so the sandboxed `build.rb` cannot read the trust record and wrongly raises `UntrustedTapError` when `HOMEBREW_REQUIRE_TAP_TRUST=1` is set — which shll itself encourages via `shll shell-setup --trust-tap`. The error is raised before `build.rb` connects its error pipe, so it surfaces only as an opaque `bwrap … exited with 1`. Setting `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` skips **only** the broken in-sandbox trust re-check; the sandbox stays active and trust was already verified out-of-sandbox.
+
+`brewEnv()` (`src/cmd/shll/brew.go`) is the single source of truth, Linux-gated via the existing `osGoos` seam, with a loud comment cross-referencing this change (`[38a6]`) and the **removal backlog item `[tkch]`** — so when the upstream fix lands the workaround (and its wiring/tests) is a one-spot deletion. See [internal/proc §Per-request environment](../internal/proc.md#per-request-environment-requestenv-change-38a6) for the `Env` plumbing and [cli/update](update.md#linux-brew-sandbox-trust-workaround-change-38a6) for the same workaround on `brew update`/`brew upgrade`.
+
+`TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` and `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` (overriding `osGoos` via `setOsGoos`) assert the recorded `brew install` `Request` carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` on linux and carries no such env on darwin.
 
 ## `--dry-run` (change 6vuo)
 
@@ -153,6 +163,8 @@ Covered scenarios (`src/cmd/shll/install_test.go`):
 - `TestInstall_SubsetArgOrderIndependentRosterOrder` *(change b2vg)* — `shll install fab-kit wt` (both missing) → installs `wt` before `fab-kit` (roster order).
 - `TestInstall_SubsetNamedAlreadyInstalled` *(change b2vg)* — `shll install hop` when hop is already installed → the `All sahil87 tools already installed.` nothing-to-do note, exit 0.
 - `TestInstall_SubsetDryRunPreviewFiltered` *(change b2vg)* — `shll install --dry-run` of a subset → preview lists only the named-and-missing subset in roster order, exit 0, no write.
+- `TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` *(change 38a6)* — `setOsGoos("linux")` → every recorded `brew install` `Request` carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`.
+- `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` *(change 38a6)* — `setOsGoos("darwin")` → no `brew install` `Request` carries the workaround env (the Linux gate is off).
 
 The shared resolver is unit-tested directly in `tools_test.go` (shared with `update` — see [cli/update test seam](update.md#test-seam)); `install` is the `allowShll=false` caller.
 

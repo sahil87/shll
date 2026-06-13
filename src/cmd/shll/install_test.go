@@ -559,3 +559,61 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }
+
+// --- brewEnv workaround wiring (backlog [38a6]/[tkch]) ------------------------
+
+// noneInstalledRunner is the install respond function where brew is present but
+// every formula probes not-installed (so every roster tool gets `brew install`).
+func noneInstalledRunner() func(proc.Request) proc.Result {
+	return func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
+			return proc.Result{Stdout: []byte("Homebrew 6.0\n")}
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}
+}
+
+func TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux(t *testing.T) {
+	setOsGoos(t, "linux")
+	f := &fakeRunner{respond: noneInstalledRunner()}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	for _, tool := range Roster {
+		c, ok := findCall(calls, brewBinary, "install", tool.Formula)
+		if !ok {
+			t.Fatalf("expected brew install %s, calls: %+v", tool.Formula, calls)
+		}
+		if !envContains(c.Env, noRequireTapTrustEnv) {
+			t.Errorf("brew install %s Env = %v, want to contain %s on linux", tool.Formula, c.Env, noRequireTapTrustEnv)
+		}
+	}
+}
+
+func TestInstall_BrewInstallNoWorkaroundEnvOnDarwin(t *testing.T) {
+	setOsGoos(t, "darwin")
+	f := &fakeRunner{respond: noneInstalledRunner()}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	for _, tool := range Roster {
+		c, ok := findCall(calls, brewBinary, "install", tool.Formula)
+		if !ok {
+			t.Fatalf("expected brew install %s, calls: %+v", tool.Formula, calls)
+		}
+		if envContains(c.Env, noRequireTapTrustEnv) {
+			t.Errorf("brew install %s Env = %v, want NO workaround env on darwin", tool.Formula, c.Env)
+		}
+	}
+}

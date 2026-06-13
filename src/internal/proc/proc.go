@@ -61,6 +61,11 @@ type Request struct {
 	Args      []string
 	Transport Transport
 	Dir       string
+	// Env holds extra KEY=VALUE entries appended to (not replacing) the child's
+	// inherited environment. nil/empty means inherit only — defaultRunner leaves
+	// cmd.Env unset, preserving full parent-env inheritance. Appended entries win
+	// on duplicate keys (Go's exec uses the last value for a duplicated key).
+	Env []string
 }
 
 // Runner is the indirection that tests swap to inject fakes. The default
@@ -90,12 +95,33 @@ func RunForeground(ctx context.Context, name string, args ...string) (int, error
 	return res.ExitCode, nil
 }
 
+// RunForegroundEnv is RunForeground with extra environment entries appended to
+// the child's inherited environment. env is a slice of KEY=VALUE strings; passing
+// nil/empty is equivalent to RunForeground (full inheritance, nothing appended).
+// The appended entries win on duplicate keys (see Request.Env). Used by shll's
+// brew install/upgrade/update call sites to inject the Linux-only
+// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 workaround (see brewEnv in cmd/shll/brew.go).
+func RunForegroundEnv(ctx context.Context, env []string, name string, args ...string) (int, error) {
+	res := Runner(ctx, Request{Name: name, Args: args, Transport: TransportForeground, Env: env})
+	if res.Err != nil {
+		return -1, res.Err
+	}
+	return res.ExitCode, nil
+}
+
 // defaultRunner is the production implementation of RunnerFunc. It spawns a real
 // subprocess via exec.CommandContext (always — no exec.Command without ctx).
 func defaultRunner(ctx context.Context, req Request) Result {
 	cmd := exec.CommandContext(ctx, req.Name, req.Args...)
 	if req.Dir != "" {
 		cmd.Dir = req.Dir
+	}
+	if len(req.Env) > 0 {
+		// Append onto the parent env so the child still inherits everything else;
+		// nil/empty leaves cmd.Env unset (full inheritance, unchanged behavior).
+		// Go's exec uses the last value for a duplicated key, so appended entries
+		// override any inherited value of the same key.
+		cmd.Env = append(os.Environ(), req.Env...)
 	}
 	switch req.Transport {
 	case TransportCapture:

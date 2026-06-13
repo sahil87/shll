@@ -151,7 +151,9 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args
 			fmt.Fprintln(stdout)
 		}
 		printToolHeader(stdout, t.Name, i+1, total, color)
-		code, err := proc.RunForeground(ctx, brewBinary, "install", t.Formula)
+		// brewEnv() carries the Linux-only HOMEBREW_NO_REQUIRE_TAP_TRUST=1 sandbox
+		// workaround (nil on macOS) — see brewEnv in brew.go (backlog [38a6]/[tkch]).
+		code, err := proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
 			anyFailed = true

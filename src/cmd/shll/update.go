@@ -239,7 +239,9 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 	// proc.RunForeground returns (code, nil) when the subprocess exits non-zero
 	// (it only sets err when exec itself fails before/after spawn), so we must
 	// check both code != 0 and err != nil to treat any non-success as failure.
-	if code, err := proc.RunForeground(ctx, brewBinary, "update", "--quiet"); err != nil || code != 0 {
+	// brewEnv() carries the Linux-only HOMEBREW_NO_REQUIRE_TAP_TRUST=1 sandbox
+	// workaround (nil on macOS) — see brewEnv in brew.go (backlog [38a6]/[tkch]).
+	if code, err := proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "update", "--quiet"); err != nil || code != 0 {
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: brew update failed: %v\n", err)
 		} else {
@@ -292,7 +294,9 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 	// subcommand to call on itself, so this stays a direct brew upgrade.
 	if shllSelfInstalled {
 		updateHeader(shllSelfLabel)
-		code, err := proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)
+		// brewEnv() carries the Linux-only HOMEBREW_NO_REQUIRE_TAP_TRUST=1 sandbox
+		// workaround (nil on macOS) — see brewEnv in brew.go (backlog [38a6]/[tkch]).
+		code, err := proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "upgrade", shllFormula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
 			anyFailed = true
@@ -401,7 +405,16 @@ func toolSupportsSkipFlag(ctx context.Context, t Tool) bool {
 // it (single source of truth for the per-tool dispatch).
 func upgradeTool(ctx context.Context, t Tool, supportsSkipFlag bool) (int, error) {
 	argv := upgradeArgv(t, supportsSkipFlag)
-	return proc.RunForeground(ctx, argv[0], argv[1:]...)
+	// Inject the brew sandbox-trust workaround env ONLY when this is a brew call
+	// (the `brew upgrade <formula>` fallback). A `<tool> update` delegation runs
+	// the tool's own process — not shll's to configure — so it gets no env. The
+	// decision lives here (the runtime), keeping upgradeArgv/argvString (the shared
+	// dry-run preview source) env-free. See brewEnv in brew.go (backlog [38a6]/[tkch]).
+	var env []string
+	if argv[0] == brewBinary {
+		env = brewEnv()
+	}
+	return proc.RunForegroundEnv(ctx, env, argv[0], argv[1:]...)
 }
 
 // upgradeArgv returns the exact argv `shll update` would run for an installed roster
