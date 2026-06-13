@@ -163,8 +163,8 @@ func TestRunForeground_NoEnv(t *testing.T) {
 // TestDefaultRunner_EnvAppendedToParent exercises the real defaultRunner to prove
 // that a non-empty Request.Env yields cmd.Env = parent env + appended entries
 // (with last-wins on a duplicated key), and that an empty Env leaves the child
-// inheriting the full parent env. It uses `env` (a POSIX builtin available as a
-// standalone binary) in capture mode — never a project tool.
+// inheriting the full parent env. It uses `env` (a standard POSIX utility, run as
+// a standalone binary) in capture mode — never a project tool.
 func TestDefaultRunner_EnvAppendedToParent(t *testing.T) {
 	t.Setenv("SHLL_PROC_TEST_MARKER", "parent")
 	t.Setenv("SHLL_PROC_TEST_DUP", "from-parent")
