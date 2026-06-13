@@ -22,14 +22,16 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 5. **Nothing-to-do → short-circuit.** If no roster tool is installed AND shll itself is not brew-installed, write `No sahil87 tools installed.` to stdout and return nil. Exit code: 0. Critically, **`brew update --quiet` is NOT invoked in this branch** — see Design Decision #9 below. Because the status line (step 2) already printed, the empty-case stdout reads exactly `Checking installed sahil87 tools…\nNo sahil87 tools installed.\n` (`TestUpdate_NoToolsInstalled`). When shll itself is brew-installed but no roster tools are, the short-circuit does NOT fire — the run proceeds and only self-upgrades shll (`TestUpdate_OnlyShllInstalled`).
 
-6. **Refresh metadata once.** `proc.RunForeground(ctx, brewBinary, "update", "--quiet")` — foreground so users see brew's progress. Run exactly **once** per invocation, after probing and before any upgrade. Because each delegated `<tool> update --skip-brew-update` skips its own internal `brew update`, this is the only metadata refresh for the whole run (vs. N redundant refreshes if each tool refreshed independently — Design Decision #2 of this change). `proc.RunForeground` returns `(code, nil)` on a non-zero subprocess exit and `(_, err)` only on an exec/transport failure, so the branch checks **both** `code != 0` and `err != nil`. On failure, write `shll update: brew update failed: <detail>` to stderr and return `errSilent` (exit 1) — no upgrades attempted.
+6. **Refresh metadata once.** `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "update", "--quiet")` (`update.go:244`) — foreground so users see brew's progress. Run exactly **once** per invocation, after probing and before any upgrade. `brewEnv()` injects the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` trust workaround (nil on macOS) — see [Linux brew trust workaround](#linux-brew-trust-workaround-change-38a6). Because each delegated `<tool> update --skip-brew-update` skips its own internal `brew update`, this is the only metadata refresh for the whole run (vs. N redundant refreshes if each tool refreshed independently — Design Decision #2 of this change). `proc.RunForeground` returns `(code, nil)` on a non-zero subprocess exit and `(_, err)` only on an exec/transport failure, so the branch checks **both** `code != 0` and `err != nil`. On failure, write `shll update: brew update failed: <detail>` to stderr and return `errSilent` (exit 1) — no upgrades attempted.
 
-7. **shll self-upgrade (when brew-installed).** If step (4) reported shll itself as brew-installed, print the `shll (self)` per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)` *before* the roster loop. shll has no `update` subcommand to call on itself, so this stays a direct `brew upgrade` (not delegated). See [shll self-upgrade](#shll-self-upgrade) for rationale and edge cases. Failures here go through the same best-effort `anyFailed` path as roster failures, and contribute to the `total`/`succeeded` counts feeding the summary tail.
+7. **shll self-upgrade (when brew-installed).** If step (4) reported shll itself as brew-installed, print the `shll (self)` per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "upgrade", shllFormula)` (`update.go:299`) *before* the roster loop. The self-upgrade is a brew call, so it carries the Linux trust workaround (`brewEnv()`) — see [Linux brew trust workaround](#linux-brew-trust-workaround-change-38a6). shll has no `update` subcommand to call on itself, so this stays a direct `brew upgrade` (not delegated). See [shll self-upgrade](#shll-self-upgrade) for rationale and edge cases. Failures here go through the same best-effort `anyFailed` path as roster failures, and contribute to the `total`/`succeeded` counts feeding the summary tail.
 
 8. **Sequential per-tool upgrade (delegated).** For each installed tool in roster order, print its per-tool header then call `upgradeTool(ctx, t, probes[i].supportsSkipFlag)` (`src/cmd/shll/update.go:249`). Dispatch:
    - **has `Update` argv + supports the flag** → `<tool> update --skip-brew-update` (the `Update` argv with the flag appended).
    - **has `Update` argv but no flag (version skew)** → `<tool> update` with no flag — and it does **not** fall back to `brew upgrade`. This is the retry-without-flag contract for an installed tool predating the `--skip-brew-update` convention (Constitution V — Graceful Degradation).
    - **no `Update` argv (hypothetical future tool)** → `brew upgrade <formula>` fallback (today's pre-delegation behavior, retained for tools with no `update` subcommand).
+
+   `upgradeTool` (`update.go:406`) gates the Linux trust workaround on `argv[0] == brewBinary`: the brew-fallback path uses `proc.RunForegroundEnv(ctx, brewEnv(), …)` (`update.go:416`), while a per-tool `<tool> update [--skip-brew-update]` delegation uses plain `proc.RunForeground` (`update.go:418`) and receives **no** brew override on any platform. See [Linux brew trust workaround §per-tool carve-out](#linux-brew-trust-workaround-change-38a6).
 
    Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
 
@@ -116,11 +118,13 @@ Constraints (Design Decision #2):
 | `brew --version` (in `hasBrew`) | `proc.Run` (capture) | Internal probe; user does not need to see output. |
 | `brew list --formula --versions <formula>` (in `isInstalled`) | `proc.Run` (capture) | Same — it's a probe, not user-facing. |
 | `<tool> update --help` (capability probe) | `proc.Run` (capture) | Probe — captured so shll can branch on flag support. `proc.Run` (TransportCapture) captures **stdout** but still streams **stderr** through; the probe writes its meaningful output to stdout and is silent on stderr in the normal case, so concurrent stderr interleaving is a rare, cosmetic edge (see "Sequential, not parallel" below). |
-| `brew update --quiet` | `proc.RunForeground` | Brew's progress streamed to user's terminal. |
-| `<tool> update [--skip-brew-update]` (delegated upgrade) | `proc.RunForeground` | User-visible upgrade; the tool's own progress + side-effect output streams to the terminal. |
-| `brew upgrade <formula>` (self-upgrade + no-`Update`-argv fallback) | `proc.RunForeground` | Same — preserves brew's colored progress output. |
+| `brew update --quiet` | `proc.RunForegroundEnv` (change 38a6) | Brew's progress streamed to user's terminal. Carries the Linux trust workaround (`brewEnv()`). |
+| `<tool> update [--skip-brew-update]` (delegated upgrade) | `proc.RunForeground` | User-visible upgrade; the tool's own progress + side-effect output streams to the terminal. **No** brew override — it is a per-tool CLI, not a brew call (Constitution IV). |
+| `brew upgrade <formula>` (self-upgrade + no-`Update`-argv fallback) | `proc.RunForegroundEnv` (change 38a6) | Same — preserves brew's colored progress output. Carries the Linux trust workaround (`brewEnv()`). |
 
 This split is a Constitution-aligned choice: probes capture (so shll can branch on the result), user-visible operations foreground (so the user sees brew / the tool working).
+
+The three brew-write rows route through `proc.RunForegroundEnv` (change 38a6) to carry the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` override; the per-tool delegation deliberately does **not** — see [Linux brew trust workaround](#linux-brew-trust-workaround-change-38a6).
 
 ## Sequential, not parallel — scoped to *upgrades*
 
@@ -215,6 +219,44 @@ Exit code: always 0 in dry-run (no writes, nothing can fail) except the brew-mis
 
 This ordering is **output coherence**, not correctness: it ensures each tool's `==> <tool>` section completes and is counted in the summary tail before a *dependent* tool's internal `brew upgrade` can re-touch a leaf already reported done under its own header. It is **not** a correctness fix — brew resolves formula deps idempotently and each `<tool> update` is self-update-only, so no tool's `update` cascades into another tool's upgrade during `shll update`; the order can neither break nor improve upgrade correctness. The full rationale, the dependency graph (brew-upgrade + runtime edges), the invariant test `TestRosterLeavesBeforeDependents`, and the "no `DependsOn` field" decision live in [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj). The order-independent update invariants (brew-missing bail, status line, single `brew update`, self-upgrade-before-roster, best-effort loop, summary tail, exit codes) are unaffected by the reorder; `TestUpdate_SelfUpgradeOrdering`/`TestUpdate_OneUpgradeFails` reference `Roster[0]` (now `wt`) dynamically and need no edit.
 
+## Linux brew trust workaround (change 38a6)
+
+> **TEMPORARY — slated for removal.** This whole behavior (the `brewEnv()` helper, the `goosFunc` seam, the `RunForegroundEnv` wiring, and its tests) exists to route around a Homebrew 6.0 bug and is tracked for removal under backlog `[tkch]` once the upstream fix lands. It is **not** permanent design — a future reader should expect it to disappear, not extend it.
+
+`shll update`'s three brew-write subprocesses inject a Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` override; per-tool `<tool> update` delegations do **not**.
+
+**The helper (`brewEnv()`, single source of truth).** `src/cmd/shll/brew.go:36` is the one spot that defines the override, so the `[tkch]` removal is a one-spot edit:
+
+```go
+func brewEnv() []string {
+    if goosFunc() == "linux" {
+        return []string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}
+    }
+    return nil
+}
+```
+
+- **On Linux** → `[]string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}`.
+- **On macOS / non-Linux** → `nil`, so the brew calls degrade to a plain `proc.RunForeground` with no env change and trust enforcement is preserved (the Linux gate is deliberate: macOS has no bwrap sandbox).
+- The override key/value reuses the literal already named in `trustHatchHint` (`brew.go:114`); it appears in source exactly once inside `brewEnv()`.
+
+**Why the override exists.** Homebrew 6.0's Linux build runs the formula `build.rb` inside a `bwrap` (bubblewrap) sandbox whose `deny_read_home` masks almost all of `$HOME`. The exception list covers `HOMEBREW_PREFIX`/`CACHE`/`LOGS`/`TEMP` but **not** `~/.homebrew`, where `trust.json` lives. With `HOMEBREW_REQUIRE_TAP_TRUST=1` set, the sandboxed `build.rb` re-checks tap trust, cannot read `~/.homebrew/trust.json`, and raises a (swallowed) `Homebrew::UntrustedTapError`, surfacing only an opaque `bwrap … exited with 1`. shll *encourages* `HOMEBREW_REQUIRE_TAP_TRUST=1` via `shll shell-setup --trust-tap`, so shll's own pro-trust posture is what walks Linux users into the broken state. Setting `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` per call keeps the sandbox **active** and skips *only* the broken in-sandbox trust re-check (verified working: `HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew upgrade sahil87/tap/idea` completed cleanly).
+
+**The `goosFunc` GOOS seam.** `brewEnv()` reads the OS through `var goosFunc = func() string { return runtime.GOOS }` (`brew.go:19`) rather than `runtime.GOOS` directly. This injectable package-level seam lets one table-driven test (`TestBrewEnv_PerGOOS`) assert both the linux (override present) and darwin (override absent) branches in a single run with no per-OS build tags. It **mirrors the existing `nowFunc` clock seam** (`clock.go:14`) and the `proc.Runner` seam (`internal/proc/proc.go`) — the established pattern for injectable package-level seams in this codebase. (Pattern note for future reuse: when a behavior keys off `runtime.GOOS` and both branches must be unit-tested, prefer a `goosFunc`-style var over build-tagged test files.)
+
+**Per-tool carve-out (Constitution IV).** The four foreground brew sites that receive the override:
+
+| Site | Call | Override |
+|------|------|----------|
+| `brew update --quiet` (`update.go:244`) | `RunForegroundEnv(ctx, brewEnv(), …)` | yes (Linux) |
+| shll self-upgrade `brew upgrade shllFormula` (`update.go:299`) | `RunForegroundEnv(ctx, brewEnv(), …)` | yes (Linux) |
+| brew-fallback `brew upgrade <formula>` (`update.go:416`) | `RunForegroundEnv(ctx, brewEnv(), …)` | yes (Linux) |
+| `shll install` `brew install <formula>` (`install.go:147`) | `RunForegroundEnv(ctx, brewEnv(), …)` | yes (Linux) — see [cli/install](install.md#linux-brew-trust-workaround-change-38a6) |
+
+`upgradeTool` (`update.go:406`) gates the env on `argv[0] == brewBinary` so a per-tool `<tool> update [--skip-brew-update]` delegation stays on plain `proc.RunForeground` (`update.go:418`) and receives **no** brew override on any platform. Injecting brew-specific env into a sub-tool's own CLI would violate Constitution IV (compose, don't absorb) and could mask the tool's own trust behavior. `upgradeArgv` returns either a `brew upgrade <formula>` argv or a per-tool argv, so the binary name is the correct discriminator.
+
+**Cross-references.** Env-passing transport: [internal/proc §RunForegroundEnv](../internal/proc.md#design-decisions). Sibling install site: [cli/install §Linux brew trust workaround](install.md#linux-brew-trust-workaround-change-38a6). Removal item: backlog `[tkch]`.
+
 ## Spec-locked Design Decisions for this subcommand
 
 These lock the contract. #2/#3/#9 are reproduced from the original `update` spec; the delegation/probe/parallel-probe decisions come from change cczs's `spec.md`. The header/tail/stream-discipline contract comes from change y630's `spec.md`.
@@ -288,10 +330,16 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_SubsetArgOrderIndependentRosterOrder` *(change b2vg)* — `shll update fab-kit wt` → `wt` before `fab-kit` (roster order, not arg order).
 - `TestUpdate_SubsetBrewUpdateRunsOnce` *(change b2vg)* — a single-tool subset still runs `brew update --quiet` exactly once.
 - `TestUpdate_SubsetDryRunPreviewFiltered` *(change b2vg)* — `shll update --dry-run hop wt` → preview lists exactly the two-tool subset in roster order, header `Would update 2 tools (brew metadata refresh first):`, exit 0, no write.
+- `TestUpdate_BrewTrustOverride_PerGOOS` *(change 38a6)* — swaps `goosFunc`: on linux every brew-write Request (`brew update --quiet`, self-upgrade `brew upgrade shllFormula`) carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` in `Env` while the per-tool `<tool> update` delegation Request carries an **empty** `Env`; on darwin no Request carries the override. Pins both the override and the Constitution-IV carve-out in one run.
+- `TestUpdate_BrewFallbackCarriesOverride` *(change 38a6)* — a tool with an empty `Update` argv (brew-fallback path) → its `brew upgrade <formula>` Request carries the override on linux, confirming the gate keys off the binary name (`argv[0] == brewBinary`), not the call site.
 
 The shared resolver is unit-tested directly in `tools_test.go` (`TestResolveTargets_RosterOrderRegardlessOfArgOrder`, `TestResolveTargets_ShllGatedByAllowShll`, `TestResolveTargets_MultipleUnknownAllReported`, `TestResolveTargets_EmptyArgs`).
 
 Per-tool output separation (change y630) plus the change-6vuo `[N/M]` counter, duration, and preview helpers are unit-tested directly against the `ui.go` helpers in `ui_test.go` (`TestPrintToolHeader_PlainForm`/`_ColorForm` now assert the `[N/M]` counter; `TestPrintSummaryTail_AllSucceeded*`/`_PartialFailure` assert the `in 1m12s` suffix; `TestFormatDuration`, `TestPrintUpdatePreview_AlignedColumns`, `TestPrintInstallPreview_AlignedColumns`, `TestColorEnabled_*`, `TestToolComment_*`); the clock seam helper is exercised by `TestInstallFakeClock_Sequences` (`clock_test.go`). `update_test.go` additionally asserts that the `==> [N/M] shll (self)` and per-tool `==> [N/M] <tool>` headers and the plain summary tail appear in the **stdout** buffer and never in the stderr buffer (the stream-discipline guarantee).
+
+## Changelog
+
+- **change 38a6** (`260613-38a6-brew-no-tap-trust-workaround`): The three brew-write sites (`brew update --quiet`, the shll self-upgrade, and the brew-fallback inside `upgradeTool`) now route through `proc.RunForegroundEnv(ctx, brewEnv(), …)` to inject the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` trust workaround; per-tool `<tool> update` delegations are deliberately **not** touched (gated on `argv[0] == brewBinary`). Adds the injectable `goosFunc` GOOS seam (mirrors `nowFunc`). See [Linux brew trust workaround](#linux-brew-trust-workaround-change-38a6). **TEMPORARY** — removed under backlog `[tkch]`.
 
 ## Cross-references
 

@@ -61,6 +61,11 @@ type Request struct {
 	Args      []string
 	Transport Transport
 	Dir       string
+	// Env holds extra "KEY=VALUE" entries appended to the inherited parent
+	// environment (defaultRunner sets cmd.Env = append(os.Environ(), Env...)
+	// only when Env is non-empty). nil/empty = inherit the parent env verbatim,
+	// preserving prior behavior for every caller that passes no env.
+	Env []string
 }
 
 // Runner is the indirection that tests swap to inject fakes. The default
@@ -90,12 +95,34 @@ func RunForeground(ctx context.Context, name string, args ...string) (int, error
 	return res.ExitCode, nil
 }
 
+// RunForegroundEnv behaves exactly like RunForeground (same TransportForeground,
+// same (code, error) contract) but additionally sets Request.Env so the spawned
+// child receives extra "KEY=VALUE" entries appended to the inherited environment.
+// env nil/empty is equivalent to RunForeground (the child inherits the parent env
+// verbatim). The package-level Run/RunForeground helpers take only (ctx, name,
+// args...) and cannot pass Env, so callers needing per-request env (e.g. brew's
+// Linux trust workaround) use this helper.
+func RunForegroundEnv(ctx context.Context, env []string, name string, args ...string) (int, error) {
+	res := Runner(ctx, Request{Name: name, Args: args, Transport: TransportForeground, Env: env})
+	if res.Err != nil {
+		return -1, res.Err
+	}
+	return res.ExitCode, nil
+}
+
 // defaultRunner is the production implementation of RunnerFunc. It spawns a real
 // subprocess via exec.CommandContext (always — no exec.Command without ctx).
 func defaultRunner(ctx context.Context, req Request) Result {
 	cmd := exec.CommandContext(ctx, req.Name, req.Args...)
 	if req.Dir != "" {
 		cmd.Dir = req.Dir
+	}
+	// Per-request env additions: append to the inherited environment, never
+	// replace it. Only set cmd.Env when there are entries — leaving it nil makes
+	// the child inherit the parent env exactly as before (no behavior change for
+	// callers that pass no Env).
+	if len(req.Env) > 0 {
+		cmd.Env = append(os.Environ(), req.Env...)
 	}
 	switch req.Transport {
 	case TransportCapture:

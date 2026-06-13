@@ -61,7 +61,15 @@ func installFakeRunner(t *testing.T, f *fakeRunner) {
 // invocationsContain reports whether any recorded request matches the given
 // (name, args...) prefix exactly. Helper for asserting brew commands.
 func invocationsContain(calls []proc.Request, name string, args ...string) bool {
-	for _, c := range calls {
+	return findInvocation(calls, name, args...) != nil
+}
+
+// findInvocation returns the first recorded request matching (name, args...)
+// exactly, or nil when none matches. Used to inspect a matched request's Env
+// (the trust-trust workaround assertions) in addition to its name/args.
+func findInvocation(calls []proc.Request, name string, args ...string) *proc.Request {
+	for i := range calls {
+		c := calls[i]
 		if c.Name != name {
 			continue
 		}
@@ -69,13 +77,24 @@ func invocationsContain(calls []proc.Request, name string, args ...string) bool 
 			continue
 		}
 		match := true
-		for i := range args {
-			if c.Args[i] != args[i] {
+		for j := range args {
+			if c.Args[j] != args[j] {
 				match = false
 				break
 			}
 		}
 		if match {
+			return &calls[i]
+		}
+	}
+	return nil
+}
+
+// hasBrewTrustOverride reports whether env carries the Linux-only
+// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 trust-trust workaround entry.
+func hasBrewTrustOverride(env []string) bool {
+	for _, e := range env {
+		if e == "HOMEBREW_NO_REQUIRE_TAP_TRUST=1" {
 			return true
 		}
 	}
@@ -1116,5 +1135,97 @@ func TestUpdate_DryRunEmptyCase(t *testing.T) {
 	}
 	if invocationsContain(f.recordedCalls(), brewBinary, "update", "--quiet") {
 		t.Fatal("brew update --quiet must NOT run in dry-run empty case")
+	}
+}
+
+// TestUpdate_BrewTrustOverride_PerGOOS verifies the Linux-only
+// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 workaround (backlog [38a6]; removal [tkch]) is
+// injected into the brew update + shll self-upgrade subprocesses on linux and
+// absent on darwin, while per-tool `<tool> update` delegations carry NO override
+// on EITHER platform (Constitution IV — shll composes per-tool CLIs, it must not
+// pollute a sub-tool's own update invocation with brew-specific env).
+func TestUpdate_BrewTrustOverride_PerGOOS(t *testing.T) {
+	cases := []struct {
+		goos        string
+		wantOverlay bool
+	}{
+		{"linux", true},
+		{"darwin", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.goos, func(t *testing.T) {
+			withGOOS(t, tc.goos)
+			// Every roster tool installed (and shll itself) → brew update,
+			// brew upgrade shll, then a delegated `<tool> update` per tool.
+			f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+				return proc.Result{}
+			}}
+			installFakeRunner(t, f)
+
+			var stdout, stderr bytes.Buffer
+			if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+				t.Fatalf("runUpdate err = %v, want nil", err)
+			}
+			calls := f.recordedCalls()
+
+			// brew update --quiet carries the override per GOOS.
+			if req := findInvocation(calls, brewBinary, "update", "--quiet"); req == nil {
+				t.Fatal("expected `brew update --quiet` invocation")
+			} else if got := hasBrewTrustOverride(req.Env); got != tc.wantOverlay {
+				t.Errorf("brew update on %s: override = %v, want %v", tc.goos, got, tc.wantOverlay)
+			}
+
+			// shll self-upgrade (brew upgrade shllFormula) carries the override per GOOS.
+			if req := findInvocation(calls, brewBinary, "upgrade", shllFormula); req == nil {
+				t.Fatal("expected `brew upgrade shll` invocation")
+			} else if got := hasBrewTrustOverride(req.Env); got != tc.wantOverlay {
+				t.Errorf("shll self-upgrade on %s: override = %v, want %v", tc.goos, got, tc.wantOverlay)
+			}
+
+			// Per-tool `<tool> update` delegations NEVER carry the override — on
+			// any platform (the gate keys off argv[0] == brewBinary).
+			for _, tool := range Roster {
+				if len(tool.Update) == 0 {
+					continue
+				}
+				// The delegated update is `<tool> update [--skip-brew-update]`;
+				// match the no-flag form (help advertises no flag in this fake).
+				req := findInvocation(calls, tool.Update[0], tool.Update[1:]...)
+				if req == nil {
+					t.Fatalf("expected delegated `%s update` invocation, calls: %+v", tool.Name, calls)
+				}
+				if hasBrewTrustOverride(req.Env) {
+					t.Errorf("per-tool delegation `%s update` on %s wrongly carries the brew override (Env=%v)",
+						tool.Name, tc.goos, req.Env)
+				}
+			}
+		})
+	}
+}
+
+// TestUpdate_BrewFallbackCarriesOverride confirms the site-(d) gate keys off the
+// binary name, not the call site: a tool with no Update argv falls back to
+// `brew upgrade <formula>`, which DOES carry the Linux override.
+func TestUpdate_BrewFallbackCarriesOverride(t *testing.T) {
+	withGOOS(t, "linux")
+	prev := Roster
+	t.Cleanup(func() { Roster = prev })
+	legacy := Tool{Name: "legacy", Formula: formulaPrefix + "legacy"} // no Update argv
+	Roster = []Tool{legacy}
+
+	f := &fakeRunner{respond: installedOnly(legacy.Formula)}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	req := findInvocation(calls, brewBinary, "upgrade", legacy.Formula)
+	if req == nil {
+		t.Fatalf("expected brew upgrade fallback for a tool with no Update argv, calls: %+v", calls)
+	}
+	if !hasBrewTrustOverride(req.Env) {
+		t.Errorf("brew-fallback `brew upgrade %s` on linux must carry the override (Env=%v)", legacy.Formula, req.Env)
 	}
 }

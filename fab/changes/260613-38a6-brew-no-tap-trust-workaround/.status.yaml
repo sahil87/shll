@@ -1,0 +1,49 @@
+id: 38a6
+name: 260613-38a6-brew-no-tap-trust-workaround
+created: 2026-06-13T05:28:39Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 9
+    acceptance_count: 16
+    acceptance_completed: 16
+confidence:
+    certain: 9
+    confident: 0
+    tentative: 0
+    unresolved: 0
+    score: 5.0
+    fuzzy: true
+    dimensions:
+        signal: 95.3
+        reversibility: 72.8
+        competence: 84.8
+        disambiguation: 78.9
+stage_metrics:
+    intake: {started_at: "2026-06-13T05:28:39Z", driver: fab-new, iterations: 1, completed_at: "2026-06-13T05:56:06Z"}
+    apply: {started_at: "2026-06-13T05:56:06Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-13T06:02:46Z"}
+    review: {started_at: "2026-06-13T06:02:46Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-13T06:06:09Z"}
+    hydrate: {started_at: "2026-06-13T06:06:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-06-13T06:10:25Z"}
+    ship: {started_at: "2026-06-13T06:10:25Z", driver: fab-fff, iterations: 1}
+prs: []
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-06-13T06:10:25Z"
+    computed_at_stage: hydrate
+# true_impact: lazily created on first apply-finish (no placeholder here).
+last_updated: 2026-06-13T06:10:25Z

@@ -3,6 +3,7 @@ package proc
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -100,6 +101,96 @@ func TestRunner_RecordsTransportSelection(t *testing.T) {
 	}
 	if (*calls)[1].Transport != TransportForeground {
 		t.Fatalf("second transport = %v, want foreground", (*calls)[1].Transport)
+	}
+}
+
+func TestRunForegroundEnv_RecordsEnv(t *testing.T) {
+	env := []string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}
+	calls := withFakeRunner(t, func(req Request) Result {
+		return Result{ExitCode: 0}
+	})
+	code, err := RunForegroundEnv(context.Background(), env, "fake", "arg")
+	if err != nil {
+		t.Fatalf("RunForegroundEnv() err = %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("RunForegroundEnv() code = %d, want 0", code)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("Runner call count = %d, want 1", len(*calls))
+	}
+	got := (*calls)[0]
+	if got.Transport != TransportForeground {
+		t.Fatalf("transport = %v, want TransportForeground", got.Transport)
+	}
+	if len(got.Env) != 1 || got.Env[0] != "HOMEBREW_NO_REQUIRE_TAP_TRUST=1" {
+		t.Fatalf("recorded Env = %v, want [HOMEBREW_NO_REQUIRE_TAP_TRUST=1]", got.Env)
+	}
+}
+
+func TestRunForegroundEnv_ErrNotFound(t *testing.T) {
+	// Same (code, error) contract as RunForeground: exec-failure → (-1, err).
+	withFakeRunner(t, func(req Request) Result {
+		return Result{ExitCode: -1, Err: ErrNotFound}
+	})
+	code, err := RunForegroundEnv(context.Background(), []string{"K=V"}, "nonesuch")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("RunForegroundEnv() err = %v, want ErrNotFound", err)
+	}
+	if code != -1 {
+		t.Fatalf("RunForegroundEnv() code = %d, want -1", code)
+	}
+}
+
+func TestRunForegroundEnv_NilEnvMatchesRunForeground(t *testing.T) {
+	// A nil env is equivalent to RunForeground: the recorded Request carries no
+	// Env, so the child inherits the parent env verbatim.
+	calls := withFakeRunner(t, func(req Request) Result {
+		return Result{ExitCode: 0}
+	})
+	if _, err := RunForegroundEnv(context.Background(), nil, "fake"); err != nil {
+		t.Fatalf("RunForegroundEnv() err = %v", err)
+	}
+	if got := (*calls)[0]; len(got.Env) != 0 {
+		t.Fatalf("recorded Env = %v, want empty for nil env", got.Env)
+	}
+}
+
+// TestDefaultRunner_EnvAppendsToInherited verifies defaultRunner's env wiring at
+// the production layer: a non-empty Request.Env is appended to the inherited
+// environment (the child sees both the parent's vars and the extra entry), while
+// an empty Env leaves cmd.Env unset so the child inherits the parent env verbatim.
+// Uses `env`, a standard POSIX binary (never a project tool).
+func TestDefaultRunner_EnvAppendsToInherited(t *testing.T) {
+	t.Setenv("PROC_TEST_INHERITED", "inherited-value")
+
+	// Non-empty Env: child sees the inherited var AND the appended var.
+	res := defaultRunner(context.Background(), Request{
+		Name:      "env",
+		Transport: TransportCapture,
+		Env:       []string{"PROC_TEST_EXTRA=extra-value"},
+	})
+	if res.Err != nil {
+		t.Fatalf("defaultRunner env (with Env): err = %v", res.Err)
+	}
+	out := string(res.Stdout)
+	if !strings.Contains(out, "PROC_TEST_EXTRA=extra-value") {
+		t.Fatalf("child env missing the appended entry; got:\n%s", out)
+	}
+	if !strings.Contains(out, "PROC_TEST_INHERITED=inherited-value") {
+		t.Fatalf("child env missing the inherited entry (Env must append, not replace); got:\n%s", out)
+	}
+
+	// Empty Env: child still inherits the parent env (cmd.Env left unset).
+	res = defaultRunner(context.Background(), Request{
+		Name:      "env",
+		Transport: TransportCapture,
+	})
+	if res.Err != nil {
+		t.Fatalf("defaultRunner env (no Env): err = %v", res.Err)
+	}
+	if !strings.Contains(string(res.Stdout), "PROC_TEST_INHERITED=inherited-value") {
+		t.Fatalf("child env missing the inherited entry when Env empty; got:\n%s", res.Stdout)
 	}
 }
 

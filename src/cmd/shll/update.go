@@ -239,7 +239,9 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 	// proc.RunForeground returns (code, nil) when the subprocess exits non-zero
 	// (it only sets err when exec itself fails before/after spawn), so we must
 	// check both code != 0 and err != nil to treat any non-success as failure.
-	if code, err := proc.RunForeground(ctx, brewBinary, "update", "--quiet"); err != nil || code != 0 {
+	// brewEnv() injects the Linux-only HOMEBREW_NO_REQUIRE_TAP_TRUST=1 workaround
+	// (brew.go) — nil on macOS, so no behavior change there.
+	if code, err := proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "update", "--quiet"); err != nil || code != 0 {
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: brew update failed: %v\n", err)
 		} else {
@@ -292,7 +294,9 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 	// subcommand to call on itself, so this stays a direct brew upgrade.
 	if shllSelfInstalled {
 		updateHeader(shllSelfLabel)
-		code, err := proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)
+		// brewEnv() injects the Linux-only HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+		// workaround (brew.go) — nil on macOS, so no behavior change there.
+		code, err := proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "upgrade", shllFormula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
 			anyFailed = true
@@ -401,6 +405,16 @@ func toolSupportsSkipFlag(ctx context.Context, t Tool) bool {
 // it (single source of truth for the per-tool dispatch).
 func upgradeTool(ctx context.Context, t Tool, supportsSkipFlag bool) (int, error) {
 	argv := upgradeArgv(t, supportsSkipFlag)
+	// The brew-fallback path (a tool with no Update argv) gets the Linux-only
+	// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 workaround (brew.go), but a per-tool
+	// `<tool> update` delegation MUST NOT — injecting brew-specific env into a
+	// sub-tool's own CLI would violate Constitution IV (compose, don't absorb)
+	// and could mask the tool's own trust behavior. The argv[0] == brewBinary
+	// gate is the correct discriminator (upgradeArgv returns a brew-upgrade argv
+	// OR a per-tool argv).
+	if argv[0] == brewBinary {
+		return proc.RunForegroundEnv(ctx, brewEnv(), argv[0], argv[1:]...)
+	}
 	return proc.RunForeground(ctx, argv[0], argv[1:]...)
 }
 

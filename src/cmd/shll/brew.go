@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 
 	"github.com/sahil87/shll/internal/proc"
@@ -10,6 +11,34 @@ import (
 
 // brewBinary is the Homebrew CLI name. Named constant so callers do not open-code it.
 const brewBinary = "brew"
+
+// goosFunc is the package-level seam for reading the target OS. It defaults to
+// runtime.GOOS; tests swap it to exercise the linux and darwin branches of
+// brewEnv() in one table-driven run, with no per-OS build tags. Mirrors the
+// nowFunc seam (clock.go) and the proc.Runner seam (internal/proc/proc.go).
+var goosFunc = func() string { return runtime.GOOS }
+
+// brewEnv returns the extra environment entries shll injects into its brew
+// install/upgrade/update subprocesses. On Linux it sets HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+// to work around a Homebrew 6.0 bubblewrap-sandbox bug (see backlog [38a6]): the
+// sandbox's deny_read_home masks ~/.homebrew, so the in-sandbox tap-trust re-check
+// cannot read ~/.homebrew/trust.json and raises a (swallowed) UntrustedTapError when
+// HOMEBREW_REQUIRE_TAP_TRUST=1 is set — wrongly failing the build. This override
+// keeps the sandbox ACTIVE and skips only the broken in-sandbox trust re-check.
+//
+// The Linux gate is deliberate: macOS has no bwrap sandbox, so it is unaffected and
+// must keep enforcing trust — brewEnv() returns nil there. GOOS is read via the
+// goosFunc seam so tests can assert both branches.
+//
+// TEMPORARY: this is a workaround, not permanent design. Remove it (and the
+// goosFunc seam, RunForegroundEnv wiring, and tests) once the upstream Homebrew
+// fix lands — tracked in backlog [tkch].
+func brewEnv() []string {
+	if goosFunc() == "linux" {
+		return []string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}
+	}
+	return nil
+}
 
 // brewMissingHint is the exact stderr line printed by `shll update` when the
 // brew binary is not on PATH. Matches the original spec's required text verbatim

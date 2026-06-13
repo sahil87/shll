@@ -16,7 +16,7 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 4. **No `brew update --quiet`.** Unlike `shll update`, `shll install` does NOT refresh brew metadata first. `brew install sahil87/tap/<formula>` resolves the formula via the tap directly, and the spec freezes this distinction (Design Decision: install ≠ update). `TestInstall_NoBrewUpdateInvoked` pins the contract.
 
-5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, "brew", "install", t.Formula)`. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
+5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)` (`install.go:147`). `brewEnv()` injects the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` trust workaround — see [Linux brew trust workaround](#linux-brew-trust-workaround-change-38a6); it returns nil on macOS, so the call is equivalent to a plain `proc.RunForeground` there. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
 
 6. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
 
@@ -85,6 +85,19 @@ Would install 4 tools:
 
 **`--dry-run` previews the filtered subset.** The dry-run branch runs after `missing` is built from the subset, so it previews only the named-and-missing tools in roster order, header `Would install N tools:` with `N` = subset size.
 
+## Linux brew trust workaround (change 38a6)
+
+> **TEMPORARY — slated for removal.** This whole behavior exists to route around a Homebrew 6.0 bug and is tracked for removal under backlog `[tkch]` once the upstream fix lands. It is **not** permanent design. A future reader should expect it to disappear, not to extend it.
+
+The single `brew install` foreground site (`install.go:147`) calls `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)` instead of plain `proc.RunForeground`. `brewEnv()` (in `src/cmd/shll/brew.go:36`) is the **one source of truth** for the override:
+
+- **On Linux** it returns `[]string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}`.
+- **On macOS** (and anything not Linux) it returns `nil`, so the call degrades to a plain foreground spawn with no env change — trust enforcement is preserved.
+
+**Why the override exists.** Homebrew 6.0's Linux build runs the formula `build.rb` inside a `bwrap` (bubblewrap) sandbox whose `deny_read_home` masks almost all of `$HOME`. Its exception list covers `HOMEBREW_PREFIX`/`CACHE`/`LOGS`/`TEMP` but **not** `~/.homebrew`, where `trust.json` lives. So when the user has `HOMEBREW_REQUIRE_TAP_TRUST=1` set, the sandboxed `build.rb` re-checks tap trust, cannot read `~/.homebrew/trust.json`, and raises a `Homebrew::UntrustedTapError` — which is swallowed (it fires before the error pipe is connected), surfacing only an opaque `bwrap … exited with 1`. shll itself *encourages* `HOMEBREW_REQUIRE_TAP_TRUST=1` via `shll shell-setup --trust-tap`, so shll's own pro-trust posture is what walks Linux users into the broken state. Setting `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` per call keeps the sandbox **active** and skips *only* the broken in-sandbox trust re-check (verified working: `HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew upgrade sahil87/tap/idea` completed cleanly).
+
+**Cross-references.** The same `brewEnv()` override is applied at `shll update`'s brew sites (`brew update --quiet`, the shll self-upgrade, and the brew-fallback path) — see [cli/update §Linux brew trust workaround](update.md#linux-brew-trust-workaround-change-38a6) for the helper's full comment contract, the injectable `goosFunc` GOOS seam, and the per-tool carve-out. The env-passing transport is `proc.RunForegroundEnv` — see [internal/proc](../internal/proc.md#design-decisions). Removal item: backlog `[tkch]`.
+
 ## Constitution VII justification
 
 > *Why a new top-level subcommand?* `install` is a distinct lifecycle operation from `update`: different precondition (tool not installed vs. installed), different failure modes (no metadata-refresh dependency), and different discoverability (a new user wanting "get me the toolkit" looks for `install`). Cannot be cleanly expressed as a flag on `update` because `update`'s installed-only precondition would have to invert for a subset of the run.
@@ -132,10 +145,15 @@ Covered scenarios (`src/cmd/shll/install_test.go`):
 - `TestInstall_SubsetArgOrderIndependentRosterOrder` *(change b2vg)* — `shll install fab-kit wt` (both missing) → installs `wt` before `fab-kit` (roster order).
 - `TestInstall_SubsetNamedAlreadyInstalled` *(change b2vg)* — `shll install hop` when hop is already installed → the `All sahil87 tools already installed.` nothing-to-do note, exit 0.
 - `TestInstall_SubsetDryRunPreviewFiltered` *(change b2vg)* — `shll install --dry-run` of a subset → preview lists only the named-and-missing subset in roster order, exit 0, no write.
+- `TestInstall_BrewTrustOverride_PerGOOS` *(change 38a6)* — swaps `goosFunc`: on linux the recorded `brew install` Request carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` in `Env`; on darwin the same Request carries no override (`Env` empty). Pins the Linux brew trust workaround at the install site.
 
 The shared resolver is unit-tested directly in `tools_test.go` (shared with `update` — see [cli/update test seam](update.md#test-seam)); `install` is the `allowShll=false` caller.
 
 Per-tool header/tail behavior (change y630) plus the change-6vuo `[N/M]` counter, duration, and install-preview helper are unit-tested against the `ui.go` helpers in `ui_test.go` (shared with `update`); `install_test.go` additionally asserts loop-path runs emit `==> [N/M] <tool>` headers and the plain tail to the **stdout** buffer (not stderr), and that the empty-case golden string is unchanged.
+
+## Changelog
+
+- **change 38a6** (`260613-38a6-brew-no-tap-trust-workaround`): The `brew install` foreground site now calls `proc.RunForegroundEnv(ctx, brewEnv(), …)` to inject the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` trust workaround (`install.go:147`). See [Linux brew trust workaround](#linux-brew-trust-workaround-change-38a6). **TEMPORARY** — removed under backlog `[tkch]`.
 
 ## Cross-references
 

@@ -1,0 +1,15 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-13T05:28:39Z"}
+{"args":"Bake HOMEBREW_NO_REQUIRE_TAP_TRUST=1 into shll's brew install/upgrade/update invocations (Linux-only) as a temporary workaround for the Homebrew 6.0 bubblewrap-sandbox trust.json bug; backlog item 38a6","cmd":"fab-new","event":"command","ts":"2026-06-13T05:28:39Z"}
+{"delta":"+1.8","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-06-13T05:29:48Z"}
+{"delta":"+0.0","event":"confidence","score":1.8,"trigger":"calc-score","ts":"2026-06-13T05:29:54Z"}
+{"delta":"+3.2","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-13T05:55:38Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-13T05:55:45Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-13T05:55:53Z"}
+{"delta":"+0.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-06-13T05:55:56Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-06-13T05:56:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-13T05:56:06Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-06-13T05:57:11Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-13T06:02:46Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-13T06:06:09Z"}
+{"event":"review","result":"passed","ts":"2026-06-13T06:06:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-13T06:10:25Z"}

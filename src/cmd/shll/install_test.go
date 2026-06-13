@@ -516,3 +516,49 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }
+
+// TestInstall_BrewTrustOverride_PerGOOS verifies the Linux-only
+// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 workaround is injected into every `brew install`
+// subprocess on linux and absent on darwin (backlog [38a6]; removal [tkch]). The
+// goosFunc seam (brew.go) is swapped so both branches run without build tags.
+func TestInstall_BrewTrustOverride_PerGOOS(t *testing.T) {
+	cases := []struct {
+		goos        string
+		wantOverlay bool
+	}{
+		{"linux", true},
+		{"darwin", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.goos, func(t *testing.T) {
+			withGOOS(t, tc.goos)
+			// Nothing installed → every roster tool gets `brew install <formula>`.
+			f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+				switch {
+				case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
+					return proc.Result{Stdout: []byte("Homebrew 6.0\n")}
+				case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
+					return proc.Result{Err: errors.New("not installed")}
+				}
+				return proc.Result{}
+			}}
+			installFakeRunner(t, f)
+
+			var stdout, stderr bytes.Buffer
+			if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+				t.Fatalf("runInstall err = %v, want nil", err)
+			}
+			calls := f.recordedCalls()
+			for _, tool := range Roster {
+				req := findInvocation(calls, brewBinary, "install", tool.Formula)
+				if req == nil {
+					t.Fatalf("expected brew install %s, calls: %+v", tool.Formula, calls)
+				}
+				if got := hasBrewTrustOverride(req.Env); got != tc.wantOverlay {
+					t.Errorf("brew install %s on %s: override present = %v, want %v (Env=%v)",
+						tool.Formula, tc.goos, got, tc.wantOverlay, req.Env)
+				}
+			}
+		})
+	}
+}

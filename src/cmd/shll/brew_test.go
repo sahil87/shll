@@ -9,6 +9,41 @@ import (
 	"github.com/sahil87/shll/internal/proc"
 )
 
+// --- brewEnv (Linux-only trust-trust workaround) ------------------------------
+
+// withGOOS swaps the package-level goosFunc seam for the duration of t and
+// restores it afterward, mirroring installFakeClock / installFakeRunner.
+func withGOOS(t *testing.T, goos string) {
+	t.Helper()
+	prev := goosFunc
+	t.Cleanup(func() { goosFunc = prev })
+	goosFunc = func() string { return goos }
+}
+
+func TestBrewEnv_PerGOOS(t *testing.T) {
+	cases := []struct {
+		goos string
+		want []string
+	}{
+		{"linux", []string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}},
+		{"darwin", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.goos, func(t *testing.T) {
+			withGOOS(t, tc.goos)
+			got := brewEnv()
+			if len(got) != len(tc.want) {
+				t.Fatalf("brewEnv() on %s = %v, want %v", tc.goos, got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("brewEnv() on %s = %v, want %v", tc.goos, got, tc.want)
+				}
+			}
+		})
+	}
+}
+
 // --- brewTrustAvailable -------------------------------------------------------
 
 func TestBrewTrustAvailable_True(t *testing.T) {
