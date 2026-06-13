@@ -82,6 +82,38 @@ func invocationsContain(calls []proc.Request, name string, args ...string) bool 
 	return false
 }
 
+// findCall returns the first recorded request matching the given (name, args...)
+// exactly, and whether one was found. Used by the brewEnv workaround tests to
+// inspect the Env carried by a specific live brew call.
+func findCall(calls []proc.Request, name string, args ...string) (proc.Request, bool) {
+	for _, c := range calls {
+		if c.Name != name || len(c.Args) != len(args) {
+			continue
+		}
+		match := true
+		for i := range args {
+			if c.Args[i] != args[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return c, true
+		}
+	}
+	return proc.Request{}, false
+}
+
+// envContains reports whether env carries the given KEY=VALUE entry.
+func envContains(env []string, entry string) bool {
+	for _, e := range env {
+		if e == entry {
+			return true
+		}
+	}
+	return false
+}
+
 func TestUpdate_BrewMissing(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name == brewBinary {
@@ -1116,5 +1148,127 @@ func TestUpdate_DryRunEmptyCase(t *testing.T) {
 	}
 	if invocationsContain(f.recordedCalls(), brewBinary, "update", "--quiet") {
 		t.Fatal("brew update --quiet must NOT run in dry-run empty case")
+	}
+}
+
+// --- brewEnv workaround wiring (backlog [38a6]/[tkch]) ------------------------
+
+// allBrewInstalledRunner reports shll-self and every roster formula as installed
+// (and brew present). Help probes return empty stdout (no --skip-brew-update), so
+// each roster tool delegates to a plain `<tool> update`.
+func allBrewInstalledRunner() func(proc.Request) proc.Result {
+	return func(req proc.Request) proc.Result { return proc.Result{} }
+}
+
+func TestUpdate_LiveBrewCallsCarryWorkaroundEnvOnLinux(t *testing.T) {
+	setOsGoos(t, "linux")
+	f := &fakeRunner{respond: allBrewInstalledRunner()}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+
+	// brew update --quiet carries the workaround env.
+	if c, ok := findCall(calls, brewBinary, "update", "--quiet"); !ok {
+		t.Fatalf("expected brew update --quiet, calls: %+v", calls)
+	} else if !envContains(c.Env, noRequireTapTrustEnv) {
+		t.Errorf("brew update Env = %v, want to contain %s on linux", c.Env, noRequireTapTrustEnv)
+	}
+
+	// shll self-upgrade (brew upgrade shllFormula) carries the workaround env.
+	if c, ok := findCall(calls, brewBinary, "upgrade", shllFormula); !ok {
+		t.Fatalf("expected brew upgrade %s, calls: %+v", shllFormula, calls)
+	} else if !envContains(c.Env, noRequireTapTrustEnv) {
+		t.Errorf("brew upgrade %s Env = %v, want to contain %s on linux", shllFormula, c.Env, noRequireTapTrustEnv)
+	}
+
+	// Per-tool `<tool> update` delegations must NOT carry the env (they run the
+	// tool's own process, not shll's brew subprocess).
+	for _, tool := range Roster {
+		if c, ok := findCall(calls, tool.Update[0], tool.Update[1:]...); ok {
+			if envContains(c.Env, noRequireTapTrustEnv) {
+				t.Errorf("%s delegation Env = %v, want NO workaround env (delegations never get it)", tool.Name, c.Env)
+			}
+		}
+	}
+}
+
+func TestUpdate_LiveBrewCallsNoWorkaroundEnvOnDarwin(t *testing.T) {
+	setOsGoos(t, "darwin")
+	f := &fakeRunner{respond: allBrewInstalledRunner()}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+
+	if c, ok := findCall(calls, brewBinary, "update", "--quiet"); !ok {
+		t.Fatalf("expected brew update --quiet, calls: %+v", calls)
+	} else if envContains(c.Env, noRequireTapTrustEnv) {
+		t.Errorf("brew update Env = %v, want NO workaround env on darwin", c.Env)
+	}
+	if c, ok := findCall(calls, brewBinary, "upgrade", shllFormula); !ok {
+		t.Fatalf("expected brew upgrade %s, calls: %+v", shllFormula, calls)
+	} else if envContains(c.Env, noRequireTapTrustEnv) {
+		t.Errorf("brew upgrade %s Env = %v, want NO workaround env on darwin", shllFormula, c.Env)
+	}
+}
+
+func TestUpdate_BrewUpgradeFallbackCarriesWorkaroundEnvOnLinux(t *testing.T) {
+	setOsGoos(t, "linux")
+	// A tool with no Update argv falls back to `brew upgrade <formula>`, which is a
+	// brew call (argv[0] == brewBinary) and so MUST carry the workaround env.
+	prev := Roster
+	t.Cleanup(func() { Roster = prev })
+	legacy := Tool{Name: "legacy", Formula: formulaPrefix + "legacy"} // no Update argv
+	Roster = []Tool{legacy}
+
+	f := &fakeRunner{respond: installedOnly(legacy.Formula)}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	c, ok := findCall(calls, brewBinary, "upgrade", legacy.Formula)
+	if !ok {
+		t.Fatalf("expected brew upgrade fallback for %s, calls: %+v", legacy.Formula, calls)
+	}
+	if !envContains(c.Env, noRequireTapTrustEnv) {
+		t.Errorf("brew upgrade fallback Env = %v, want to contain %s on linux", c.Env, noRequireTapTrustEnv)
+	}
+}
+
+func TestUpdate_DelegationNeverCarriesEnvOnLinux(t *testing.T) {
+	setOsGoos(t, "linux")
+	// rk installed and advertises --skip-brew-update → delegated as
+	// `rk update --skip-brew-update`; that delegation must carry NO workaround env
+	// even on linux (only brew calls get it).
+	base := installedOnly(formulaPrefix + "rk")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "rk" && isUpdateHelpProbe(req) {
+			return helpAdvertisesSkipFlag()
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	c, ok := findCall(calls, "rk", "update", "--skip-brew-update")
+	if !ok {
+		t.Fatalf("expected delegated rk update --skip-brew-update, calls: %+v", calls)
+	}
+	if envContains(c.Env, noRequireTapTrustEnv) {
+		t.Errorf("rk delegation Env = %v, want NO workaround env (delegations never get it, even on linux)", c.Env)
 	}
 }

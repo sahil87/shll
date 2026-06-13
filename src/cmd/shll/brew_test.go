@@ -184,3 +184,20 @@ func TestEnsureTapTrust_CeremonyNonZero(t *testing.T) {
 		t.Fatal("diag empty, want a ceremony-failure diagnostic")
 	}
 }
+
+// --- brewEnv (Linux sandbox-trust workaround; backlog [38a6]/[tkch]) ----------
+
+func TestBrewEnv_LinuxInjectsWorkaround(t *testing.T) {
+	setOsGoos(t, "linux")
+	env := brewEnv()
+	if len(env) != 1 || env[0] != noRequireTapTrustEnv {
+		t.Fatalf("brewEnv() on linux = %v, want [%s]", env, noRequireTapTrustEnv)
+	}
+}
+
+func TestBrewEnv_DarwinReturnsNil(t *testing.T) {
+	setOsGoos(t, "darwin")
+	if env := brewEnv(); env != nil {
+		t.Fatalf("brewEnv() on darwin = %v, want nil", env)
+	}
+}

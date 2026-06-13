@@ -11,6 +11,32 @@ import (
 // brewBinary is the Homebrew CLI name. Named constant so callers do not open-code it.
 const brewBinary = "brew"
 
+// noRequireTapTrustEnv is the environment entry shll injects into its brew
+// install/upgrade/update subprocesses on Linux as the temporary sandbox-trust
+// workaround. Named constant per code-quality.md (no magic strings). See brewEnv.
+const noRequireTapTrustEnv = "HOMEBREW_NO_REQUIRE_TAP_TRUST=1"
+
+// brewEnv returns the extra environment entries shll injects into its brew
+// subprocesses. It is the SINGLE source of truth for the temporary Homebrew
+// Linux-sandbox workaround.
+//
+// TEMPORARY WORKAROUND (backlog [38a6]; remove per backlog [tkch]):
+// Homebrew 6.0's Linux bubblewrap sandbox masks ~/.homebrew (HOMEBREW_USER_CONFIG_HOME)
+// via deny_read_home, so the sandboxed build.rb cannot read trust.json and wrongly
+// raises UntrustedTapError when HOMEBREW_REQUIRE_TAP_TRUST=1 is set (the error is also
+// swallowed — raised before build.rb connects its error pipe — surfacing as an opaque
+// "bwrap exited with 1"). We set HOMEBREW_NO_REQUIRE_TAP_TRUST=1 to skip ONLY the broken
+// in-sandbox trust re-check; the sandbox itself stays active and trust was already
+// verified out-of-sandbox. Gated to Linux: the bug is bubblewrap-specific and macOS must
+// keep enforcing trust. DELETE this (and its wiring/tests) once the upstream fix lands —
+// see backlog [tkch] for the verification recipe.
+func brewEnv() []string {
+	if osGoos != "linux" {
+		return nil
+	}
+	return []string{noRequireTapTrustEnv}
+}
+
 // brewMissingHint is the exact stderr line printed by `shll update` when the
 // brew binary is not on PATH. Matches the original spec's required text verbatim
 // (260508-kvan scenario asserts this string literally — do not edit without
