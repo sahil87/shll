@@ -1,0 +1,14 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-06-08T09:57:42Z"}
+{"args":"conform repo to shll.ai README-extraction contract: restructure README head order, drop tail-denylist sections, absolute image/external URLs, add docs/site tree (install.md, workflows.md)","cmd":"fab-new","event":"command","ts":"2026-06-08T09:57:42Z"}
+{"cmd":"fab-new","event":"command","ts":"2026-06-08T09:57:45Z"}
+{"delta":"+3.1","event":"confidence","score":3.1,"trigger":"calc-score","ts":"2026-06-08T09:58:36Z"}
+{"delta":"+0.0","event":"confidence","score":3.1,"trigger":"calc-score","ts":"2026-06-08T09:58:41Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-08T09:59:16Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-08T10:05:42Z"}
+{"event":"review","result":"failed","ts":"2026-06-08T10:10:00Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-06-08T10:10:00Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-06-08T10:11:00Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-06-08T10:13:09Z"}
+{"event":"review","result":"passed","ts":"2026-06-08T10:13:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-08T10:13:52Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-06-08T10:15:26Z"}

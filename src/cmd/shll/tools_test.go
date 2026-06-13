@@ -59,6 +59,48 @@ func TestRosterLeavesBeforeDependents(t *testing.T) {
 	}
 }
 
+// --- shllSelf shared descriptor (change bb7r) ---
+
+func TestShllSelf_Descriptor(t *testing.T) {
+	// The shared shll-self descriptor's field contract — single-sourced and reused
+	// by list/doctor/install.
+	if shllSelf.Name != shllTargetToken {
+		t.Errorf("shllSelf.Name = %q, want %q", shllSelf.Name, shllTargetToken)
+	}
+	if shllSelf.Description != shllSelfDescription {
+		t.Errorf("shllSelf.Description = %q, want %q", shllSelf.Description, shllSelfDescription)
+	}
+	if shllSelf.Repo != shllTargetToken {
+		t.Errorf("shllSelf.Repo = %q, want %q (→ github.com/sahil87/shll)", shllSelf.Repo, shllTargetToken)
+	}
+	// shll has no managed Formula/ShellInit/Update — it is not a Roster tool.
+	if shllSelf.Formula != "" || len(shllSelf.ShellInit) != 0 || len(shllSelf.Update) != 0 {
+		t.Errorf("shllSelf must not carry Formula/ShellInit/Update, got %+v", shllSelf)
+	}
+}
+
+func TestShllSelf_NotInRoster(t *testing.T) {
+	// The descriptor must NOT have leaked into Roster (Constitution III +
+	// leaves-first invariant). Roster stays exactly the 6 managed sub-tools.
+	if len(Roster) != 6 {
+		t.Errorf("len(Roster) = %d, want 6 (managed sub-tools only)", len(Roster))
+	}
+	if rosterHas(shllTargetToken) {
+		t.Error("shll must NOT be a Roster entry")
+	}
+}
+
+func TestShllSelfVersion_FromPackageVar(t *testing.T) {
+	// shllSelfVersion reads the package version var (normalized), never a
+	// subprocess. Swap the var to confirm the source.
+	prev := version
+	t.Cleanup(func() { version = prev })
+	version = "9.9.9"
+	if got := shllSelfVersion(); got != "v9.9.9" {
+		t.Errorf("shllSelfVersion() = %q, want %q (normalized package var)", got, "v9.9.9")
+	}
+}
+
 // --- resolveTargets (shared subset resolver, change b2vg) ---
 
 func toolNames(tools []Tool) []string {

@@ -43,7 +43,21 @@ type Tool struct {
 	// update` falls back to `brew upgrade <formula>` for it. Every current
 	// roster tool ships an `update`, so all entries populate this field.
 	Update []string
+	// Description is a one-line, human-readable summary of what the tool does,
+	// printed by `shll list`. Single-sourced here so the roster cannot drift
+	// from the managed set (Constitution III — Tool Roster Source of Truth).
+	Description string
+	// Repo is the github.com/sahil87/<Repo> slug for the tool's source
+	// repository. It defaults to Name for most tools, but is NOT always equal
+	// to Name: rk's repository is `run-kit` (github.com/sahil87/rk is a 404).
+	// Stored explicitly so `shll list` never emits a dead link.
+	Repo string
 }
+
+// githubOrgBase is the GitHub organization base URL for the sahil87 toolkit.
+// A tool's source-repo URL is githubOrgBase + tool.Repo. Named constant per
+// code-quality.md (no magic strings) so `shll list` never open-codes the URL.
+const githubOrgBase = "https://github.com/sahil87/"
 
 // shellPlaceholder is the literal substituted with the requested shell at
 // composition time inside ShellInit argv. Named constant so callers do not
@@ -74,12 +88,12 @@ const shellPlaceholder = "<shell>"
 // TestRosterLeavesBeforeDependents — a comment cannot fail CI, so the test
 // guards against an accidental reorder.
 var Roster = []Tool{
-	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}},
-	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}},
-	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}},
-	{Name: "rk", Formula: formulaPrefix + "rk", Update: []string{"rk", "update"}},
-	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}},
-	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}},
+	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees"},
+	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal"},
+	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)"},
+	{Name: "rk", Formula: formulaPrefix + "rk", Update: []string{"rk", "update"}, Repo: "run-kit", Description: "Run-kit — tmux session manager with a web UI"},
+	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees"},
+	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)"},
 }
 
 // shllTargetToken is the literal positional argument that selects shll itself as
@@ -89,6 +103,46 @@ var Roster = []Tool{
 // valid target for `update` only — never for `install` (you cannot brew-install
 // the running orchestrator). Named per code-quality.md (no magic strings).
 const shllTargetToken = "shll"
+
+// shllSelfDescription is the manager-framing one-liner printed for the shll-self
+// entry by every command that shows the toolkit. Named per code-quality.md (no
+// magic strings).
+const shllSelfDescription = "the manager for the shll toolkit"
+
+// shllSelf is the single shared descriptor representing shll ITSELF as a
+// displayable entry — the one source of truth reused by every command that shows
+// the toolkit as a family (`list`, `doctor`, `install`; `version`/`update`
+// already lead with shll via their own self-handling). Each such command PREPENDS
+// this descriptor, rendering shll FIRST, then the leaves-first Roster
+// (`shll, wt, idea, tu, rk, hop, fab-kit`).
+//
+// It reuses the Tool struct shape but is deliberately NOT a Roster entry: Roster
+// is the *managed sub-tool* list (Constitution III — Tool Roster Source of Truth),
+// and adding shll there would break the leaves-first invariant guarded by
+// TestRosterLeavesBeforeDependents and make install/update/shell-init try to
+// operate on the running orchestrator itself (e.g. brew-install the live binary).
+// Only Name, Description, and Repo are populated: shll has no managed Formula, no
+// own ShellInit to compose (shell-init is the documented exception — its stdout is
+// eval'd, Constitution V), and is self-upgraded via update.go's own path rather
+// than a Roster Update argv.
+//
+// shll's version is NOT read from this descriptor; it comes from shllSelfVersion()
+// (the package-level version var), never a `shll --version` self-subprocess.
+var shllSelf = Tool{
+	Name:        shllTargetToken,
+	Description: shllSelfDescription,
+	Repo:        shllTargetToken,
+}
+
+// shllSelfVersion returns shll's own normalized version for the shll-self entry.
+// It reads the package-level version var (set via -ldflags at build time) rather
+// than spawning `shll --version` on the running binary: shll is always present (it
+// is the running process), so a self-subprocess would be wasteful and circular.
+// normalizeVersion gives the same display shape `shll version` uses for its first
+// row, so the two surfaces agree.
+func shllSelfVersion() string {
+	return normalizeVersion(version)
+}
 
 // resolveTargets maps the positional tool-name args of `shll update`/`shll install`
 // to the work set, single-sourced with Roster so the valid-name list cannot drift

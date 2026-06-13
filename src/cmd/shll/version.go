@@ -61,6 +61,32 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 	return w.Flush()
 }
 
+// probeToolVersion is the single definition of the install-mechanism-agnostic
+// "installed = runnable on PATH" probe shared by toolVersion and toolInstalled.
+// It invokes `<tool> --version` via proc.Run (Constitution I — subprocess via
+// internal/proc), bounded by versionTimeout, and returns the captured output and
+// any error. ANY error (proc.ErrNotFound for a missing binary, non-zero exit,
+// timeout) means "not installed"; callers map that to their own representation
+// (notInstalledLabel for version, a bool for toolInstalled). This is NOT the
+// brew probe (isInstalled in brew.go) used by install/update.
+func probeToolVersion(ctx context.Context, tool Tool) ([]byte, error) {
+	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
+	defer cancel()
+	return proc.Run(subCtx, tool.Name, "--version")
+}
+
+// toolInstalled reports whether the tool's binary is runnable on PATH, by
+// invoking `<tool> --version` (bounded by versionTimeout) and treating ANY error
+// (proc.ErrNotFound, non-zero exit, timeout) as not-installed. This is the
+// install-mechanism-agnostic notion of "installed" shared by `version`, `list`,
+// and (future) `doctor` — NOT the brew probe (isInstalled) used by
+// install/update. It layers on the single probeToolVersion call so there is
+// exactly one place that defines "installed = runnable".
+func toolInstalled(ctx context.Context, tool Tool) bool {
+	_, err := probeToolVersion(ctx, tool)
+	return err == nil
+}
+
 // toolVersion returns the version string for a single roster tool, or
 // notInstalledLabel on any failure (binary missing from PATH, --version
 // errors, or timeout). The returned string never contains internal newlines —
@@ -69,11 +95,11 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 // "Installed" here means "runnable on PATH" — proc.Run returns proc.ErrNotFound
 // when the binary is missing, and any other failure mode (non-zero exit,
 // timeout, etc.) falls under the same notInstalledLabel branch. This is
-// install-mechanism agnostic (brew, from-source, etc.).
+// install-mechanism agnostic (brew, from-source, etc.). It shares the single
+// probeToolVersion call with toolInstalled so the "installed = runnable"
+// definition lives in exactly one place.
 func toolVersion(ctx context.Context, tool Tool) string {
-	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
-	defer cancel()
-	out, err := proc.Run(subCtx, tool.Name, "--version")
+	out, err := probeToolVersion(ctx, tool)
 	if err != nil {
 		return notInstalledLabel
 	}

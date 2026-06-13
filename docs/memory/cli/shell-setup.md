@@ -260,6 +260,7 @@ Ceremony helpers are unit-tested in `brew_test.go` (added by this change): `Test
 
 ## Cross-references
 
+- Read-only reuse by `doctor`: [cli/doctor](doctor.md) — `shll doctor`'s wiring check reuses `resolveShell`, `resolveRcFile`, `locateBlock`, and `blockMatch.hasEval` **strictly READ-ONLY** (it `os.ReadFile`s the rc file and inspects `hasEval`; it NEVER calls any of the write paths — `appendBlock`, `rewriteBlocks`, `buildBlockBody`). `doctor` never writes to, creates, or migrates the rc file.
 - Subcommand registration and exit-code translation: [cli/commands](commands.md). The ceremony constant `tapName` lives in `tools.go` alongside `formulaPrefix`; `brew.go` gained `brewTrustAvailable`, `brewTrustTap`, `ensureTapTrust`, and `trustHatchHint`.
 - The eval-line target: [cli/shell-init](shell-init.md) — `shell-setup` writes the line that `shell-init` produces output for.
 - Subprocess execution: [internal/proc](../internal/proc.md) — the ceremony uses `proc.Run` (probe) and `proc.RunForeground` (ceremony), routed entirely through `brew.go`; `shell_setup.go` reaches them only via the `ensureTrustFunc` seam.
