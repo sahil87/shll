@@ -9,7 +9,7 @@ import (
 	"github.com/sahil87/shll/internal/proc"
 )
 
-// --- brewEnv (Linux-only trust-trust workaround) ------------------------------
+// --- brewEnv (Linux-only tap-trust workaround) --------------------------------
 
 // withGOOS swaps the package-level goosFunc seam for the duration of t and
 // restores it afterward, mirroring installFakeClock / installFakeRunner.

@@ -66,7 +66,7 @@ func invocationsContain(calls []proc.Request, name string, args ...string) bool 
 
 // findInvocation returns the first recorded request matching (name, args...)
 // exactly, or nil when none matches. Used to inspect a matched request's Env
-// (the trust-trust workaround assertions) in addition to its name/args.
+// (the tap-trust workaround assertions) in addition to its name/args.
 func findInvocation(calls []proc.Request, name string, args ...string) *proc.Request {
 	for i := range calls {
 		c := calls[i]
@@ -91,7 +91,7 @@ func findInvocation(calls []proc.Request, name string, args ...string) *proc.Req
 }
 
 // hasBrewTrustOverride reports whether env carries the Linux-only
-// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 trust-trust workaround entry.
+// HOMEBREW_NO_REQUIRE_TAP_TRUST=1 tap-trust workaround entry.
 func hasBrewTrustOverride(env []string) bool {
 	for _, e := range env {
 		if e == "HOMEBREW_NO_REQUIRE_TAP_TRUST=1" {

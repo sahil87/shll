@@ -33,7 +33,7 @@ The proc package SHALL expose `RunForegroundEnv(ctx, env, name, args...)` with t
 - **AND** the return contract matches `RunForeground` exactly: `(code, nil)` on completion,
   `(-1, err)` when exec fails before the subprocess starts
 
-### cmd/shll: Linux-only brew trust-trust workaround
+### cmd/shll: Linux-only brew tap-trust workaround
 
 #### R3: A single `brewEnv()` helper is the source of truth for the override
 `brew.go` SHALL define `brewEnv()` returning `[]string{"HOMEBREW_NO_REQUIRE_TAP_TRUST=1"}`
