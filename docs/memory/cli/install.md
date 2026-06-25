@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`shll install` — brew detection, bootstrap of missing roster tools via `brew install`, idempotent re-run."
+---
 # cli/install
 
 `shll install` — installs every roster tool that isn't already installed via Homebrew. Idempotent; safe to re-run.
@@ -24,7 +28,7 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 ## The prepended shll-first informational line (change bb7r)
 
-`runInstall` prepends a single shll-first line to stdout — `fmt.Fprintln(stdout, shllSelfInstallNote)` (`src/cmd/shll/install.go:94`) — so the toolkit reads as one family with `shll` as its manager-member (the discoverability goal shared with `list`/`doctor`). It is the install-side instance of the unified shll-first ordering — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r).
+`runInstall` prepends a single shll-first line to stdout — `fmt.Fprintln(stdout, shllSelfInstallNote)` (`src/cmd/shll/install.go:94`) — so the toolkit reads as one family with `shll` as its manager-member (the discoverability goal shared with `list`/`doctor`). It is the install-side instance of the unified shll-first ordering — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r).
 
 ```go
 // install.go
@@ -51,16 +55,16 @@ This is a deliberate *informational* exception to the symmetry between the inspe
 
 ## Per-tool output separation (change y630)
 
-`shll install` mirrors `shll update`'s framing exactly, via the same shared helper `src/cmd/shll/ui.go` (see [cli/commands](commands.md#file-layout-srccmdshll)) — no TTY/`NO_COLOR`/glyph logic is duplicated in `install.go`.
+`shll install` mirrors `shll update`'s framing exactly, via the same shared helper `src/cmd/shll/ui.go` (see [cli/commands](/cli/commands.md#file-layout-srccmdshll)) — no TTY/`NO_COLOR`/glyph logic is duplicated in `install.go`.
 
-- **Per-tool header with `[N/M]` progress counter (change 6vuo).** Before each missing tool's `brew install` output, `printToolHeader(stdout, t.Name, i+1, total, color)` (`install.go:109`) writes `▸ [N/M] <tool>` (color TTY) / `==> [N/M] <tool>` (plain), in roster order, where `N` is the 1-based loop position and `M = len(missing)` — already known up front, so no separate denominator computation is needed (unlike `update`, where `M` is derived from the probe results). Since change auvj the roster is leaves-first (`wt, idea, tu, rk, hop, fab-kit`), so the headers for the *missing subset* print in that relative order — e.g. with `hop`+`wt` already installed, the missing set `{idea, tu, rk, fab-kit}` yields `==> [1/4] idea`, `==> [2/4] tu`, `==> [3/4] rk`, `==> [4/4] fab-kit` (`TestInstall_HeadersAndTail` golden at `src/cmd/shll/install_test.go:190`, with the `Done — 4 of 4 tools succeeded in 1m12s.` tail). See the [leaves-first ordering rationale](commands.md#design-decision-leaves-first-roster-order-change-auvj).
+- **Per-tool header with `[N/M]` progress counter (change 6vuo).** Before each missing tool's `brew install` output, `printToolHeader(stdout, t.Name, i+1, total, color)` (`install.go:109`) writes `▸ [N/M] <tool>` (color TTY) / `==> [N/M] <tool>` (plain), in roster order, where `N` is the 1-based loop position and `M = len(missing)` — already known up front, so no separate denominator computation is needed (unlike `update`, where `M` is derived from the probe results). Since change auvj the roster is leaves-first (`wt, idea, tu, rk, hop, fab-kit`), so the headers for the *missing subset* print in that relative order — e.g. with `hop`+`wt` already installed, the missing set `{idea, tu, rk, fab-kit}` yields `==> [1/4] idea`, `==> [2/4] tu`, `==> [3/4] rk`, `==> [4/4] fab-kit` (`TestInstall_HeadersAndTail` golden at `src/cmd/shll/install_test.go:190`, with the `Done — 4 of 4 tools succeeded in 1m12s.` tail). See the [leaves-first ordering rationale](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj).
 - **Section spacing (change 6vuo).** A single blank line precedes each per-tool header **except the first** (`install.go:106`, `if i > 0`), and a single blank line precedes the summary tail (`install.go:128`) — so each tool's streamed output is separated from the next header and the tail. The all-already-installed short-circuit emits no blank lines.
 - **Summary tail with run duration (change 6vuo).** After the loop, `printSummaryTail(stdout, succeeded, total, elapsed, color)` (`install.go:129`, `total = len(missing)`) writes `Done — N of M tools succeeded in <dur>.` (green `✓` when color) or `X succeeded, Y failed in <dur> — see above.` (duration before the em-dash), by **exit code only** — `succeeded` counts installs that exited 0, mirroring the same per-tool facts that drive `anyFailed`. The duration is a run fact, not an outcome claim — the tail still never claims "installed" vs. "up-to-date" (the honesty constraint). Presentation-only; does not change the exit code. Elapsed is measured via the injectable `nowFunc` clock seam (`clock.go`), captured at `install.go:101` **after** the short-circuit and the dry-run branch return, so it covers only the install phase.
 - **Stream discipline.** Header and tail go to **stdout** (the stream `brew install` is foregrounded onto), never stderr.
 - **Color gating.** One `colorEnabled(stdout)` decision (TTY via `golang.org/x/term` AND `NO_COLOR` unset), reused for headers and tail; `bytes.Buffer` test writers hit the plain-ASCII branch.
 - **Empty case emits no header, no tail, no counter, no spacing, no duration.** The all-already-installed short-circuit (step 3) runs no loop, so the *install-loop framing* it would emit is absent — no `==> [N/M]` header, no tail, no blank lines, no duration; only the install-loop path carries those markers. Its install-message line stays `All sahil87 tools already installed.\n` (the `allInstalledMsg` constant). **Since change bb7r the shll-first informational line precedes it** (`shll — already present / self-managed\n` then `All sahil87 tools already installed.\n`) on this non-early-error path — see [The prepended shll-first informational line](#the-prepended-shll-first-informational-line-change-bb7r); the `TestInstall_AllAlreadyInstalled`/`TestInstall_EmptyCaseNoHeaderNoTail` goldens were updated for the prepended line.
 
-The helper details (named SGR constants, the `colorEnabled` gating, the honesty constraint on the tail, the `[N/M]` counter, the `formatDuration` form, and the `nowFunc` clock seam) are documented once under [cli/update](update.md#per-tool-output-separation-change-y630); `install` consumes the identical helpers.
+The helper details (named SGR constants, the `colorEnabled` gating, the honesty constraint on the tail, the `[N/M]` counter, the `formatDuration` form, and the `nowFunc` clock seam) are documented once under [cli/update](/cli/update.md#per-tool-output-separation-change-y630); `install` consumes the identical helpers.
 
 ## Linux brew sandbox-trust workaround (change 38a6)
 
@@ -68,13 +72,13 @@ The live `brew install <formula>` call routes through `proc.RunForegroundEnv(ctx
 
 **This is a TEMPORARY workaround** for a Homebrew 6.0 bug, **not** a permanent design choice. Homebrew 6.0's Linux bubblewrap sandbox masks `~/.homebrew` (`HOMEBREW_USER_CONFIG_HOME`, where `trust.json` lives) via `deny_read_home`, so the sandboxed `build.rb` cannot read the trust record and wrongly raises `UntrustedTapError` when `HOMEBREW_REQUIRE_TAP_TRUST=1` is set — which shll itself encourages via `shll shell-setup --trust-tap`. The error is raised before `build.rb` connects its error pipe, so it surfaces only as an opaque `bwrap … exited with 1`. Setting `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` skips **only** the broken in-sandbox trust re-check; the sandbox stays active and trust was already verified out-of-sandbox.
 
-`brewEnv()` (`src/cmd/shll/brew.go`) is the single source of truth, Linux-gated via the existing `osGoos` seam, with a loud comment cross-referencing this change (`[38a6]`) and the **removal backlog item `[tkch]`** — so when the upstream fix lands the workaround (and its wiring/tests) is a one-spot deletion. See [internal/proc §Per-request environment](../internal/proc.md#per-request-environment-requestenv-change-38a6) for the `Env` plumbing and [cli/update](update.md#linux-brew-sandbox-trust-workaround-change-38a6) for the same workaround on `brew update`/`brew upgrade`.
+`brewEnv()` (`src/cmd/shll/brew.go`) is the single source of truth, Linux-gated via the existing `osGoos` seam, with a loud comment cross-referencing this change (`[38a6]`) and the **removal backlog item `[tkch]`** — so when the upstream fix lands the workaround (and its wiring/tests) is a one-spot deletion. See [internal/proc §Per-request environment](/internal/proc.md#per-request-environment-requestenv-change-38a6) for the `Env` plumbing and [cli/update](/cli/update.md#linux-brew-sandbox-trust-workaround-change-38a6) for the same workaround on `brew update`/`brew upgrade`.
 
 `TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` and `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` (overriding `osGoos` via `setOsGoos`) assert the recorded `brew install` `Request` carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` on linux and carries no such env on darwin.
 
 ## `--dry-run` (change 6vuo)
 
-`shll install --dry-run` previews the `brew install` commands the run **would** execute, then exits 0 **without any write**. It mirrors `shll update --dry-run` (see [cli/update](update.md#dry-run-change-6vuo) for the shared contract); the flag, usage string, and the `dryRun bool` parameter on `runInstall` are the same `dryRunFlag`/`dryRunFlagUsage` constants (defined in `update.go`, shared across both commands).
+`shll install --dry-run` previews the `brew install` commands the run **would** execute, then exits 0 **without any write**. It mirrors `shll update --dry-run` (see [cli/update](/cli/update.md#dry-run-change-6vuo) for the shared contract); the flag, usage string, and the `dryRun bool` parameter on `runInstall` are the same `dryRunFlag`/`dryRunFlagUsage` constants (defined in `update.go`, shared across both commands).
 
 **Reads run; writes do not.** The `isInstalled` probes (`brew list --formula --versions`) that partition the roster still run in dry-run (they are reads, and the preview depends on them) — but **no `brew install`** is performed. The guarantee is structural: the dry-run branch (`install.go:80`) returns before the install loop and before `start := nowFunc()`. `TestInstall_DryRunNoWrites` asserts the `brew list` probe IS recorded, no `brew install <formula>` runs for any tool, and there are **zero `TransportForeground`** calls.
 
@@ -98,14 +102,14 @@ Would install 4 tools:
 
 ## Positional tool-name args — subset targeting (change b2vg)
 
-`shll install [tool...]` accepts zero or more positional tool-name args (`Args: cobra.ArbitraryArgs`, parsed args threaded into `runInstall`), symmetric with [`shll update`](update.md#positional-tool-name-args--subset-targeting-change-b2vg) for the install lifecycle. The shared resolver is single-sourced with `Roster`; install differs from update in exactly one way — the valid-target set.
+`shll install [tool...]` accepts zero or more positional tool-name args (`Args: cobra.ArbitraryArgs`, parsed args threaded into `runInstall`), symmetric with [`shll update`](/cli/update.md#positional-tool-name-args--subset-targeting-change-b2vg) for the install lifecycle. The shared resolver is single-sourced with `Roster`; install differs from update in exactly one way — the valid-target set.
 
 - **Zero args → whole-roster run, unchanged.** `subset := len(args) > 0` is false; the partition/install behavior above holds verbatim.
 - **One or more args → operate on just the named subset.** The args form a *set*, not a sequence.
 
 **Valid targets for `install` are the six `Roster` tools ONLY** (`wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit`). **`shll` is NOT a valid install target** — you cannot `brew install` the running orchestrator. `runInstall` calls `resolveTargets(args, false)` (`allowShll=false`), so `shll install shll` falls into the unknown-target error path (`shll install: unknown target "shll" (valid targets: wt, idea, tu, rk, hop, fab-kit)`) — note `shll` is absent from the valid list (it appears only for `update`, where `allowShll=true`).
 
-**Roster-order processing.** A subset is processed in `Roster` (leaves-first) order regardless of arg order — `resolveTargets` returns the selected `Tool`s in roster order, and `runInstall` walks `consider = selected` (else the full `Roster`) to build `missing`, preserving that order. Example: `shll install fab-kit wt` installs `wt` then `fab-kit`. (Why leaves-first is output coherence, not correctness: [leaves-first ordering rationale](commands.md#design-decision-leaves-first-roster-order-change-auvj).)
+**Roster-order processing.** A subset is processed in `Roster` (leaves-first) order regardless of arg order — `resolveTargets` returns the selected `Tool`s in roster order, and `runInstall` walks `consider = selected` (else the full `Roster`) to build `missing`, preserving that order. Example: `shll install fab-kit wt` installs `wt` then `fab-kit`. (Why leaves-first is output coherence, not correctness: [leaves-first ordering rationale](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj).)
 
 **Validation up front (`runInstall` resolves the subset before `hasBrew` and any probe).** An unknown / typo'd name → `resolveTargets` returns a non-nil error; `runInstall` writes `shll install: <detail>` to stderr and returns `errSilent` (exit 1) with **no brew side effect**. All unknown args are reported at once.
 
@@ -166,15 +170,15 @@ Covered scenarios (`src/cmd/shll/install_test.go`):
 - `TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` *(change 38a6)* — `setOsGoos("linux")` → every recorded `brew install` `Request` carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`.
 - `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` *(change 38a6)* — `setOsGoos("darwin")` → no `brew install` `Request` carries the workaround env (the Linux gate is off).
 
-The shared resolver is unit-tested directly in `tools_test.go` (shared with `update` — see [cli/update test seam](update.md#test-seam)); `install` is the `allowShll=false` caller.
+The shared resolver is unit-tested directly in `tools_test.go` (shared with `update` — see [cli/update test seam](/cli/update.md#test-seam)); `install` is the `allowShll=false` caller.
 
 Per-tool header/tail behavior (change y630) plus the change-6vuo `[N/M]` counter, duration, and install-preview helper are unit-tested against the `ui.go` helpers in `ui_test.go` (shared with `update`); `install_test.go` additionally asserts loop-path runs emit `==> [N/M] <tool>` headers and the plain tail to the **stdout** buffer (not stderr), and that the empty-case golden string is unchanged.
 
 ## Cross-references
 
-- Subprocess wrapper conventions: [internal/proc](../internal/proc.md).
-- The hardcoded roster: [cli/commands](commands.md#hardcoded-tool-roster).
-- The shared `shllSelf` descriptor + the unified shll-first ordering (the informational line is install's instance): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling inspect surfaces that render shll as a full entry: [cli/list](list.md#the-prepended-shll-first-row-change-bb7r) and [cli/doctor](doctor.md#the-prepended-shll-first-row-change-bb7r).
-- Sibling lifecycle command: [cli/update](update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`.
-- Shared UI helper (`ui.go`): [cli/commands](commands.md#file-layout-srccmdshll).
+- Subprocess wrapper conventions: [internal/proc](/internal/proc.md).
+- The hardcoded roster: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
+- The shared `shllSelf` descriptor + the unified shll-first ordering (the informational line is install's instance): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling inspect surfaces that render shll as a full entry: [cli/list](/cli/list.md#the-prepended-shll-first-row-change-bb7r) and [cli/doctor](/cli/doctor.md#the-prepended-shll-first-row-change-bb7r).
+- Sibling lifecycle command: [cli/update](/cli/update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](/cli/update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`.
+- Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll).
 - Constitution III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation), VII (Minimal Surface Area).

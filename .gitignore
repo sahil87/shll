@@ -47,3 +47,5 @@ dist/
 /.codex
 
 /.gemini
+
+.status.yaml.lock

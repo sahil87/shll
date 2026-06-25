@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe and `shell-setup`'s wiring detector."
+---
 # cli/doctor
 
 `shll doctor` — verifies that every roster tool is installed, runnable, and (where applicable) wired into the shell. One status line per tool with an `OK` / `WARN` / `FAIL` marker; each non-OK line carries an actionable suggestion. Exits non-zero if **any** tool is FAIL, so it is scriptable in CI. Strictly read-only — it never installs, upgrades, or edits the rc file.
@@ -21,7 +25,7 @@ fab-kit  FAIL           installed but 'fab-kit --version' failed — try 'brew r
 2 of 6 tools have problems. Run the suggested commands above, then re-run shll doctor.
 ```
 
-- Ordering is **shll-first, then leaves-first roster** (change bb7r): the always-OK `shll` row is prepended (`runDoctor`, `src/cmd/shll/doctor.go:133`), followed by the `Roster` in its declared `wt, idea, tu, rk, hop, fab-kit` order (leaves-first, change auvj). This makes the unified shll-first ordering established by `version`/`update` universal across the inspect/manage surface — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The `shll` row reads OK with a version and no detail; it never carries a wiring detail (`shell_init:false`).
+- Ordering is **shll-first, then leaves-first roster** (change bb7r): the always-OK `shll` row is prepended (`runDoctor`, `src/cmd/shll/doctor.go:133`), followed by the `Roster` in its declared `wt, idea, tu, rk, hop, fab-kit` order (leaves-first, change auvj). This makes the unified shll-first ordering established by `version`/`update` universal across the inspect/manage surface — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The `shll` row reads OK with a version and no detail; it never carries a wiring detail (`shell_init:false`).
 - **The shll row is excluded from the problem-count denominator.** In the example two roster tools FAIL, so the tail reads `2 of 6` — the denominator is `len(Roster)` (the checkable roster), NOT `len(results)` (`len(Roster)+1`, which would mis-report `2 of 7`). The always-OK shll row can never register a problem, so it is correctly excluded. See [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r) below.
 - Columns: `<name>  <MARKER>  <version>  <detail>`, aligned via `text/tabwriter` (`tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)` — same parameters as `version.go`).
 - The `<detail>` column is the suggestion on non-OK lines; on an OK wired shell-init tool it is the literal `wired`; on an OK non-shell-init tool (or an OK shell-init tool with no detail) it is empty.
@@ -47,7 +51,7 @@ The wiring fact is a **single rc-file fact** shared by every shell-init tool (sh
 `doctor` prepends an always-OK `shll` row before walking the roster — `results = append(results, shllDoctorResult())` then the per-tool loop (`runDoctor`, `src/cmd/shll/doctor.go:133`). The row is built by `shllDoctorResult()` (`src/cmd/shll/doctor.go:268`), **directly — NOT via `evaluateTool`**, and is deliberately different from a roster tool in three load-bearing ways:
 
 1. **No self-subprocess.** `evaluateTool` always calls `probeVersion`, which spawns `<tool> --version`. `doctor` must not spawn `shll --version` on itself: shll is the running process, so its binary is definitionally on PATH and its version is read from the package `version` var via `shllSelfVersion()` (`src/cmd/shll/tools.go:143` → `normalizeVersion(version)`) — the same source as `shll version`'s own first row, so the two surfaces agree. Building the `doctorResult` directly avoids the circular, wasteful self-spawn.
-2. **Checks 1+2 only — no wiring check.** shll ships no shell-init of its own (shell-init is the [documented eval-safety exception](shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)), so it is treated like `idea`/`rk`/`fab-kit`: `ShellInit:false`, `Wired:false`, no wiring check applies.
+2. **Checks 1+2 only — no wiring check.** shll ships no shell-init of its own (shell-init is the [documented eval-safety exception](/cli/shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)), so it is treated like `idea`/`rk`/`fab-kit`: `ShellInit:false`, `Wired:false`, no wiring check applies.
 3. **Always OK, never touches `anyFail`.** The row's `Status` is hardcoded `markerOK` (binary present + version present), and the prepend in `runDoctor` does **not** run the `if res.Status == markerFail { anyFail = true }` branch that the roster loop runs. So the always-OK shll row **cannot perturb the scriptable any-FAIL→exit-1 contract**: a clean roster still exits 0, a roster with a FAIL still exits 1.
 
 ```go
@@ -64,7 +68,7 @@ func shllDoctorResult() doctorResult {
 }
 ```
 
-The `Tool` name comes from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`) — the single source of truth for "shll as a displayable entry", reused by `list`/`install`/`doctor` (see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r)). Both the text and `--json` renderers consume the shll row through the **same `results` walk** as every roster tool — no special-casing in the renderers.
+The `Tool` name comes from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`) — the single source of truth for "shll as a displayable entry", reused by `list`/`install`/`doctor` (see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r)). Both the text and `--json` renderers consume the shll row through the **same `results` walk** as every roster tool — no special-casing in the renderers.
 
 ### The problem-count denominator is `len(Roster)`, NOT `len(results)`
 
@@ -122,7 +126,7 @@ OK tools carry no suggestion (empty string).
 | `versionUnreportable` | any other `proc.Run` error/timeout, OR `normalizeVersion(out) == ""` | FAIL |
 | `versionOK` | `proc.Run` succeeds and `normalizeVersion(out)` is non-empty | OK (captures the version string) |
 
-It reuses the **same primitives** as `version.go`'s `toolVersion` — `proc.Run` + `versionTimeout` + `normalizeVersion` — so the version-reporting behavior stays single-sourced and the two cannot drift. **Why a separate helper instead of calling `toolVersion` directly**: `toolVersion` collapses both the missing case AND the unreportable case into the single `notInstalledLabel` (`"not installed"`) label, because `version` doesn't need to tell them apart. `doctor` *does* need them apart — "not installed" → install suggestion, "stale brew link" → reinstall suggestion — so `probeVersion` keeps the three states distinct while leaving `toolVersion` untouched (its callers don't need the distinction). See [cli/version](version.md#per-tool-timeout). (Design Decision, change d0ct.)
+It reuses the **same primitives** as `version.go`'s `toolVersion` — `proc.Run` + `versionTimeout` + `normalizeVersion` — so the version-reporting behavior stays single-sourced and the two cannot drift. **Why a separate helper instead of calling `toolVersion` directly**: `toolVersion` collapses both the missing case AND the unreportable case into the single `notInstalledLabel` (`"not installed"`) label, because `version` doesn't need to tell them apart. `doctor` *does* need them apart — "not installed" → install suggestion, "stale brew link" → reinstall suggestion — so `probeVersion` keeps the three states distinct while leaving `toolVersion` untouched (its callers don't need the distinction). See [cli/version](/cli/version.md#per-tool-timeout). (Design Decision, change d0ct.)
 
 ## The wiring fact — `resolveWiringFact` (read-only reuse)
 
@@ -142,7 +146,7 @@ type wiringFact struct {
 }
 ```
 
-`doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` **strictly read-only** — it calls `os.ReadFile` only and NEVER any of `shell_setup.go`'s write paths (`appendBlock`/`rewriteBlocks`/`buildBlockBody`). See [cli/shell-setup](shell-setup.md#block-location-and-parsing).
+`doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` **strictly read-only** — it calls `os.ReadFile` only and NEVER any of `shell_setup.go`'s write paths (`appendBlock`/`rewriteBlocks`/`buildBlockBody`). See [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing).
 
 ## `--json` output mode
 
@@ -189,7 +193,7 @@ type doctorResult struct {
 
 The always-OK shll-first row (change bb7r) **never** sets `anyFail` — only the roster loop does — so it cannot move the exit code in either direction (`TestDoctor_ShllRowNeverPerturbsExit`).
 
-A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr and also returns `errSilent` (exit 1). The exit logic is **identical for text and `--json`** — `--json` changes only the rendering, never the check logic or the exit contract. See [cli/commands](commands.md#exit-code-translation) for `errSilent`.
+A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr and also returns `errSilent` (exit 1). The exit logic is **identical for text and `--json`** — `--json` changes only the rendering, never the check logic or the exit contract. See [cli/commands](/cli/commands.md#exit-code-translation) for `errSilent`.
 
 ## Edge cases
 
@@ -225,12 +229,12 @@ shll-first row guards (change bb7r):
 
 ## Cross-references
 
-- Subprocess wrapper conventions and `proc.ErrNotFound` semantics: [internal/proc](../internal/proc.md). All probe subprocess work routes through `internal/proc` (Constitution I).
-- Shared version probe: [cli/version](version.md) — `doctor`'s `probeVersion` reuses `version.go`'s `proc.Run`/`versionTimeout`/`normalizeVersion`, so the two share the version-probe contract and cannot drift.
-- Shared wiring detector: [cli/shell-setup](shell-setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths).
-- Registration, exit-code sentinels, and the `Roster`: [cli/commands](commands.md) — `doctor` is the sixth user-facing subcommand (the hidden `help-dump` is not counted).
-- The shared `shllSelf` descriptor + `shllSelfVersion()` (the single source of truth for the prepended shll-first row): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/list](list.md#the-prepended-shll-first-row-change-bb7r) (table row + `--json` `self:true`) and [cli/install](install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line). `version`/`update` were already shll-first (the established pattern this generalizes).
+- Subprocess wrapper conventions and `proc.ErrNotFound` semantics: [internal/proc](/internal/proc.md). All probe subprocess work routes through `internal/proc` (Constitution I).
+- Shared version probe: [cli/version](/cli/version.md) — `doctor`'s `probeVersion` reuses `version.go`'s `proc.Run`/`versionTimeout`/`normalizeVersion`, so the two share the version-probe contract and cannot drift.
+- Shared wiring detector: [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths).
+- Registration, exit-code sentinels, and the `Roster`: [cli/commands](/cli/commands.md) — `doctor` is the sixth user-facing subcommand (the hidden `help-dump` is not counted).
+- The shared `shllSelf` descriptor + `shllSelfVersion()` (the single source of truth for the prepended shll-first row): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/list](/cli/list.md#the-prepended-shll-first-row-change-bb7r) (table row + `--json` `self:true`) and [cli/install](/cli/install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line). `version`/`update` were already shll-first (the established pattern this generalizes).
 - Constitution I (Security First) → the version probe routes through `internal/proc`; rc-file access is read-only `os.ReadFile`.
 - Constitution III (Wrap, Don't Reinvent + Tool Roster Source of Truth) → `doctor` reuses existing probe/wiring primitives rather than reimplementing them, and derives "ships shell-init" from the live `Roster` (`len(tool.ShellInit) > 0`), not the backlog prose.
 - Constitution V (Graceful Degradation) → an uninstalled or unwired tool degrades to FAIL/WARN with an actionable suggestion rather than crashing; an unresolvable `$SHELL` degrades wiring to WARN while binary checks proceed.
-- Constitution VII (Minimal Surface Area) → `doctor` is a new top-level subcommand (sixth), justified as a read-only cross-tool diagnostic distinct from `version` (reporting, always exit 0), `install`/`update` (mutating), and per-tool CLIs (no single tool can see the *composed* shll block). `--json` is a flag on `doctor`, not a separate subcommand. Justification recorded in the change intake (260609-d0ct) and [cli/commands](commands.md#constitution-vii-justification-per-subcommand).
+- Constitution VII (Minimal Surface Area) → `doctor` is a new top-level subcommand (sixth), justified as a read-only cross-tool diagnostic distinct from `version` (reporting, always exit 0), `install`/`update` (mutating), and per-tool CLIs (no single tool can see the *composed* shll block). `--json` is a flag on `doctor`, not a separate subcommand. Justification recorded in the change intake (260609-d0ct) and [cli/commands](/cli/commands.md#constitution-vii-justification-per-subcommand).

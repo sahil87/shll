@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`shll list` — toolkit roster with install status, descriptions, and repo links; aligned table + `--json`; reuses the shared `toolInstalled` probe; the `rk`/`run-kit` repo-slug footgun."
+---
 # cli/list
 
 `shll list` — prints the roster of sahil87 tools shll manages: one row per tool with an install-status indicator, a one-line description, and its GitHub repo URL. Default output is a column-aligned table; `--json` emits a plain JSON array for scripting.
@@ -64,7 +68,7 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
 
 ## The prepended shll-first row (change bb7r)
 
-Both renderers prepend a shll-first entry before walking the roster — `writeListTable` (`src/cmd/shll/list.go:134`) writes a leading table row, and `writeListJSON` (`src/cmd/shll/list.go:173`) prepends a leading `listItem`. Both derive their fields from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`): `shllSelf.Name` (`"shll"`), `shllSelf.Description` (`"the manager for the shll toolkit"`), and `repoURL(shllSelf)` (`https://github.com/sahil87/shll`). This is the single source of truth for "shll as a displayable entry", reused by `list`/`doctor`/`install` — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r).
+Both renderers prepend a shll-first entry before walking the roster — `writeListTable` (`src/cmd/shll/list.go:134`) writes a leading table row, and `writeListJSON` (`src/cmd/shll/list.go:173`) prepends a leading `listItem`. Both derive their fields from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`): `shllSelf.Name` (`"shll"`), `shllSelf.Description` (`"the manager for the shll toolkit"`), and `repoURL(shllSelf)` (`https://github.com/sahil87/shll`). This is the single source of truth for "shll as a displayable entry", reused by `list`/`doctor`/`install` — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r).
 
 - **Table row** uses the **plain installed marker** — `statusMarker(true, color)` — the *same* rendering as an installed tool. Maximum visual uniformity was deliberately chosen over a distinct "self" marker; shll is always present (it is the running binary), so it always shows installed.
 - **`--json` object** carries `Installed:true` and `Self:true`. The `Self` field is `omitempty`, so it is absent on the 6 managed tools and present only on shll — letting consumers filter shll out via `select(.self != true)` before driving `brew install` (you cannot brew-install the running orchestrator).
@@ -86,13 +90,13 @@ Both renderers prepend a shll-first entry before walking the roster — `writeLi
 
 `list` reuses the **same install probe as `version`** — `toolInstalled(ctx, tool) bool` (`src/cmd/shll/version.go:85`), which layers on the single `probeToolVersion` call (`src/cmd/shll/version.go:72`): run `<tool> --version` via `proc.Run` (Constitution I — subprocess via `internal/proc`), bounded by `versionTimeout` (2s per tool, reused from `version`), and treat **ANY** error (`proc.ErrNotFound` for a missing binary, non-zero exit, timeout) as not-installed.
 
-This is the **install-mechanism-agnostic** notion of "installed = runnable on PATH" — **NOT** the brew `isInstalled` probe (`src/cmd/shll/brew.go`) that `install`/`update` use. `list` answers "is this tool runnable?", not "is this formula brew-installed?". Sharing the helper means there is exactly one place that defines "installed = runnable", consumed today by `version` and `list` and reserved for a future `doctor`. See [cli/version §The shared install probe](version.md#the-shared-install-probe-change-lst7).
+This is the **install-mechanism-agnostic** notion of "installed = runnable on PATH" — **NOT** the brew `isInstalled` probe (`src/cmd/shll/brew.go`) that `install`/`update` use. `list` answers "is this tool runnable?", not "is this formula brew-installed?". Sharing the helper means there is exactly one place that defines "installed = runnable", consumed today by `version` and `list` and reserved for a future `doctor`. See [cli/version §The shared install probe](/cli/version.md#the-shared-install-probe-change-lst7).
 
 > **Note on `shll doctor`.** The originating backlog item said "reuse the binary+version probe from `shll doctor` [d0ct]", but `doctor` is an unimplemented sibling backlog item. The probe it *would* use already existed as the version-style PATH probe; change lst7 extracted it into the shared `toolInstalled`/`probeToolVersion` helpers so a future `doctor` can also consume it.
 
 ### Concurrent probe (`probeInstalled`)
 
-`probeInstalled(ctx)` (`src/cmd/shll/list.go:101`) dispatches **one goroutine per roster tool**, joined on a `sync.WaitGroup`, writing each result into a fixed-size `[]bool` **indexed by roster position** — so output stays deterministically in roster order regardless of probe-completion order. This mirrors `update.go`'s established `probeRoster` pattern (see [cli/update §Sequential, not parallel](update.md#sequential-not-parallel--scoped-to-upgrades)). Only the dispatch is concurrent; every subprocess call still routes through `internal/proc` (Constitution I). Concurrency bounds the wall-clock to ~`versionTimeout`, not `N × versionTimeout`. (`list`'s `probeInstalled` intentionally parallels `update`'s `probeRoster` rather than reusing it — they probe different things: version-runnable vs. brew-installed + `--skip-brew-update` capability — so neither is redundant.)
+`probeInstalled(ctx)` (`src/cmd/shll/list.go:101`) dispatches **one goroutine per roster tool**, joined on a `sync.WaitGroup`, writing each result into a fixed-size `[]bool` **indexed by roster position** — so output stays deterministically in roster order regardless of probe-completion order. This mirrors `update.go`'s established `probeRoster` pattern (see [cli/update §Sequential, not parallel](/cli/update.md#sequential-not-parallel--scoped-to-upgrades)). Only the dispatch is concurrent; every subprocess call still routes through `internal/proc` (Constitution I). Concurrency bounds the wall-clock to ~`versionTimeout`, not `N × versionTimeout`. (`list`'s `probeInstalled` intentionally parallels `update`'s `probeRoster` rather than reusing it — they probe different things: version-runnable vs. brew-installed + `--skip-brew-update` capability — so neither is redundant.)
 
 ## Status indicator (color/glyph gating)
 
@@ -107,7 +111,7 @@ The color decision is computed once by `writeListTable` via `colorEnabled(w)` (`
 
 `Tool.Repo` is stored **explicitly** on the roster because a naive `github.com/sahil87/<binary-name>` URL would ship a dead link: **`github.com/sahil87/rk` is a 404** — rk's repository is named `run-kit` (HTTP-probed at intake: `sahil87/rk` → 404, `sahil87/run-kit` → 200; `README.md` already links `run-kit`). Every other tool's `Repo` equals its `Name`; only `rk` overrides it to `"run-kit"`.
 
-`repoURL(t)` (`src/cmd/shll/list.go:119`) = `githubOrgBase + t.Repo` is the **single URL-composition point**, so the table column and the JSON `repo` field can never drift. The shll-first row also routes through it (`repoURL(shllSelf)` → `https://github.com/sahil87/shll`), so shll's repo link cannot drift either. `githubOrgBase` (`"https://github.com/sahil87/"`, `src/cmd/shll/tools.go:60`) is a named constant — no open-coded URL prefix at any call site (code-quality.md). See [cli/commands §Hardcoded tool roster](commands.md#hardcoded-tool-roster) for the `Tool` struct's `Description`/`Repo` fields and roster invariants.
+`repoURL(t)` (`src/cmd/shll/list.go:119`) = `githubOrgBase + t.Repo` is the **single URL-composition point**, so the table column and the JSON `repo` field can never drift. The shll-first row also routes through it (`repoURL(shllSelf)` → `https://github.com/sahil87/shll`), so shll's repo link cannot drift either. `githubOrgBase` (`"https://github.com/sahil87/"`, `src/cmd/shll/tools.go:60`) is a named constant — no open-coded URL prefix at any call site (code-quality.md). See [cli/commands §Hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster) for the `Tool` struct's `Description`/`Repo` fields and roster invariants.
 
 Regression-guarded by `TestList_RepoLinks`, which asserts every row's repo column is `https://github.com/sahil87/<Repo>`, that `rk` resolves to `.../run-kit`, **and** that the dead `.../rk` link is *absent* — the headline footgun guard.
 
@@ -164,10 +168,10 @@ Scenarios (`src/cmd/shll/list_test.go`):
 
 ## Cross-references
 
-- The shared install probe (`toolInstalled`/`probeToolVersion`) and the `version` output contract: [cli/version](version.md#the-shared-install-probe-change-lst7).
-- The `Tool` struct's `Description`/`Repo` fields, `githubOrgBase`, the roster invariants, and `list.go`'s file-layout row: [cli/commands](commands.md#hardcoded-tool-roster).
-- The shared `shllSelf` descriptor (the single source of the prepended shll-first row's Name/Description/Repo): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/doctor](doctor.md#the-prepended-shll-first-row-change-bb7r) (always-OK row + `--json` object) and [cli/install](install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line).
-- Subprocess wrapper conventions (`proc.ErrNotFound` semantics): [internal/proc](../internal/proc.md).
-- Brew detection (`isInstalled`) — used by `install`/`update`, **not** `list`: [cli/update §Detection](update.md#detection).
+- The shared install probe (`toolInstalled`/`probeToolVersion`) and the `version` output contract: [cli/version](/cli/version.md#the-shared-install-probe-change-lst7).
+- The `Tool` struct's `Description`/`Repo` fields, `githubOrgBase`, the roster invariants, and `list.go`'s file-layout row: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
+- The shared `shllSelf` descriptor (the single source of the prepended shll-first row's Name/Description/Repo): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/doctor](/cli/doctor.md#the-prepended-shll-first-row-change-bb7r) (always-OK row + `--json` object) and [cli/install](/cli/install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line).
+- Subprocess wrapper conventions (`proc.ErrNotFound` semantics): [internal/proc](/internal/proc.md).
+- Brew detection (`isInstalled`) — used by `install`/`update`, **not** `list`: [cli/update §Detection](/cli/update.md#detection).
 - Constitution V (Graceful Degradation) — a missing tool is shown as missing, `shll list` always exits 0.
 - Constitution VII (Minimal Surface Area) — the new sixth subcommand, justified above.

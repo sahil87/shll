@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`shll shell-setup [shell]` (alias `shell-install`) — sentinel-wrapped rc-file block, idempotent install/`--print`/`--uninstall`, `--trust-tap` ceremony."
+---
 # cli/shell-setup
 
 `shll shell-setup [shell]` — maintains a single sentinel-wrapped shll-managed block in the user's shell rc file. The block holds the cross-tool `eval "$(shll shell-init <shell>)"` line and, when genuine Homebrew tap-trust is requested via `--trust-tap`, an `export HOMEBREW_REQUIRE_TAP_TRUST=1` policy line. Idempotent re-runs (per-line), optional `--print` (dry run) and `--uninstall` (removal) modes, the orthogonal `--trust-tap` selector, plus `--rc-file` as a universal escape hatch for non-standard layouts.
@@ -26,7 +30,7 @@ export HOMEBREW_REQUIRE_TAP_TRUST=1       # only with --trust-tap, only if the c
 eval "$(shll shell-init zsh)"             # always
 ```
 
-The eval line is the cross-tool composition entry point — see [cli/shell-init](shell-init.md). `shell-setup` exists so the user does not have to know which rc file to paste it into, nor remember to dedupe on re-install. The export line opts the user into Homebrew's require-tap-trust mode (resolves the recurring "Tap sahil87/tap is allowed by default" warning).
+The eval line is the cross-tool composition entry point — see [cli/shell-init](/cli/shell-init.md). `shell-setup` exists so the user does not have to know which rc file to paste it into, nor remember to dedupe on re-install. The export line opts the user into Homebrew's require-tap-trust mode (resolves the recurring "Tap sahil87/tap is allowed by default" warning).
 
 ## Behavior contract
 
@@ -231,7 +235,7 @@ On success: `Removed shll shell integration from <path>.` Tests: `TestUninstall_
 
 ## Exit-code policy
 
-Mirrors the convention `shll shell-init` already established — see [cli/commands](commands.md#exit-code-translation). Both `errSilent` and `errExitCode` from `main.go` are reused; no new sentinel types are introduced.
+Mirrors the convention `shll shell-init` already established — see [cli/commands](/cli/commands.md#exit-code-translation). Both `errSilent` and `errExitCode` from `main.go` are reused; no new sentinel types are introduced.
 
 | Exit code | Conditions |
 |-----------|------------|
@@ -260,10 +264,10 @@ Ceremony helpers are unit-tested in `brew_test.go` (added by this change): `Test
 
 ## Cross-references
 
-- Read-only reuse by `doctor`: [cli/doctor](doctor.md) — `shll doctor`'s wiring check reuses `resolveShell`, `resolveRcFile`, `locateBlock`, and `blockMatch.hasEval` **strictly READ-ONLY** (it `os.ReadFile`s the rc file and inspects `hasEval`; it NEVER calls any of the write paths — `appendBlock`, `rewriteBlocks`, `buildBlockBody`). `doctor` never writes to, creates, or migrates the rc file.
-- Subcommand registration and exit-code translation: [cli/commands](commands.md). The ceremony constant `tapName` lives in `tools.go` alongside `formulaPrefix`; `brew.go` gained `brewTrustAvailable`, `brewTrustTap`, `ensureTapTrust`, and `trustHatchHint`.
-- The eval-line target: [cli/shell-init](shell-init.md) — `shell-setup` writes the line that `shell-init` produces output for.
-- Subprocess execution: [internal/proc](../internal/proc.md) — the ceremony uses `proc.Run` (probe) and `proc.RunForeground` (ceremony), routed entirely through `brew.go`; `shell_setup.go` reaches them only via the `ensureTrustFunc` seam.
+- Read-only reuse by `doctor`: [cli/doctor](/cli/doctor.md) — `shll doctor`'s wiring check reuses `resolveShell`, `resolveRcFile`, `locateBlock`, and `blockMatch.hasEval` **strictly READ-ONLY** (it `os.ReadFile`s the rc file and inspects `hasEval`; it NEVER calls any of the write paths — `appendBlock`, `rewriteBlocks`, `buildBlockBody`). `doctor` never writes to, creates, or migrates the rc file.
+- Subcommand registration and exit-code translation: [cli/commands](/cli/commands.md). The ceremony constant `tapName` lives in `tools.go` alongside `formulaPrefix`; `brew.go` gained `brewTrustAvailable`, `brewTrustTap`, `ensureTapTrust`, and `trustHatchHint`.
+- The eval-line target: [cli/shell-init](/cli/shell-init.md) — `shell-setup` writes the line that `shell-init` produces output for.
+- Subprocess execution: [internal/proc](/internal/proc.md) — the ceremony uses `proc.Run` (probe) and `proc.RunForeground` (ceremony), routed entirely through `brew.go`; `shell_setup.go` reaches them only via the `ensureTrustFunc` seam.
 - Constitution I (Security First) → the `brew trust` ceremony routes through `internal/proc` from `brew.go`; `shell_setup.go` remains subprocess-free (the `TestNoProcImports` guard documents the boundary, and the function-value seam is how the ceremony is threaded in without breaking it).
 - Constitution V (Graceful Degradation) → `--trust-tap` degrades to eval-line-only (exit 0) when trust cannot be recorded, rather than hard-failing.
 - Constitution VII (Minimal Surface Area) → `--trust-tap` is a flag on the existing `shell-setup` (formerly `shell-install`), not a new top-level command; the `shell-setup` rename (change ri3h) adds the `shell-install` alias without changing the surface-area count. Justifications recorded in the respective change intakes.

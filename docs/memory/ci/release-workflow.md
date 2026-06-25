@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap. No longer pushes to shll.ai (help-push transport torn down in change 7huv; shll.ai now pulls via `shll help-dump`)."
+---
 # ci/release-workflow
 
 The GitHub Actions release pipeline for shll. Source: `.github/workflows/release.yml`.
@@ -29,7 +33,7 @@ All third-party actions are pinned to commit SHAs.
 
 This workflow no longer publishes anything to `sahil87/shll.ai`. Change ep4z originally added a help-push transport here (a dedicated native `help-dump` build, `help/shll.json` generation + validation, and an auto-merged cross-repo PR authed by `SHLLAI_TOKEN`); change 7huv removed all three steps once shll.ai inverted the integration to **pull**.
 
-Today shll.ai's own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself — so the producer remains the `help-dump` command (still shipped), but the transport lives entirely in shll.ai. The JSON contract `help-dump` produces is documented in [cli/help-dump-contract](../cli/help-dump-contract.md).
+Today shll.ai's own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself — so the producer remains the `help-dump` command (still shipped), but the transport lives entirely in shll.ai. The JSON contract `help-dump` produces is documented in [cli/help-dump-contract](/cli/help-dump-contract.md).
 
 > **Design Decision: retire the push, let shll.ai pull (change 7huv).**
 > *Why*: shll.ai migrated to a scheduled puller (its change `oa63`) that runs `shll help-dump` itself, so the push transport ran on every release for no consumer — wasted work at best, and a loudly-failing release step once shll.ai's auto-merge / `SHLLAI_TOKEN` prerequisites were revoked. Removing only the transport (not the `help-dump` command) keeps the producer intact while eliminating the dead cross-repo push. `SHLLAI_TOKEN` is gone from the workflow; its repo-secret deletion is a post-merge manual settings action flagged in the change's PR.
@@ -41,5 +45,5 @@ Today shll.ai's own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's si
 
 ## Cross-references
 
-- The frozen `help/<tool>.json` contract and producer rules: [cli/help-dump-contract](../cli/help-dump-contract.md).
-- Version ldflags injection (`main.version`): [cli/commands](../cli/commands.md).
+- The frozen `help/<tool>.json` contract and producer rules: [cli/help-dump-contract](/cli/help-dump-contract.md).
+- Version ldflags injection (`main.version`): [cli/commands](/cli/commands.md).

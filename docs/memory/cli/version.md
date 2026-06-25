@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`shll version` — column-aligned plain-text table, per-tool 2s timeout, ldflags-injected `shll` version; also hosts the shared `toolInstalled`/`probeToolVersion` install probe."
+---
 # cli/version
 
 `shll version` — prints a column-aligned plain-text table with the version of `shll` itself plus every roster tool.
@@ -16,7 +20,7 @@ hop       v0.1.0
 fab-kit   v0.1.0
 ```
 
-- Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit` — the leaves-first order, change auvj). `version` output is order-agnostic in test (assertions are index-paired to `Roster`, so reorder moves expected and actual in lockstep — no `version_test.go` change was needed for the reorder); only this example's ordering reflects the slice. See [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj).
+- Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit` — the leaves-first order, change auvj). `version` output is order-agnostic in test (assertions are index-paired to `Roster`, so reorder moves expected and actual in lockstep — no `version_test.go` change was needed for the reorder); only this example's ordering reflects the slice. See [cli/commands](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj).
 - Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:56`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 - When the upstream tool's `--version` output contains a SemVer-shaped token, the row is normalized to a `v`-prefixed token (e.g. `v1.9.4`). When no such token is present, the row falls through the prefix-strip and raw-passthrough branches and may emit a non-`v` string (e.g. `dev`, or an unparseable banner verbatim) — see the `normalizeVersion` pipeline below for the full contract.
 - **Plain text only.** No ANSI escapes, no JSON, no colors. The output is meant to paste cleanly into bug reports.
@@ -38,7 +42,7 @@ fab-kit   v0.1.0
 
 "Installed" is detected via `proc.ErrNotFound` (binary not on PATH) rather than a brew probe — install-mechanism agnostic, and saves ~400ms per tool (no Homebrew/Ruby startup tax).
 
-`shll doctor` (change d0ct) reuses the **same probe primitives** — `proc.Run` + `versionTimeout` + `normalizeVersion` — through its own `probeVersion` helper, so the two share the version-probe contract and cannot drift. `doctor` does NOT call `toolVersion` directly because `toolVersion` collapses the missing case and the unreportable (stale-brew-link) case into the single `notInstalledLabel`, whereas `doctor` needs them apart (install vs. reinstall suggestion); `probeVersion` keeps the three states distinct while leaving `toolVersion` untouched. See [cli/doctor](doctor.md#the-version-probe--probeversion-why-a-local-helper).
+`shll doctor` (change d0ct) reuses the **same probe primitives** — `proc.Run` + `versionTimeout` + `normalizeVersion` — through its own `probeVersion` helper, so the two share the version-probe contract and cannot drift. `doctor` does NOT call `toolVersion` directly because `toolVersion` collapses the missing case and the unreportable (stale-brew-link) case into the single `notInstalledLabel`, whereas `doctor` needs them apart (install vs. reinstall suggestion); `probeVersion` keeps the three states distinct while leaving `toolVersion` untouched. See [cli/doctor](/cli/doctor.md#the-version-probe--probeversion-why-a-local-helper).
 
 `normalizeVersion(raw string) string` (`src/cmd/shll/version.go:121`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/rk/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
 
@@ -60,7 +64,7 @@ The two regexes are compiled once via `regexp.MustCompile` at package scope; the
 The install probe is now a **shared helper** extracted from `toolVersion`, so `version` is no longer the sole definition of "installed = runnable on PATH":
 
 - `probeToolVersion(ctx, tool) ([]byte, error)` (`src/cmd/shll/version.go:72`) is the **single** definition of the probe: it creates `subCtx, cancel := context.WithTimeout(ctx, versionTimeout)` (defer cancel), runs `proc.Run(subCtx, tool.Name, "--version")` (capture transport, Constitution I), and returns the captured output and any error. ANY error (`proc.ErrNotFound`, non-zero exit, timeout) means "not installed" — callers map that to their own representation.
-- `toolInstalled(ctx, tool) bool` (`src/cmd/shll/version.go:85`) layers on `probeToolVersion` and returns `err == nil`. This is the boolean install-status helper consumed by `shll list` — see [cli/list §The install probe](list.md#the-install-probe-shared-toolinstalled).
+- `toolInstalled(ctx, tool) bool` (`src/cmd/shll/version.go:85`) layers on `probeToolVersion` and returns `err == nil`. This is the boolean install-status helper consumed by `shll list` — see [cli/list §The install probe](/cli/list.md#the-install-probe-shared-toolinstalled).
 - `toolVersion` now also layers on `probeToolVersion` (mapping a non-nil error to `notInstalledLabel`, success to `normalizeVersion`).
 
 So there is **exactly one place** that defines "installed = runnable", shared today by `version` (string label) and `list` (bool), and reserved for a future `doctor`. This is the install-mechanism-agnostic notion — **NOT** the brew `isInstalled` probe (`src/cmd/shll/brew.go`) used by `install`/`update`.
@@ -76,7 +80,7 @@ The `shll` row's version comes from the package-level `version = "dev"` declared
 
 Tests override the variable directly (`TestVersion_LdflagsInjection`) — no special build hook needed for testing.
 
-> **The shll-first row is the canonical instance of the shared display pattern (change bb7r — no behavior change).** `version` has always led with a `shll` row (step 2 of the behavior contract), reading shll's version from the package `version` var via `normalizeVersion` — never a `shll --version` self-subprocess. Change bb7r introduced the shared `shllSelf` descriptor (`src/cmd/shll/tools.go`) and `shllSelfVersion()` (which is exactly `normalizeVersion(version)`) so that `list`/`doctor`/`install` could *generalize* the shll-first ordering `version`/`update` already had. **`version.go` was NOT changed**: it still writes its own `shll\t…` row inline rather than consuming `shllSelf`, and its version source is the same package var `shllSelfVersion()` reads — so the two surfaces agree by construction. See [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r).
+> **The shll-first row is the canonical instance of the shared display pattern (change bb7r — no behavior change).** `version` has always led with a `shll` row (step 2 of the behavior contract), reading shll's version from the package `version` var via `normalizeVersion` — never a `shll --version` self-subprocess. Change bb7r introduced the shared `shllSelf` descriptor (`src/cmd/shll/tools.go`) and `shllSelfVersion()` (which is exactly `normalizeVersion(version)`) so that `list`/`doctor`/`install` could *generalize* the shll-first ordering `version`/`update` already had. **`version.go` was NOT changed**: it still writes its own `shll\t…` row inline rather than consuming `shllSelf`, and its version source is the same package var `shllSelfVersion()` reads — so the two surfaces agree by construction. See [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r).
 
 ## Per-tool timeout
 
@@ -125,9 +129,9 @@ Unit scenarios pinning the normalization contract (12 cases, all named `TestNorm
 
 ## Cross-references
 
-- Subprocess wrapper conventions: [internal/proc](../internal/proc.md) — including `proc.ErrNotFound` semantics.
-- Roster definition: [cli/commands](commands.md#hardcoded-tool-roster).
-- Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).
-- The shared `toolInstalled` helper's other consumer: [cli/list](list.md#the-install-probe-shared-toolinstalled) — `shll list` reuses the same `probeToolVersion` probe (as a bool) for its install-status column.
-- Shared version probe: [cli/doctor](doctor.md) — `doctor`'s `probeVersion` reuses `proc.Run`/`versionTimeout`/`normalizeVersion` (the same primitives as `toolVersion`), keeping the missing-vs-unreportable distinction that `toolVersion` collapses; the two cannot drift.
-- The shared `shllSelf` display descriptor + `shllSelfVersion()` (change bb7r): [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r). `version`'s shll-first row is the established pattern that descriptor generalizes to `list`/`doctor`/`install`; `version.go` itself is unchanged.
+- Subprocess wrapper conventions: [internal/proc](/internal/proc.md) — including `proc.ErrNotFound` semantics.
+- Roster definition: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
+- Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](/cli/update.md#detection).
+- The shared `toolInstalled` helper's other consumer: [cli/list](/cli/list.md#the-install-probe-shared-toolinstalled) — `shll list` reuses the same `probeToolVersion` probe (as a bool) for its install-status column.
+- Shared version probe: [cli/doctor](/cli/doctor.md) — `doctor`'s `probeVersion` reuses `proc.Run`/`versionTimeout`/`normalizeVersion` (the same primitives as `toolVersion`), keeping the missing-vs-unreportable distinction that `toolVersion` collapses; the two cannot drift.
+- The shared `shllSelf` display descriptor + `shllSelfVersion()` (change bb7r): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). `version`'s shll-first row is the established pattern that descriptor generalizes to `list`/`doctor`/`install`; `version.go` itself is unchanged.
