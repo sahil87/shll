@@ -1,3 +1,7 @@
+---
+type: memory
+description: "`shll shell-init <shell>` — composition rules across roster tools, eval-safety invariants, deterministic ordering."
+---
 # cli/shell-init
 
 `shll shell-init <shell>` — emits a single concatenated shell-init blob composed from every installed roster tool with shell integration.
@@ -68,7 +72,7 @@ This is the single most important fact in this file for a future maintainer. `sh
 
 ### Also the one exception to the unified shll-self representation (change bb7r)
 
-`shell-init` is **also** the single command excluded from the unified shll-first representation that `version`/`update`/`list`/`doctor`/`install` share (the shared `shllSelf` descriptor — see [cli/commands §the shared `shllSelf` descriptor](commands.md#the-shared-shllself-descriptor-change-bb7r)). The other five commands prepend a shll-first row/object/line; `shell-init` prepends **nothing for shll**, for the same eval-safety reason as the comment-separator exception above:
+`shell-init` is **also** the single command excluded from the unified shll-first representation that `version`/`update`/`list`/`doctor`/`install` share (the shared `shllSelf` descriptor — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r)). The other five commands prepend a shll-first row/object/line; `shell-init` prepends **nothing for shll**, for the same eval-safety reason as the comment-separator exception above:
 
 - shll has **no shell-init output of its own** to compose (shll is a meta-tool that concatenates *other* tools' shell-init — there is nothing for shll itself to emit).
 - `shell-init`'s stdout is `eval`'d, so any shll-first line (even an informational one) risks breaking the user's shell — Constitution V eval-safety.
@@ -86,7 +90,7 @@ This preserves the eval-safety invariant exactly: stdout consists only of bytes 
 
 ## Composition order
 
-Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `wt`, `tu`, and `hop` produce output; in the leaves-first roster (`wt, idea, tu, rk, hop, fab-kit` — change auvj) the three integrators sit at indices `wt`@0, `tu`@2, `hop`@4, so `runShellInit` emits them in ascending-index order: **`wt` first, then `tu`, then `hop`**. This order is *intentional*, not incidental — it follows the toolkit's leaves-first dependency order (`wt` is a leaf that `hop` depends on at runtime; `hop open` delegates to wt's menu), so users reading a composed blob see a dependency before its dependent. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs. The roster-order invariant itself is guarded by `TestRosterLeavesBeforeDependents` — see [cli/commands](commands.md#design-decision-leaves-first-roster-order-change-auvj).
+Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `wt`, `tu`, and `hop` produce output; in the leaves-first roster (`wt, idea, tu, rk, hop, fab-kit` — change auvj) the three integrators sit at indices `wt`@0, `tu`@2, `hop`@4, so `runShellInit` emits them in ascending-index order: **`wt` first, then `tu`, then `hop`**. This order is *intentional*, not incidental — it follows the toolkit's leaves-first dependency order (`wt` is a leaf that `hop` depends on at runtime; `hop open` delegates to wt's menu), so users reading a composed blob see a dependency before its dependent. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs. The roster-order invariant itself is guarded by `TestRosterLeavesBeforeDependents` — see [cli/commands](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj).
 
 > The earlier framing here said the order was `tu, hop, wt` and that tu's position was "incidental". Both are superseded by change auvj: the order is now `wt, tu, hop` and it is a deliberate leaves-first sequencing decision. (Note: `wt, tu, hop`, NOT `tu, wt, hop` — the integrators in ascending `Roster` index order are wt@0, tu@2, hop@4.)
 
@@ -137,9 +141,9 @@ Covered scenarios:
 
 ## Cross-references
 
-- Roster definition and `<shell>` placeholder: [cli/commands](commands.md#hardcoded-tool-roster).
-- Subprocess wrapper conventions: [internal/proc](../internal/proc.md) — including `proc.ErrNotFound` semantics.
-- Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](update.md#detection).
-- Rc-file installer: [cli/shell-setup](shell-setup.md) (`shll shell-setup`, formerly `shll shell-install` — retained as an alias) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
-- Shared UI helper (`ui.go`): [cli/commands](commands.md#file-layout-srccmdshll). `shell-init` consumes only `toolComment` from it — **not** the `▸`/`==>` header or color logic that `update`/`install` use (the [deliberate exception](#the-deliberate-exception--do-not-unify-onto-the--header)).
+- Roster definition and `<shell>` placeholder: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
+- Subprocess wrapper conventions: [internal/proc](/internal/proc.md) — including `proc.ErrNotFound` semantics.
+- Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](/cli/update.md#detection).
+- Rc-file installer: [cli/shell-setup](/cli/shell-setup.md) (`shll shell-setup`, formerly `shll shell-install` — retained as an alias) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
+- Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll). `shell-init` consumes only `toolComment` from it — **not** the `▸`/`==>` header or color logic that `update`/`install` use (the [deliberate exception](#the-deliberate-exception--do-not-unify-onto-the--header)).
 - Constitution V (Graceful Degradation) — tools not on PATH are omitted silently; eval-safety mandates the shell-comment separator over the `▸`/`==>` header.

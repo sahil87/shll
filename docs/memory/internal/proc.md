@@ -1,3 +1,7 @@
+---
+type: memory
+description: "Centralized subprocess wrapper — `Run` (capture), `RunForeground` (inherited stdio), `ErrNotFound` sentinel, `Runner` test seam."
+---
 # internal/proc
 
 The centralized subprocess-execution wrapper used by every command in `src/cmd/shll/`. Constitution Principle I (Security First) requires this routing — **no package outside `src/internal/proc` may import `os/exec`**. Verified by `src/cmd/shll/` having zero `os/exec` imports today (acceptance A-029, A-044).
@@ -125,7 +129,7 @@ if len(req.Env) > 0 {
 - **nil/empty `Env` → `cmd.Env` left unset** → the child inherits the full parent environment exactly as before this change. Every non-brew call (and `Run`/`RunForeground`) hits this path, so default behavior is unchanged.
 - **non-empty `Env` → `cmd.Env = os.Environ() + Env`** → the child still inherits everything, plus the appended entries. Because Go's `exec` uses the **last** value for a duplicated key, an appended entry **overrides** any inherited value of the same key (this is what makes the `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` override take effect even if the parent already exports the opposite `HOMEBREW_REQUIRE_TAP_TRUST=1`).
 
-`Env` reaches `defaultRunner` only via `RunForegroundEnv` today — command code never constructs a `Request` directly. The sole consumer is shll's brew install/upgrade/update wiring (see [cli/install](../cli/install.md) and [cli/update](../cli/update.md)); the env values come from `brewEnv()` in `src/cmd/shll/brew.go`, the single source of truth for the temporary Linux sandbox-trust workaround (paired with removal backlog `[tkch]`).
+`Env` reaches `defaultRunner` only via `RunForegroundEnv` today — command code never constructs a `Request` directly. The sole consumer is shll's brew install/upgrade/update wiring (see [cli/install](/cli/install.md) and [cli/update](/cli/update.md)); the env values come from `brewEnv()` in `src/cmd/shll/brew.go`, the single source of truth for the temporary Linux sandbox-trust workaround (paired with removal backlog `[tkch]`).
 
 ## ErrNotFound contract
 
@@ -165,6 +169,6 @@ If a future shll subcommand needs cwd scoping, the path forward is to either (a)
 
 ## Cross-references
 
-- All consumers in `src/cmd/shll/*.go` — see [cli/commands](../cli/commands.md), [cli/update](../cli/update.md), [cli/shell-init](../cli/shell-init.md), [cli/version](../cli/version.md).
+- All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md).
 - Constitution I (Security First) — the principle this package enforces.
 - spec.md Design Decision #7 — package-level `Runner` is the chosen test seam.
