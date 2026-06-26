@@ -20,10 +20,11 @@ Per-tool CLIs continue to work standalone — `shll` wraps them, it does not rep
 From a clean machine to a fully wired toolkit:
 
 ```sh
-brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll   # bootstrap: trust + install shll itself
-shll install                                                             # trusts (per-formula) + installs the other 6
-shll shell-setup                                                         # pure rc wiring — no trust flag
-exec $SHELL                                                              # reload so the shell integration takes effect
+brew trust --formula sahil87/tap/shll            # bootstrap: trust shll
+brew install sahil87/tap/shll                    # bootstrap: install shll itself
+shll install                                     # trusts (per-formula) + installs the other 6
+shll shell-setup                                 # rc wiring
+exec $SHELL                                      # reload so the shell integration takes effect
 ```
 
 That's it. `hop`, `wt`, and the other tools are now installed and their shell integration is live.
