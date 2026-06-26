@@ -30,8 +30,30 @@ const (
 // doctorFake builds a fakeRunner whose `<tool> --version` response is driven by a
 // per-tool state map. Tools absent from the map default to dvOK with a generic
 // version, so a test only needs to name the tools it wants to misbehave.
+//
+// Trust: by default the fake reports `brew trust` AVAILABLE and the whole
+// sahil87 tap trusted (so the per-tool trust sub-check runs but never WARNs) —
+// matching the steady state after `shll install`, so existing goldens hold. Use
+// doctorFakeTrust to drive untrusted / older-brew scenarios.
 func doctorFake(states map[string]doctorVersionState) *fakeRunner {
+	return doctorFakeTrust(states, trustState{available: true, tapTrusted: true})
+}
+
+// trustState configures the brew-trust answers a doctorFake gives. available
+// drives the `brew trust --help` capability probe; tapTrusted adds the tap to the
+// JSON `taps` array; trustedFormulae lists individually-trusted qualified formula
+// names for the JSON `formulae` array.
+type trustState struct {
+	available       bool
+	tapTrusted      bool
+	trustedFormulae []string
+}
+
+// doctorFakeTrust is doctorFake with explicit control over the brew-trust
+// answers, for the trust sub-check tests.
+func doctorFakeTrust(states map[string]doctorVersionState, ts trustState) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
+		// `<tool> --version` probe.
 		if len(req.Args) == 1 && req.Args[0] == "--version" {
 			switch states[req.Name] {
 			case dvMissing:
@@ -43,6 +65,30 @@ func doctorFake(states map[string]doctorVersionState) *fakeRunner {
 			default: // dvOK
 				return proc.Result{Stdout: []byte(req.Name + " v1.2.3\n")}
 			}
+		}
+		// `brew trust --help` capability probe.
+		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help" {
+			if !ts.available {
+				return proc.Result{Err: errors.New("Error: Unknown command: trust")}
+			}
+			return proc.Result{Stdout: []byte("Usage: brew trust --formula <formula>\n")}
+		}
+		// `brew trust --json=v1` trust-state query.
+		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--json=v1" {
+			if !ts.available {
+				return proc.Result{Err: errors.New("Error: Unknown command: trust")}
+			}
+			taps := "[]"
+			if ts.tapTrusted {
+				taps = `["` + tapName + `"]`
+			}
+			quoted := make([]string, len(ts.trustedFormulae))
+			for i, fm := range ts.trustedFormulae {
+				quoted[i] = `"` + fm + `"`
+			}
+			formulae := "[" + strings.Join(quoted, ", ") + "]"
+			body := `{"taps": ` + taps + `, "formulae": ` + formulae + `, "casks": [], "commands": []}`
+			return proc.Result{Stdout: []byte(body)}
 		}
 		return proc.Result{}
 	}}
@@ -477,6 +523,159 @@ func TestDoctor_ShllRowNeverPerturbsExit(t *testing.T) {
 			t.Fatalf("err = %v, want nil", err)
 		}
 	})
+}
+
+// --- trust sub-check (change 260626-0854) -------------------------------------
+
+func TestDoctor_InstalledUntrustedWarns(t *testing.T) {
+	// brew ships `trust`; the tap is NOT trusted and only `hop` is individually
+	// trusted. So hop is OK, but every other installed roster tool WARNs as
+	// untrusted with the actionable suggestion. WARN → exit 0.
+	f := doctorFakeTrust(nil, trustState{
+		available:       true,
+		tapTrusted:      false,
+		trustedFormulae: []string{formulaPrefix + "hop"},
+	})
+	installFakeRunner(t, f)
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("runDoctor err = %v, want nil (untrusted is WARN, not FAIL)", err)
+	}
+	out := stdout.String()
+	// hop is trusted → not a trust-WARN (it is a wired shell-init tool → OK).
+	if lineHas(out, "hop", markerWarn) {
+		t.Errorf("hop is individually trusted; should not WARN:\n%s", out)
+	}
+	// The other installed roster tools are untrusted → WARN with the suggestion.
+	for _, name := range []string{"wt", "idea", "tu", "rk", "fab-kit"} {
+		if !lineHas(out, name, markerWarn) {
+			t.Errorf("%s untrusted should WARN:\n%s", name, out)
+		}
+	}
+	if !strings.Contains(out, "formula not trusted") {
+		t.Errorf("missing not-trusted suggestion:\n%s", out)
+	}
+	if !strings.Contains(out, "future upgrades will fail without it") {
+		t.Errorf("not-trusted suggestion missing the upgrade-warning tail:\n%s", out)
+	}
+}
+
+func TestDoctor_TapLevelTrustCounts(t *testing.T) {
+	// Whole-tap trust (taps:[sahil87/tap], no individual formulae) means every
+	// roster formula counts trusted → no trust WARN anywhere.
+	f := doctorFakeTrust(nil, trustState{available: true, tapTrusted: true})
+	installFakeRunner(t, f)
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "formula not trusted") {
+		t.Errorf("tap-level trust must count for every formula — no not-trusted WARN expected:\n%s", out)
+	}
+	if strings.Contains(out, markerWarn) || strings.Contains(out, markerFail) {
+		t.Errorf("all trusted + wired → no WARN/FAIL:\n%s", out)
+	}
+}
+
+func TestDoctor_TrustUnavailableSkipsCheck(t *testing.T) {
+	// Older brew lacking `brew trust` → the trust sub-check is skipped silently:
+	// even though nothing is "trusted", no WARN is emitted and the run exits 0.
+	f := doctorFakeTrust(nil, trustState{available: false})
+	installFakeRunner(t, f)
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil (trust unavailable degrades silently)", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "formula not trusted") {
+		t.Errorf("trust unavailable must NOT emit a not-trusted WARN:\n%s", out)
+	}
+	if strings.Contains(out, markerWarn) {
+		t.Errorf("trust unavailable + all wired → no WARN at all:\n%s", out)
+	}
+}
+
+func TestDoctor_BinaryFailDominatesTrust(t *testing.T) {
+	// hop is missing on PATH AND untrusted → the binary FAIL dominates the
+	// would-be trust WARN (worst-check-wins).
+	f := doctorFakeTrust(map[string]doctorVersionState{"hop": dvMissing}, trustState{
+		available:  true,
+		tapTrusted: false, // nothing trusted
+	})
+	installFakeRunner(t, f)
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("err = %v, want errSilent (hop FAILs)", err)
+	}
+	out := stdout.String()
+	if !lineHas(out, "hop", markerFail) {
+		t.Errorf("hop should be FAIL (binary missing dominates trust WARN):\n%s", out)
+	}
+	// hop's line must carry the install suggestion, NOT the trust suggestion.
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "hop ") && strings.Contains(line, "formula not trusted") {
+			t.Errorf("hop FAIL line must not carry the trust suggestion: %q", line)
+		}
+	}
+}
+
+func TestDoctor_ShllRowNoTrustCheck(t *testing.T) {
+	// The shll self row is built directly (not via evaluateTool) and carries no
+	// trust check — it stays OK even when nothing is trusted.
+	f := doctorFakeTrust(nil, trustState{available: true, tapTrusted: false})
+	installFakeRunner(t, f)
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	_ = runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	out := stdout.String()
+	if !lineHas(out, shllSelf.Name, markerOK) {
+		t.Errorf("shll self row must stay OK regardless of trust state:\n%s", out)
+	}
+	firstLine := strings.SplitN(out, "\n", 2)[0]
+	if strings.Contains(firstLine, "formula not trusted") {
+		t.Errorf("shll row must not carry a trust suggestion: %q", firstLine)
+	}
+}
+
+func TestDoctor_UntrustedJSONWarn(t *testing.T) {
+	// --json parity: an installed-but-untrusted tool renders WARN with the
+	// not-trusted suggestion in the JSON object too.
+	f := doctorFakeTrust(nil, trustState{available: true, tapTrusted: false})
+	installFakeRunner(t, f)
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), true, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor(json) err = %v, want nil (WARN, exit 0)", err)
+	}
+	var results []doctorResult
+	if err := json.Unmarshal(stdout.Bytes(), &results); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	by := resultByTool(results)
+	wt := by["wt"]
+	if wt.Status != markerWarn {
+		t.Errorf("wt json status = %q, want WARN (untrusted)", wt.Status)
+	}
+	if !strings.Contains(wt.Suggestion, "formula not trusted") {
+		t.Errorf("wt json suggestion = %q, want not-trusted hint", wt.Suggestion)
+	}
+	// shll stays OK in JSON too.
+	if results[0].Tool != shllSelf.Name || results[0].Status != markerOK {
+		t.Errorf("shll json object = %+v, want OK", results[0])
+	}
 }
 
 // --- registration -------------------------------------------------------------

@@ -25,11 +25,10 @@ var osGoos = runtime.GOOS
 // matching these literally), so they are extracted as named constants per
 // fab/project/code-quality.md (no magic strings).
 //
-// The combined block uses the new `# >>> shll >>>` / `# <<< shll <<<` sentinel
-// pair (note the close sentinel uses `<<<`). It holds the union of managed lines
-// that apply — the export line (when genuine tap-trust is in effect) and/or the
-// eval line — in export-before-eval order. The legacy `# >>> shll shell-init >>>`
-// pair is recognized only for migration and uninstall of pre-existing blocks.
+// The block uses the `# >>> shll >>>` / `# <<< shll <<<` sentinel pair (note the
+// close sentinel uses `<<<`). It holds the single managed line — the eval line.
+// The legacy `# >>> shll shell-init >>>` pair is recognized only for migration
+// and uninstall of pre-existing blocks.
 const (
 	openSentinel  = "# >>> shll >>>"
 	closeSentinel = "# <<< shll <<<"
@@ -44,19 +43,12 @@ const (
 	// evalLineFmt expands to `eval "$(shll shell-init <shell>)"` when fed a
 	// resolved shell name. The %s is the shell.
 	evalLineFmt = `eval "$(shll shell-init %s)"`
-
-	// exportTrustLine is the policy line that opts the user into Homebrew's
-	// require-tap-trust mode. Written only alongside a successful `brew trust`
-	// ceremony — the policy line without a trust record would cause brew to BLOCK
-	// the tap (strictly worse than the warning), so degradation paths skip it.
-	exportTrustLine = "export HOMEBREW_REQUIRE_TAP_TRUST=1"
 )
 
 func newShellSetupCmd() *cobra.Command {
 	var (
 		printMode     bool
 		uninstallMode bool
-		trustTap      bool
 		rcFileFlag    string
 	)
 	cmd := &cobra.Command{
@@ -74,14 +66,10 @@ Modes:
   shll shell-setup --print [shell]    print the block to stdout, do not modify
   shll shell-setup --uninstall [shell] remove the block from the rc file
 
-The --trust-tap flag records genuine Homebrew trust for the sahil87 tap. It is
-not a mode — it composes with the default, --print, and --uninstall paths:
-  shll shell-setup --trust-tap          run ` + "`brew trust --tap sahil87/tap`" + ` and add
-                                        ` + "`export HOMEBREW_REQUIRE_TAP_TRUST=1`" + ` to the block
-  shll shell-setup --trust-tap --print  print the resulting combined block, change nothing
-If ` + "`brew trust`" + ` is unavailable (older brew) or brew is missing, the export line
-is skipped and only the eval line is written — shll never sets the policy line
-without a backing trust record.
+shell-setup is pure rc-wiring — it maintains only the
+` + "`eval \"$(shll shell-init <shell>)\"`" + ` line and touches no Homebrew state.
+(Tap trust is established by ` + "`shll install`" + `, which trusts each formula it
+installs; see ` + "`shll install --help`" + `.)
 
 When [shell] is omitted, shll infers it from $SHELL. Supported shells: zsh, bash.
 
@@ -94,12 +82,11 @@ Use --rc-file <path> to override derivation entirely.`,
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runShellSetup(cmd.Context(), args, rcFileFlag, printMode, uninstallMode, trustTap, ensureTapTrust, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runShellSetup(cmd.Context(), args, rcFileFlag, printMode, uninstallMode, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().BoolVar(&printMode, "print", false, "print the block to stdout, do not modify any file")
 	cmd.Flags().BoolVar(&uninstallMode, "uninstall", false, "remove the shll-managed block from the rc file")
-	cmd.Flags().BoolVar(&trustTap, "trust-tap", false, "run 'brew trust --tap sahil87/tap' and add the require-tap-trust policy line to the block")
 	cmd.Flags().StringVar(&rcFileFlag, "rc-file", "", "override the rc file path (escape hatch for non-standard layouts)")
 	return cmd
 }
@@ -166,9 +153,9 @@ func evalLine(shell string) string {
 }
 
 // buildBlockBody wraps an ordered set of managed lines in the new sentinel pair,
-// terminated by a single trailing \n. Callers pass the lines in canonical order
-// (export before eval); buildBlockBody does not reorder or dedup — the merge
-// logic upstream is responsible for that.
+// terminated by a single trailing \n. Callers pass the lines in canonical order;
+// buildBlockBody does not reorder or dedup — the merge logic upstream is
+// responsible for that.
 //
 // This is the single source of truth for the block contents; install, --print,
 // and the migration rewrite all derive from the same constants.
@@ -181,31 +168,25 @@ func buildBlockBody(lines []string) []byte {
 	return []byte(out)
 }
 
-// wantLines computes the canonical, ordered set of managed lines a block should
-// contain after this invocation. It is the per-line MERGE rule: the union of
-// (a) what an existing block already carries (existing) and (b) what this
-// invocation adds — the eval line always, plus the export line when
-// wantExport is true (trust ceremony succeeded). Order is canonical:
-// export before eval (policy set before any eval-time brew invocation reads it).
+// wantLines computes the canonical set of managed lines a block should contain
+// after this invocation. shell-setup is pure rc-wiring, so the only managed line
+// is the eval line — it is always desired (so a block that somehow lacked it
+// gains it, and a stale block that carried only the now-unmanaged export line is
+// rewritten to the eval line).
 //
-// existing carries the parse result of the located block (zero value when no
-// block exists yet — the fresh-install case). The eval line is always desired,
-// so a block that somehow lacked it gains it; this also covers an export-only
-// block later running a plain `shll shell-setup`.
-func wantLines(existing blockMatch, shell string, wantExport bool) []string {
-	export := existing.hasExport || wantExport
-	lines := make([]string, 0, 2)
-	if export {
-		lines = append(lines, exportTrustLine)
-	}
-	lines = append(lines, evalLine(shell))
-	return lines
+// existing is accepted for signature symmetry with the merge call sites but is
+// unused: the eval line is unconditional and there are no other managed lines to
+// carry forward. A pre-existing block's no-longer-managed lines (e.g. a stale
+// `export HOMEBREW_REQUIRE_TAP_TRUST=1` from a former --trust-tap install) are
+// NOT recognized by findBlockWith and so are dropped when the block is rewritten
+// — the active stale-line cleanup.
+func wantLines(_ blockMatch, shell string) []string {
+	return []string{evalLine(shell)}
 }
 
 // buildBlock returns the eval-only block under the new sentinel for the given
-// shell. Retained as the canonical single-line builder used by --print (no
-// --trust-tap) and as the simplest fresh-install body; it routes through
-// buildBlockBody so every path shares the same sentinel constants.
+// shell. It routes through buildBlockBody so every path shares the same sentinel
+// constants. Used by --print and as the fresh-install body.
 func buildBlock(shell string) []byte {
 	return buildBlockBody([]string{evalLine(shell)})
 }
@@ -215,18 +196,22 @@ func buildBlock(shell string) []byte {
 // close sentinel) and the managed lines extracted from its body.
 type blockMatch struct {
 	start, end int
-	// hasExport / hasEval report which managed lines the existing block carries.
-	hasExport bool
-	hasEval   bool
+	// hasEval reports whether the existing block carries the eval line.
+	hasEval bool
 }
 
 // findBlockWith locates the inclusive byte range of a sentinel block delimited by
-// the given open/close sentinels, and extracts which managed lines it contains.
+// the given open/close sentinels, and extracts whether it contains the eval line.
 //
 // Returns ok=false when the open sentinel is absent. Returns partial=true when
 // the open sentinel is present but the matching close sentinel is not — an
 // unclosed/corrupted block that the caller MUST refuse to auto-repair (guessing
 // its bounds risks corrupting the rc file).
+//
+// Only the eval line is recognized as a managed line. Any other body line (e.g. a
+// stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` from a former --trust-tap install)
+// is ignored here, so a rewrite that reconstructs the block from wantLines drops
+// it — the stale-line cleanup.
 func findBlockWith(content []byte, open, close string) (m blockMatch, ok, partial bool) {
 	openBytes := []byte(open)
 	closeBytes := []byte(close)
@@ -249,10 +234,7 @@ func findBlockWith(content []byte, open, close string) (m blockMatch, ok, partia
 	m = blockMatch{start: s, end: e}
 	for _, ln := range bytes.Split(content[bodyStart:bodyEnd], []byte("\n")) {
 		trimmed := string(bytes.TrimSpace(ln))
-		switch {
-		case trimmed == exportTrustLine:
-			m.hasExport = true
-		case strings.HasPrefix(trimmed, evalLinePrefix):
+		if strings.HasPrefix(trimmed, evalLinePrefix) {
 			m.hasEval = true
 		}
 	}
@@ -264,27 +246,17 @@ func findBlockWith(content []byte, open, close string) (m blockMatch, ok, partia
 // eval line during a merge regardless of which shell it was installed for.
 const evalLinePrefix = `eval "$(shll shell-init`
 
-// ensureTrustFunc is the ceremony seam: given a context it runs the genuine-trust
-// ceremony and reports whether the policy (export) line should be written, plus a
-// diagnostic to print when it should not. The production implementation lives in
-// brew.go (ensureTapTrust), which is the file that legitimately performs
-// subprocess execution. Threading it as a function value keeps this file free of
-// any subprocess-execution import (the TestNoProcImports guard pins it to file
-// I/O only) while still letting tests drive the ceremony through a swapped fake
-// runner against ensureTapTrust.
-type ensureTrustFunc func(ctx context.Context) (writeExport bool, diag string)
-
 // runShellSetup is the implementation seam invoked by the cobra factory's
 // RunE. Extracted so tests can drive it directly with bytes.Buffer writers and
-// controlled environment.
-//
-// trustTap is an orthogonal selector (NOT a mutually-exclusive mode): it composes
-// with the default and --print paths. ensureTrust is the ceremony seam (see
-// ensureTrustFunc) — invoked only on the default --trust-tap path.
-func runShellSetup(ctx context.Context, args []string, rcFileFlag string, printMode, uninstallMode, trustTap bool, ensureTrust ensureTrustFunc, stdout, stderr io.Writer) error {
+// controlled environment. Pure file I/O — this file imports no subprocess-
+// execution package (Constitution I scope is subprocess execution; shell-setup
+// invokes none). The TestNoProcImports guard pins that invariant by scanning the
+// source bytes.
+func runShellSetup(ctx context.Context, args []string, rcFileFlag string, printMode, uninstallMode bool, stdout, stderr io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	_ = ctx // retained for signature stability; shell-setup performs no ctx-scoped work.
 	if printMode && uninstallMode {
 		return &errExitCode{code: 2, msg: "shll shell-setup: --print and --uninstall are mutually exclusive"}
 	}
@@ -298,11 +270,11 @@ func runShellSetup(ctx context.Context, args []string, rcFileFlag string, printM
 	}
 	switch {
 	case printMode:
-		return runShellSetupPrint(shell, rcPath, trustTap, stdout, stderr)
+		return runShellSetupPrint(shell, rcPath, stdout, stderr)
 	case uninstallMode:
 		return runShellSetupUninstall(shell, rcPath, stdout, stderr)
 	default:
-		return runShellSetupDefault(ctx, shell, rcPath, rcFileFlag != "", trustTap, ensureTrust, stdout, stderr)
+		return runShellSetupDefault(shell, rcPath, rcFileFlag != "", stdout, stderr)
 	}
 }
 
@@ -323,23 +295,29 @@ func locateBlock(content []byte) (newM blockMatch, newOK bool, legacyM blockMatc
 	return newM, newOK, legacyM, legacyOK, np || lp
 }
 
-// runShellSetupDefault implements the default install path as a per-line MERGE
-// into the single shll-managed block (new `# >>> shll >>>` sentinel). The flow:
+// runShellSetupDefault implements the default install path as a rewrite into the
+// single shll-managed block (new `# >>> shll >>>` sentinel). The flow:
 //
 //	stat (no O_CREATE) → read → locate block (new + legacy) → refuse on partial →
-//	run ceremony (--trust-tap only) → compute desired line union → no-op if the
-//	block is already byte-identical → otherwise rewrite in place (in-block /
-//	migration / both-sentinels-present) or append a fresh block.
+//	compute desired lines (eval-only) → no-op if the block is already
+//	byte-identical → otherwise rewrite in place (in-block / migration /
+//	both-sentinels-present) or append a fresh block.
 //
 // Two write strategies preserve the symlink invariant: a fresh append uses plain
 // O_APPEND (follows the symlink, atomic for a sub-PIPE_BUF block); an in-place
 // rewrite (existing block present, or migration) is read-modify-write and so
 // resolves the symlink chain before an O_TRUNC write to the real file.
 //
+// A pre-existing block carrying a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1`
+// line (a former --trust-tap install) is rewritten to the eval-only block on this
+// path: findBlockWith doesn't recognize the export line, and rewriteBlocks splices
+// out the whole old block range and inserts the freshly-built eval-only block, so
+// the stale line is dropped (active cleanup).
+//
 // userProvidedPath controls the missing-file error wording: with --rc-file the
 // user named the path explicitly, so the "shll won't create rc files" hint is
 // dropped.
-func runShellSetupDefault(ctx context.Context, shell, rcPath string, userProvidedPath, trustTap bool, ensureTrust ensureTrustFunc, stdout, stderr io.Writer) error {
+func runShellSetupDefault(shell, rcPath string, userProvidedPath bool, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if userProvidedPath {
@@ -364,25 +342,7 @@ func runShellSetupDefault(ctx context.Context, shell, rcPath string, userProvide
 		return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run.", rcPath)}
 	}
 
-	// Run the ceremony before composing the block: its outcome decides whether the
-	// export line belongs in the desired set. The eval line is always written, even
-	// on degradation (Constitution V), so the user keeps shell integration.
-	wantExport := false
-	if trustTap {
-		ok, diag := ensureTrust(ctx)
-		wantExport = ok
-		if diag != "" {
-			fmt.Fprintln(stderr, diag)
-		}
-	}
-
-	// Merge the managed lines from any pre-existing block(s) so already-present
-	// lines carry forward (per-line union). Both-sentinels-present folds the legacy
-	// block's lines into the new block and removes the legacy one (self-healing).
-	var existing blockMatch
-	existing.hasExport = (newOK && newM.hasExport) || (legacyOK && legacyM.hasExport)
-	existing.hasEval = (newOK && newM.hasEval) || (legacyOK && legacyM.hasEval)
-	desired := buildBlockBody(wantLines(existing, shell, wantExport))
+	desired := buildBlockBody(wantLines(blockMatch{}, shell))
 
 	switch {
 	case !newOK && !legacyOK:
@@ -390,7 +350,9 @@ func runShellSetupDefault(ctx context.Context, shell, rcPath string, userProvide
 		return appendBlock(rcPath, content, desired, stdout, stderr)
 	default:
 		// One or both blocks exist — rewrite in place. Splice out every existing
-		// shll block and insert the merged block at the earliest block position.
+		// shll block and insert the eval-only block at the earliest block position.
+		// Any stale lines (e.g. a former export line) in the removed range are
+		// dropped — the rebuilt block contains only the eval line.
 		return rewriteBlocks(rcPath, content, desired, newM, newOK, legacyM, legacyOK, stdout, stderr)
 	}
 }
@@ -426,8 +388,8 @@ func appendBlock(rcPath string, content, block []byte, stdout, stderr io.Writer)
 // earliest removed block. This is read-modify-write, so the symlink chain is
 // resolved before an O_TRUNC write to the real file (EvalSymlinks→O_TRUNC) — the
 // same strategy uninstall uses. When the resulting content is byte-identical to
-// the original (every desired line already present, single new-sentinel block),
-// the file is left untouched and a no-op message is emitted (per-line idempotency).
+// the original (the desired eval-only block already the sole new-sentinel block),
+// the file is left untouched and a no-op message is emitted (idempotency).
 func rewriteBlocks(rcPath string, content, block []byte, newM blockMatch, newOK bool, legacyM blockMatch, legacyOK bool, stdout, stderr io.Writer) error {
 	// Determine the insertion anchor (earliest existing block start) and splice out
 	// all existing block ranges. Ranges never overlap (distinct sentinels), so we
@@ -495,11 +457,9 @@ func rewriteBlocks(rcPath string, content, block []byte, newM blockMatch, newOK 
 
 // runShellSetupPrint implements --print mode. Resolves shell + rc file the
 // same way as default, still errors on missing rc file (the user may be
-// debugging exactly that), then prints the exact block to stdout with no
-// surrounding messages. It runs NO ceremony and modifies NO file. With
-// --trust-tap the printed block is the combined block (export line before eval
-// line) so the dry-run reflects what a real --trust-tap install would write.
-func runShellSetupPrint(shell, rcPath string, trustTap bool, stdout, stderr io.Writer) error {
+// debugging exactly that), then prints the exact eval-only block to stdout with
+// no surrounding messages. It modifies NO file.
+func runShellSetupPrint(shell, rcPath string, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist.", rcPath)}
@@ -507,13 +467,7 @@ func runShellSetupPrint(shell, rcPath string, trustTap bool, stdout, stderr io.W
 		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
-	block := buildBlock(shell)
-	if trustTap {
-		// --print is a dry-run: it cannot probe brew (no ceremony), so it shows the
-		// block a successful --trust-tap install would produce (export + eval).
-		block = buildBlockBody(wantLines(blockMatch{}, shell, true))
-	}
-	if _, err := stdout.Write(block); err != nil {
+	if _, err := stdout.Write(buildBlock(shell)); err != nil {
 		fmt.Fprintf(stderr, "shll shell-setup: write stdout: %v\n", err)
 		return errSilent
 	}
@@ -521,11 +475,10 @@ func runShellSetupPrint(shell, rcPath string, trustTap bool, stdout, stderr io.W
 }
 
 // runShellSetupUninstall implements --uninstall mode. It removes the ENTIRE
-// shll-managed block (both managed lines, both sentinels) in one operation,
+// shll-managed block (the eval line, both sentinels) in one operation,
 // recognizing BOTH the new `# >>> shll >>>` sentinel AND a legacy
 // `# >>> shll shell-init >>>` block (so users who never re-installed can still
-// uninstall). It does NOT run `brew untrust` — the trust record is inert without
-// the policy line and is the user's to reverse (`brew untrust` is idempotent).
+// uninstall).
 //
 // Missing rc file is not an error here (nothing to uninstall is benign). When a
 // block is present, the symlink chain is resolved before the truncate-write so

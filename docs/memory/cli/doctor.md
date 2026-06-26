@@ -1,12 +1,12 @@
 ---
 type: memory
-description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe and `shell-setup`'s wiring detector."
+description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe, `shell-setup`'s wiring detector, and `brew.go`'s trust list."
 ---
 # cli/doctor
 
 `shll doctor` — verifies that every roster tool is installed, runnable, and (where applicable) wired into the shell. One status line per tool with an `OK` / `WARN` / `FAIL` marker; each non-OK line carries an actionable suggestion. Exits non-zero if **any** tool is FAIL, so it is scriptable in CI. Strictly read-only — it never installs, upgrades, or edits the rc file.
 
-Source: `src/cmd/shll/doctor.go`. Reuses the version probe primitives from `src/cmd/shll/version.go` (`proc.Run` + `versionTimeout` + `normalizeVersion`), the wiring detector from `src/cmd/shll/shell_setup.go` (`resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` — read-only), `ui.go`'s `colorEnabled` + ANSI constants for optional TTY color, and the `Roster` + `errSilent` from `src/cmd/shll/tools.go` / `main.go`. No new mechanism (Constitution III).
+Source: `src/cmd/shll/doctor.go`. Reuses the version probe primitives from `src/cmd/shll/version.go` (`proc.Run` + `versionTimeout` + `normalizeVersion`), the wiring detector from `src/cmd/shll/shell_setup.go` (`resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` — read-only), the trust-state primitives from `src/cmd/shll/brew.go` (`brewTrustAvailable` + `brewTrustList`, change 0854 — read-only), `ui.go`'s `colorEnabled` + ANSI constants for optional TTY color, and the `Roster` + `errSilent` from `src/cmd/shll/tools.go` / `main.go`. No new mechanism (Constitution III).
 
 ## Output shape
 
@@ -34,13 +34,14 @@ fab-kit  FAIL           installed but 'fab-kit --version' failed — try 'brew r
 
 `--json` emits a machine-readable array instead (see [`--json` output mode](#--json-output-mode) below).
 
-## The three per-tool checks
+## The per-tool checks
 
-For each `Tool` in `Roster`, `doctor` runs up to three checks:
+For each `Tool` in `Roster`, `doctor` runs up to four checks:
 
 1. **Binary on PATH** — derived from the version probe: `proc.ErrNotFound` from `<tool> --version` means the binary is absent. Install-mechanism agnostic (brew, from-source, etc.), matching `version`/`shell-init`.
 2. **Reports a version** — the binary on PATH must *also* successfully report a non-empty normalized version. A binary that exists but whose `--version` errors, times out, or normalizes to `""` is the "half-installed / stale brew link" case. Checks 1 and 2 are a **single** `<tool> --version` subprocess (one probe per tool, matching `toolVersion`).
-3. **Shell integration wired** — runs **only** for tools where `len(tool.ShellInit) > 0`. The "wired" fact is whether shll's *own* composed eval block (`# >>> shll >>>` or the legacy `# >>> shll shell-init >>>` sentinel, with the `eval "$(shll shell-init <shell>)"` line) is present in the resolved rc file.
+3. **Formula trusted** *(change 0854)* — for an installed tool (checks 1+2 passed), whether its Homebrew formula is trusted. An installed-but-untrusted tool still *runs*, but its next `brew upgrade` (via `shll update` or plain brew) is refused on Homebrew 6.0+, so this is a **WARN** (not FAIL). Applies to **all** installed roster tools (not just shell-init ones), since every formula needs trust to upgrade. The trust fact is a single brew-wide query, resolved once per run — see [The trust sub-check](#the-trust-sub-check-change-0854).
+4. **Shell integration wired** — runs **only** for tools where `len(tool.ShellInit) > 0`. The "wired" fact is whether shll's *own* composed eval block (`# >>> shll >>>` or the legacy `# >>> shll shell-init >>>` sentinel, with the `eval "$(shll shell-init <shell>)"` line) is present in the resolved rc file.
 
 **Which tools get the wiring check (derived from `Roster`, not the backlog prose).** "Ships shell-init" is `len(tool.ShellInit) > 0`, evaluated against the live `Roster`. The shell-init integrators are exactly **`wt`, `tu`, `hop`**. `idea`, `rk`, and `fab-kit` carry an empty `ShellInit` slice and get **checks 1+2 only** (`shell_init:false`, no wiring check). This **corrects the backlog prose**, which listed shell-init as "relevant for hop/wt/tu/**idea**" — `idea` ships no shell-init, so it is NOT wiring-checked. Per Constitution III (Tool Roster Source of Truth), `doctor` derives this from `Roster` so it stays correct as the roster evolves. ("run-kit" in the backlog prose is the roster tool `rk`.)
 
@@ -76,19 +77,20 @@ The `Tool` name comes from the shared `shllSelf` descriptor (`src/cmd/shll/tools
 
 ## Marker derivation (worst-applicable-check wins: FAIL > WARN > OK)
 
-`evaluateTool(ctx, tool, fact)` composes the checks into a `doctorResult` whose `Status` is the worst applicable check:
+`evaluateTool(ctx, tool, fact, trust)` composes the checks into a `doctorResult` whose `Status` is the worst applicable check. The order inside `evaluateTool`: binary checks → trust check → wiring check (so trust is checked before wiring — see [trust ordering](#the-trust-sub-check-change-0854)):
 
 | Condition | Marker | Status set | JSON fields |
 |-----------|--------|-----------|-------------|
 | Binary missing (`versionMissing`) | **FAIL** | first | `on_path:false`, `version_ok:false`, `version:""` |
 | Binary present but version unreportable (`versionUnreportable`) | **FAIL** | first | `on_path:true`, `version_ok:false`, `version:""` |
+| Checks 1+2 pass; trust available and the formula is **not** trusted *(change 0854)* | **WARN** | after binary, before wiring | `on_path:true`, `version_ok:true` (`suggestNotTrustedFmt`) |
 | Checks 1+2 pass; shell-init tool whose `$SHELL` is unresolvable | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
 | Checks 1+2 pass; shell-init tool whose rc file has a **corrupted** shll block (open sentinel, no close) | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
 | Checks 1+2 pass; shell-init tool whose wiring is absent | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
-| Checks 1+2 pass; non-shell-init tool (`idea`/`rk`/`fab-kit`) | **OK** | — | `shell_init:false`, `wired:false` |
+| Checks 1+2 pass; non-shell-init tool (`idea`/`rk`/`fab-kit`), trusted (or trust unavailable) | **OK** | — | `shell_init:false`, `wired:false` |
 | All applicable checks pass (incl. wired shell-init tool) | **OK** | — | `wired:true` for shell-init tools |
 
-A binary FAIL **dominates** the wiring check — `evaluateTool` returns immediately on `versionMissing`/`versionUnreportable` before any wiring is considered, so a shell-init tool that is also missing on PATH is FAIL, not WARN (`TestDoctor_MissingDominatesWiring`).
+A binary FAIL **dominates** both the trust and wiring checks — `evaluateTool` returns immediately on `versionMissing`/`versionUnreportable` before either is considered, so a tool that is also missing on PATH is FAIL, not WARN (`TestDoctor_MissingDominatesWiring`, `TestDoctor_BinaryFailDominatesTrust`).
 
 ### Marker constants (exact, `doctor.go`)
 
@@ -110,6 +112,7 @@ suggestUnreportableFmt      = "installed but '%s --version' failed — try 'brew
 suggestNotWired             = "not wired — run 'shll shell-setup' then 'exec $SHELL'"                                                          // fixed text
 suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll shell-setup zsh'"   // %q = raw $SHELL value
 suggestCorruptBlock         = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll shell-setup'" // fixed text
+suggestNotTrustedFmt        = "formula not trusted — run 'shll install' (or 'brew trust --formula %s'); future upgrades will fail without it"      // %s = tool.Formula (change 0854)
 ```
 
 `suggestCorruptBlock` is deliberately distinct from `suggestNotWired`: when `locateBlock` reports `partial` (an opening `# >>> shll >>>` sentinel with no matching close), `shll shell-setup` would **refuse** to modify the file (exit 2), so telling the user to "run `shll shell-setup`" plainly would send them into a dead end. The corrupt-block hint points at manual cleanup first.
@@ -147,6 +150,36 @@ type wiringFact struct {
 ```
 
 `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` **strictly read-only** — it calls `os.ReadFile` only and NEVER any of `shell_setup.go`'s write paths (`appendBlock`/`rewriteBlocks`/`buildBlockBody`). See [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing).
+
+## The trust sub-check (change 0854)
+
+Resolved by `resolveTrustFact(ctx)`. Homebrew 6.0 made tap-trust a hard install/upgrade requirement, so an installed roster tool whose formula is *not* trusted will have its next `brew upgrade` refused. `doctor` surfaces this with a read-only per-installed-tool sub-check, mirroring the single-shared-fact pattern of the wiring check: the trust state is a **single brew-wide fact**, so `resolveTrustFact(ctx)` resolves it **once** up front (`runDoctor`, `doctor.go:140`) and `evaluateTool` checks each tool against it.
+
+```go
+type trustFact struct {
+    available  bool            // false when brew is absent or too old to ship `brew trust`
+    tapTrusted bool            // the whole sahil87 tap is trusted (trusts every formula under it)
+    formulae   map[string]bool // individually-trusted fully-qualified formula names
+}
+
+func (tf trustFact) trusts(formula string) bool {
+    return tf.tapTrusted || tf.formulae[formula]   // tap- OR formula-level trust counts
+}
+```
+
+`resolveTrustFact(ctx)`:
+
+1. **Gate on `brewTrustAvailable(ctx)`** — the same capability probe (`brew trust --help`) `shll install` uses. If brew is absent or too old to ship `brew trust` (pre-6.0, where trust isn't required anyway), return `trustFact{available:false}` → the sub-check is **skipped silently** (Constitution V — never WARN on a state doctor cannot determine).
+2. **Query `brewTrustList(ctx)`** — runs `brew trust --json=v1` (via `proc.Run`), JSON-decoding `{taps, formulae}` (the verified Homebrew 6.0.4 shape is `{taps, formulae, casks, commands}`; doctor reads only the first two). On any failure (non-zero exit, garbled JSON) `brewTrustList` reports `ok=false` and `resolveTrustFact` degrades to `available:false` rather than guessing.
+3. **Build the set** — `tapTrusted` is true when `tapName` (`"sahil87/tap"`) is in the `taps` array; `formulae` is the set of trusted fully-qualified formula names.
+
+**A formula counts as trusted when its qualified name (`sahil87/tap/<formula>`) is in `formulae` OR `sahil87/tap` is in `taps`** — tap-level trust covers every formula under the tap. This is the read-only, wrap-don't-reinvent path (Constitution III): doctor **NEVER** reads `~/.homebrew/trust.json` directly — it asks brew via its public `--json=v1` contract, and decodes with `encoding/json` (never a regex over brew output — code-quality.md anti-pattern).
+
+**Ordering and scope inside `evaluateTool`.** The trust check runs **after** the binary checks (which return FAIL first, so a binary FAIL dominates) and **before** the wiring check. It applies to **all** installed roster tools, not just shell-init ones — every formula needs trust to upgrade. When `trust.available && !trust.trusts(tool.Formula)`, `evaluateTool` sets `markerWarn` with `suggestNotTrustedFmt` and returns. The trust WARN and the unwired WARN are **co-equal under worst-check-wins** (both WARN → identical exit), so when a tool is both untrusted and unwired, the trust warning is the one surfaced — an untrusted tool's next upgrade is refused outright (higher user impact than an unwired-but-functional tool). The decision is presentation only — the exit code is unaffected.
+
+**The `shll` self row is unchanged** — it is built directly by `shllDoctorResult()` (no `evaluateTool`, no trust check); shll's own trust is the README bootstrap concern, not a roster-tool check. Not-installed tools already FAIL on the binary check, so trust is moot there.
+
+**Schema unchanged.** No new `trusted` JSON field was added — the untrusted state is reflected through the existing `Status: "WARN"` + `Suggestion` fields, so text and `--json` stay derived from the one `doctorResult` struct (adding a field would be a larger, less-reversible schema change). The read-only and any-FAIL→exit-1 / `--json` contracts are preserved — the only subprocesses added are `brew trust --help` (gate) and `brew trust --json=v1` (query), both read-only.
 
 ## `--json` output mode
 
@@ -201,11 +234,13 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - **Unresolvable / unsupported `$SHELL`** (e.g. CI with `$SHELL=/bin/sh`, or unset) → the wiring check cannot resolve an rc path, so shell-init tools degrade to **WARN** with the `suggestShellUnresolvableFmt` explanation; the binary checks (1+2) still run normally and the exit code is unaffected. Non-shell-init tools are untouched (still OK). (`TestDoctor_UnresolvableShellDegradesToWarn`.)
 - **Missing / unreadable rc file** (but `$SHELL` resolved) → treated as "not wired" (a plain WARN with `suggestNotWired`), distinct from the unresolvable-shell case — the shell resolved, the wiring just isn't there yet.
 - **Corrupted shll block** (rc file has an opening `# >>> shll >>>` sentinel with no matching close — `locateBlock` reports `partial`) → shell-init tools → **WARN** with `suggestCorruptBlock` (manual-cleanup hint), exit unaffected. Distinct from plain "not wired" because `shell-setup` refuses to modify a corrupted block (exit 2), so the plain "run `shll shell-setup`" hint would dead-end. (`TestDoctor_CorruptBlockWarnsWithDistinctSuggestion`.)
-- **Binary FAIL on a shell-init tool** → FAIL dominates; no wiring WARN is shown.
+- **Installed but untrusted formula** *(change 0854)* → **WARN** with `suggestNotTrustedFmt` (`run 'shll install' (or 'brew trust --formula <formula>') …`), exit unaffected. Applies to any installed roster tool (not just shell-init ones). A tap-level trust (`sahil87/tap` in the `taps` array) counts as trusting every formula → no WARN. (`TestDoctor_InstalledUntrustedWarns`, `TestDoctor_TapLevelTrustCounts`.)
+- **Trust state undeterminable** *(change 0854)* — brew absent or too old to ship `brew trust` → the trust sub-check is skipped silently; no trust WARN appears regardless of actual trust state, exit 0. (`TestDoctor_TrustUnavailableSkipsCheck`.)
+- **Binary FAIL dominates trust/wiring** → FAIL dominates; no trust or wiring WARN is shown. (`TestDoctor_BinaryFailDominatesTrust`.)
 
 ## Test seam
 
-`doctor_test.go` (test-alongside, per `code-quality.md`) drives `runDoctor` with `bytes.Buffer` writers, a fake `proc.Runner` (`doctorFake(states map[string]doctorVersionState)` — per-tool `--version` behavior, defaulting absent tools to `dvOK`), and a map-backed env (`rcEnv(rcDir)` resolves zsh and points `ZDOTDIR`/`HOME` at a `t.TempDir()` rc file, so the wiring check NEVER touches the real `~/.zshrc`). `writeWiredRC`/`writeUnwiredRC`/`writeCorruptRC` build the rc fixtures (wired uses `tNewBlockZsh`; corrupt writes an `openSentinel` with no matching close).
+`doctor_test.go` (test-alongside, per `code-quality.md`) drives `runDoctor` with `bytes.Buffer` writers, a fake `proc.Runner` (`doctorFake(states map[string]doctorVersionState)` — per-tool `--version` behavior, defaulting absent tools to `dvOK`), and a map-backed env (`rcEnv(rcDir)` resolves zsh and points `ZDOTDIR`/`HOME` at a `t.TempDir()` rc file, so the wiring check NEVER touches the real `~/.zshrc`). `writeWiredRC`/`writeUnwiredRC`/`writeCorruptRC` build the rc fixtures (wired uses `tNewBlockZsh`; corrupt writes an `openSentinel` with no matching close). **Trust (change 0854):** the fake also answers `brew trust --help` (the availability gate) and `brew trust --json=v1` (the trust set) with a configurable trusted-set, **defaulting to "all trusted"** so the existing all-OK goldens stay unchanged.
 
 - `TestDoctor_AllOKWired` — all tools installed + a wired rc → every line OK, no problem tail; shell-init tools show `wired`, others do not.
 - `TestDoctor_MissingBinaryFails` — `hop` missing → FAIL line, install suggestion (`brew install sahil87/tap/hop`), problem tail, exit `errSilent`.
@@ -217,6 +252,15 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - `TestDoctor_JSONShapeAndExit` — `--json` with `hop` missing + `tu` unwired → valid JSON, no ANSI, trailing newline, `len == len(Roster)+1` (shll-first object + one per roster tool), `results[0].Tool == shllSelf.Name`, roster order preserved (offset by 1), per-tool field values per marker (`hop` FAIL/missing, `tu` WARN/onpath/version_ok/unwired with `version:"v1.2.3"`, `idea` `shell_init:false`/OK), `hop` is FAIL → exit `errSilent` (same as text).
 - `TestDoctor_JSONAllOKExitZero` — `--json` all-OK + wired rc → every status OK, wired shell-init tools report `wired:true`, exit 0.
 - `TestDoctor_RegisteredOnRoot` — `doctor` is registered on `newRootCmd()` and `rootLong` documents `shll doctor`.
+
+trust sub-check guards (change 0854):
+
+- `TestDoctor_InstalledUntrustedWarns` — an installed tool absent from the trust set → WARN with the not-trusted suggestion, exit 0.
+- `TestDoctor_TapLevelTrustCounts` — `sahil87/tap` in the `taps` array → every formula counts trusted, no trust WARN.
+- `TestDoctor_TrustUnavailableSkipsCheck` — older brew (no `brew trust`) → no trust WARN even when untrusted, exit 0.
+- `TestDoctor_BinaryFailDominatesTrust` — a missing binary on an untrusted tool → FAIL (with the install — not trust — suggestion), not a trust WARN (worst-check-wins).
+- `TestDoctor_ShllRowNoTrustCheck` — the `shll` self row stays OK with no trust check.
+- `TestDoctor_UntrustedJSONWarn` — `--json` parity: an installed-untrusted tool renders WARN with the not-trusted suggestion in the JSON object too.
 
 shll-first row guards (change bb7r):
 
@@ -232,9 +276,10 @@ shll-first row guards (change bb7r):
 - Subprocess wrapper conventions and `proc.ErrNotFound` semantics: [internal/proc](/internal/proc.md). All probe subprocess work routes through `internal/proc` (Constitution I).
 - Shared version probe: [cli/version](/cli/version.md) — `doctor`'s `probeVersion` reuses `version.go`'s `proc.Run`/`versionTimeout`/`normalizeVersion`, so the two share the version-probe contract and cannot drift.
 - Shared wiring detector: [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths).
+- Shared trust-state primitives (change 0854): `brewTrustAvailable` + `brewTrustList` live in `brew.go` — see [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The trust-*mutating* sibling that establishes per-formula trust (so re-running it clears doctor's WARN): [cli/install §per-formula trust before install](/cli/install.md#per-formula-trust-before-install-change-0854).
 - Registration, exit-code sentinels, and the `Roster`: [cli/commands](/cli/commands.md) — `doctor` is the sixth user-facing subcommand (the hidden `help-dump` is not counted).
 - The shared `shllSelf` descriptor + `shllSelfVersion()` (the single source of truth for the prepended shll-first row): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/list](/cli/list.md#the-prepended-shll-first-row-change-bb7r) (table row + `--json` `self:true`) and [cli/install](/cli/install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line). `version`/`update` were already shll-first (the established pattern this generalizes).
 - Constitution I (Security First) → the version probe routes through `internal/proc`; rc-file access is read-only `os.ReadFile`.
-- Constitution III (Wrap, Don't Reinvent + Tool Roster Source of Truth) → `doctor` reuses existing probe/wiring primitives rather than reimplementing them, and derives "ships shell-init" from the live `Roster` (`len(tool.ShellInit) > 0`), not the backlog prose.
-- Constitution V (Graceful Degradation) → an uninstalled or unwired tool degrades to FAIL/WARN with an actionable suggestion rather than crashing; an unresolvable `$SHELL` degrades wiring to WARN while binary checks proceed.
+- Constitution III (Wrap, Don't Reinvent + Tool Roster Source of Truth) → `doctor` reuses existing probe/wiring primitives rather than reimplementing them, derives "ships shell-init" from the live `Roster` (`len(tool.ShellInit) > 0`), and reads trust state via `brew trust --json=v1` (never parsing `~/.homebrew/trust.json`).
+- Constitution V (Graceful Degradation) → an uninstalled or unwired tool degrades to FAIL/WARN with an actionable suggestion rather than crashing; an unresolvable `$SHELL` degrades wiring to WARN while binary checks proceed; an undeterminable trust state (brew absent / too old) skips the trust sub-check silently.
 - Constitution VII (Minimal Surface Area) → `doctor` is a new top-level subcommand (sixth), justified as a read-only cross-tool diagnostic distinct from `version` (reporting, always exit 0), `install`/`update` (mutating), and per-tool CLIs (no single tool can see the *composed* shll block). `--json` is a flag on `doctor`, not a separate subcommand. Justification recorded in the change intake (260609-d0ct) and [cli/commands](/cli/commands.md#constitution-vii-justification-per-subcommand).

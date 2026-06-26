@@ -5,11 +5,11 @@
 | File | Description |
 |------|-------------|
 | [commands](commands.md) | Root command, subcommand wiring, exit-code sentinels (`errSilent`, `errExitCode`), version ldflags injection, and the hardcoded `Roster` slice. |
-| [doctor](doctor.md) | `shll doctor` — read-only per-tool verification (binary on PATH, reports a version, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe and `shell-setup`'s wiring detector. |
+| [doctor](doctor.md) | `shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe, `shell-setup`'s wiring detector, and `brew.go`'s trust list. |
 | [help-dump-contract](help-dump-contract.md) | Hidden `shll help-dump` subcommand — the frozen `help/<tool>.json` JSON contract (shared 7-tool, `wt.json` reference) and producer rules (programmatic cobra walk, filter completion/help/Hidden, prune-before-render). |
-| [install](install.md) | `shll install` — brew detection, bootstrap of missing roster tools via `brew install`, idempotent re-run. |
+| [install](install.md) | `shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run. |
 | [list](list.md) | `shll list` — toolkit roster with install status, descriptions, and repo links; aligned table + `--json`; reuses the shared `toolInstalled` probe; the `rk`/`run-kit` repo-slug footgun. |
 | [shell-init](shell-init.md) | `shll shell-init <shell>` — composition rules across roster tools, eval-safety invariants, deterministic ordering. |
-| [shell-setup](shell-setup.md) | `shll shell-setup [shell]` (alias `shell-install`) — sentinel-wrapped rc-file block, idempotent install/`--print`/`--uninstall`, `--trust-tap` ceremony. |
+| [shell-setup](shell-setup.md) | `shll shell-setup [shell]` (alias `shell-install`) — sentinel-wrapped rc-file block, pure rc-wiring (eval line only), idempotent install/`--print`/`--uninstall`, stale-export migration. |
 | [update](update.md) | `shll update` — brew detection, installed-tool filtering, sequential `brew upgrade`, exit-code aggregation. |
 | [version](version.md) | `shll version` — column-aligned plain-text table, per-tool 2s timeout, ldflags-injected `shll` version; also hosts the shared `toolInstalled`/`probeToolVersion` install probe. |

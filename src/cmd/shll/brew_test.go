@@ -14,7 +14,7 @@ import (
 func TestBrewTrustAvailable_True(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help" {
-			return proc.Result{Stdout: []byte("Usage: brew trust --tap <tap>\n")}
+			return proc.Result{Stdout: []byte("Usage: brew trust --formula <formula>\n")}
 		}
 		return proc.Result{}
 	}}
@@ -45,14 +45,15 @@ func TestBrewTrustAvailable_BrewMissing(t *testing.T) {
 	}
 }
 
-// --- brewTrustTap -------------------------------------------------------------
+// --- brewTrustFormula ---------------------------------------------------------
 
-func TestBrewTrustTap_BuildsTapArg(t *testing.T) {
+func TestBrewTrustFormula_BuildsFormulaArg(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		return proc.Result{ExitCode: 0}
 	}}
 	installFakeRunner(t, f)
-	code, err := brewTrustTap(context.Background())
+	formula := formulaPrefix + "hop"
+	code, err := brewTrustFormula(context.Background(), formula)
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
@@ -60,29 +61,26 @@ func TestBrewTrustTap_BuildsTapArg(t *testing.T) {
 		t.Fatalf("code = %d, want 0", code)
 	}
 	calls := f.recordedCalls()
-	if !invocationsContain(calls, brewBinary, "trust", "--tap", tapName) {
-		t.Fatalf("calls = %+v, want `brew trust --tap %s`", calls, tapName)
+	if !invocationsContain(calls, brewBinary, "trust", "--formula", formula) {
+		t.Fatalf("calls = %+v, want `brew trust --formula %s`", calls, formula)
 	}
-	// Guard the tap-vs-formula distinction: the arg must be `sahil87/tap`, NOT a
-	// formula reference `sahil87/tap/<formula>`.
+	// Guard the per-formula-vs-tap distinction: the ceremony must use --formula
+	// with a fully-qualified formula reference, NEVER --tap.
 	for _, c := range calls {
 		for _, a := range c.Args {
-			if strings.HasPrefix(a, formulaPrefix) && a != tapName {
-				t.Fatalf("ceremony passed a formula reference %q; want the tap %q", a, tapName)
+			if a == "--tap" || a == "--taps" {
+				t.Fatalf("ceremony used a whole-tap flag %q; want per-formula --formula", a)
 			}
 		}
 	}
-	if tapName != "sahil87/tap" {
-		t.Fatalf("tapName = %q, want \"sahil87/tap\" (no trailing slash)", tapName)
-	}
 }
 
-func TestBrewTrustTap_SurfacesNonZeroExit(t *testing.T) {
+func TestBrewTrustFormula_SurfacesNonZeroExit(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		return proc.Result{ExitCode: 1}
 	}}
 	installFakeRunner(t, f)
-	code, err := brewTrustTap(context.Background())
+	code, err := brewTrustFormula(context.Background(), formulaPrefix+"hop")
 	if err != nil {
 		t.Fatalf("err = %v, want nil (non-zero exit is reported via code)", err)
 	}
@@ -91,12 +89,12 @@ func TestBrewTrustTap_SurfacesNonZeroExit(t *testing.T) {
 	}
 }
 
-func TestBrewTrustTap_SurfacesError(t *testing.T) {
+func TestBrewTrustFormula_SurfacesError(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		return proc.Result{Err: proc.ErrNotFound}
+		return proc.Result{ExitCode: -1, Err: proc.ErrNotFound}
 	}}
 	installFakeRunner(t, f)
-	code, err := brewTrustTap(context.Background())
+	code, err := brewTrustFormula(context.Background(), formulaPrefix+"hop")
 	if err == nil {
 		t.Fatal("err = nil, want non-nil for transport failure")
 	}
@@ -105,99 +103,84 @@ func TestBrewTrustTap_SurfacesError(t *testing.T) {
 	}
 }
 
-// --- ensureTapTrust (orchestrator) --------------------------------------------
+// --- brewTrustList ------------------------------------------------------------
 
-func TestEnsureTapTrust_Success(t *testing.T) {
+func TestBrewTrustList_ParsesTapsAndFormulae(t *testing.T) {
+	jsonOut := `{
+  "taps": ["sahil87/tap"],
+  "formulae": ["sahil87/tap/hop", "sahil87/tap/wt"],
+  "casks": [],
+  "commands": []
+}`
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case req.Name == brewBinary && len(req.Args) == 1 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 5.1.14\n")}
-		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help":
-			return proc.Result{Stdout: []byte("trust\n")}
-		case req.Name == brewBinary && len(req.Args) == 3 && req.Args[0] == "trust":
-			return proc.Result{ExitCode: 0}
+		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--json=v1" {
+			return proc.Result{Stdout: []byte(jsonOut)}
 		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
-	write, diag := ensureTapTrust(context.Background())
-	if !write {
-		t.Fatal("writeExport = false, want true on a successful ceremony")
+	taps, formulae, ok := brewTrustList(context.Background())
+	if !ok {
+		t.Fatal("ok = false, want true on a clean JSON response")
 	}
-	if diag != "" {
-		t.Fatalf("diag = %q, want empty on success", diag)
+	if len(taps) != 1 || taps[0] != tapName {
+		t.Fatalf("taps = %v, want [%s]", taps, tapName)
+	}
+	want := map[string]bool{formulaPrefix + "hop": false, formulaPrefix + "wt": false}
+	for _, fm := range formulae {
+		if _, named := want[fm]; named {
+			want[fm] = true
+		}
+	}
+	for fm, seen := range want {
+		if !seen {
+			t.Errorf("formulae = %v, missing %s", formulae, fm)
+		}
 	}
 }
 
-func TestEnsureTapTrust_BrewMissing(t *testing.T) {
+func TestBrewTrustList_DegradesOnError(t *testing.T) {
+	// brew present but `trust --json=v1` errors (e.g. unrecognized) → ok=false.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{Err: errors.New("Error: Unknown command: trust")}
+	}}
+	installFakeRunner(t, f)
+	if _, _, ok := brewTrustList(context.Background()); ok {
+		t.Fatal("ok = true, want false when `brew trust --json=v1` errors")
+	}
+}
+
+func TestBrewTrustList_DegradesOnBrewMissing(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		return proc.Result{Err: proc.ErrNotFound}
 	}}
 	installFakeRunner(t, f)
-	write, diag := ensureTapTrust(context.Background())
-	if write {
-		t.Fatal("writeExport = true, want false when brew is absent")
-	}
-	if !strings.Contains(diag, "HOMEBREW_NO_REQUIRE_TAP_TRUST=1") || !strings.Contains(diag, "HOMEBREW_NO_ENV_HINTS=1") {
-		t.Fatalf("diag = %q, want it to name the env-var escape hatches", diag)
+	if _, _, ok := brewTrustList(context.Background()); ok {
+		t.Fatal("ok = true, want false when brew is absent")
 	}
 }
 
-func TestEnsureTapTrust_TrustUnavailable(t *testing.T) {
+func TestBrewTrustList_DegradesOnGarbageJSON(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case req.Name == brewBinary && len(req.Args) == 1 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 3.0.0\n")}
-		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust":
-			return proc.Result{Err: errors.New("Error: Unknown command: trust")} // `trust` unknown
+		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--json=v1" {
+			return proc.Result{Stdout: []byte("not json at all")}
 		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
-	write, diag := ensureTapTrust(context.Background())
-	if write {
-		t.Fatal("writeExport = true, want false when `brew trust` is unavailable")
-	}
-	if !strings.Contains(diag, "newer Homebrew") {
-		t.Fatalf("diag = %q, want it to mention a newer Homebrew is required", diag)
+	if _, _, ok := brewTrustList(context.Background()); ok {
+		t.Fatal("ok = true, want false when the JSON cannot be decoded")
 	}
 }
 
-func TestEnsureTapTrust_CeremonyNonZero(t *testing.T) {
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case req.Name == brewBinary && len(req.Args) == 1 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 5.1.14\n")}
-		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help":
-			return proc.Result{Stdout: []byte("trust\n")}
-		case req.Name == brewBinary && len(req.Args) == 3 && req.Args[0] == "trust":
-			return proc.Result{ExitCode: 1} // ceremony fails at runtime
-		}
-		return proc.Result{}
-	}}
-	installFakeRunner(t, f)
-	write, diag := ensureTapTrust(context.Background())
-	if write {
-		t.Fatal("writeExport = true, want false when the ceremony exits non-zero")
+// Sanity guard kept from the prior ceremony tests: tapName is the bare tap, no
+// trailing slash (distinct from formulaPrefix). Still referenced by doctor's
+// tap-level trust check and the trust-JSON parse.
+func TestTapName_NoTrailingSlash(t *testing.T) {
+	if tapName != "sahil87/tap" {
+		t.Fatalf("tapName = %q, want \"sahil87/tap\" (no trailing slash)", tapName)
 	}
-	if diag == "" {
-		t.Fatal("diag empty, want a ceremony-failure diagnostic")
-	}
-}
-
-// --- brewEnv (Linux sandbox-trust workaround; backlog [38a6]/[tkch]) ----------
-
-func TestBrewEnv_LinuxInjectsWorkaround(t *testing.T) {
-	setOsGoos(t, "linux")
-	env := brewEnv()
-	if len(env) != 1 || env[0] != noRequireTapTrustEnv {
-		t.Fatalf("brewEnv() on linux = %v, want [%s]", env, noRequireTapTrustEnv)
-	}
-}
-
-func TestBrewEnv_DarwinReturnsNil(t *testing.T) {
-	setOsGoos(t, "darwin")
-	if env := brewEnv(); env != nil {
-		t.Fatalf("brewEnv() on darwin = %v, want nil", env)
+	if strings.HasSuffix(tapName, "/") {
+		t.Fatalf("tapName = %q must not carry a trailing slash (that is formulaPrefix's job)", tapName)
 	}
 }
