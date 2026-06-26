@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll install` — brew detection, bootstrap of missing roster tools via `brew install`, idempotent re-run."
+description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run."
 ---
 # cli/install
 
@@ -22,7 +22,7 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 4. **No `brew update --quiet`.** Unlike `shll update`, `shll install` does NOT refresh brew metadata first. `brew install sahil87/tap/<formula>` resolves the formula via the tap directly, and the spec freezes this distinction (Design Decision: install ≠ update). `TestInstall_NoBrewUpdateInvoked` pins the contract.
 
-5. **Sequential per-tool install.** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)` (`install.go:156`). `brewEnv()` carries the Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` sandbox-trust workaround — see [Linux brew sandbox-trust workaround](#linux-brew-sandbox-trust-workaround-change-38a6). Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
+5. **Sequential per-tool install — trust then install (change 0854).** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — when trust is enabled — record per-formula trust via `brewTrustFormula(ctx, t.Formula)` *immediately before* the install, then run `proc.RunForeground(ctx, brewBinary, "install", t.Formula)` (`install.go:206`). The trust step is interleaved in the existing per-tool loop (not a separate up-front pass), so trust stays adjacent to the install it unblocks. Best-effort across the roster: on per-tool *install* failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop. See [Per-formula trust before install](#per-formula-trust-before-install-change-0854) for the trust contract, including `--no-trust` and graceful degradation.
 
 6. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
 
@@ -66,15 +66,24 @@ This is a deliberate *informational* exception to the symmetry between the inspe
 
 The helper details (named SGR constants, the `colorEnabled` gating, the honesty constraint on the tail, the `[N/M]` counter, the `formatDuration` form, and the `nowFunc` clock seam) are documented once under [cli/update](/cli/update.md#per-tool-output-separation-change-y630); `install` consumes the identical helpers.
 
-## Linux brew sandbox-trust workaround (change 38a6)
+## Per-formula trust before install (change 0854)
 
-The live `brew install <formula>` call routes through `proc.RunForegroundEnv(ctx, brewEnv(), brewBinary, "install", t.Formula)` (`install.go:156`) so it carries `brewEnv()`'s extra environment entry. On Linux that entry is `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`; on macOS `brewEnv()` returns `nil`, so the call inherits the parent environment unchanged.
+Homebrew 6.0 turned tap-trust from an advisory warning into a **hard install requirement** (`HOMEBREW_REQUIRE_TAP_TRUST` now defaults to `true`). shll's tap formulae are binary-download formulae with a `def install` (not a `bottle do` pour), so `brew install sahil87/tap/<formula>` runs a *sandboxed* install whose in-sandbox trust re-check requires a **persisted** trust record — naming the qualified formula on the CLI is not enough. So `shll install` now establishes that trust itself, per-formula, before each install.
 
-**This is a TEMPORARY workaround** for a Homebrew 6.0 bug, **not** a permanent design choice. Homebrew 6.0's Linux bubblewrap sandbox masks `~/.homebrew` (`HOMEBREW_USER_CONFIG_HOME`, where `trust.json` lives) via `deny_read_home`, so the sandboxed `build.rb` cannot read the trust record and wrongly raises `UntrustedTapError` when `HOMEBREW_REQUIRE_TAP_TRUST=1` is set — which shll itself encourages via `shll shell-setup --trust-tap`. The error is raised before `build.rb` connects its error pipe, so it surfaces only as an opaque `bwrap … exited with 1`. Setting `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` skips **only** the broken in-sandbox trust re-check; the sandbox stays active and trust was already verified out-of-sandbox.
+```sh
+brew trust --formula sahil87/tap/<formula>   # per tool in the install set, before its brew install
+```
 
-`brewEnv()` (`src/cmd/shll/brew.go`) is the single source of truth, Linux-gated via the existing `osGoos` seam, with a loud comment cross-referencing this change (`[38a6]`) and the **removal backlog item `[tkch]`** — so when the upstream fix lands the workaround (and its wiring/tests) is a one-spot deletion. See [internal/proc §Per-request environment](/internal/proc.md#per-request-environment-requestenv-change-38a6) for the `Env` plumbing and [cli/update](/cli/update.md#linux-brew-sandbox-trust-workaround-change-38a6) for the same workaround on `brew update`/`brew upgrade`.
+- **Default behavior.** `shll install` (and a subset like `shll install hop wt`) records per-formula trust for each missing tool before installing it. `brew trust` is idempotent (`Already trusted formula: …`, exit 0), so re-runs stay clean.
+- **`--no-trust` opt-out.** The cobra bool flag `--no-trust` (`noTrustFlag`/`noTrustFlagUsage` constants, `install.go`) skips the trust step entirely, for users who manage trust themselves. The install attempts proceed unchanged.
+- **Per-formula granularity, NOT whole-tap.** Trust is `brew trust --formula sahil87/tap/<formula>`, never `brew trust --tap` — Homebrew recommends per-formula trust for third-party taps, and shll knows its exact roster, so it trusts only what it actually manages. (The removed `shell-setup --trust-tap` did whole-tap — see [cli/shell-setup](/cli/shell-setup.md).)
+- **The trust capability is probed ONCE up front.** `trustEnabled := !noTrust && brewTrustAvailable(ctx)` (`install.go:175`) is computed before the install loop — `brewTrustAvailable` is the shared capability probe (`brew trust --help`), reused (not reimplemented) from `brew.go`. The per-tool trust call runs only when `trustEnabled`.
+- **Graceful degradation (Constitution V).** When `brew trust` is unavailable (brew too old to ship it — pre-6.0, where trust isn't required anyway) the step is skipped silently. When a per-formula `brewTrustFormula` *fails* (transport error or non-zero exit), `shll install` writes a warning to stderr (`shll install: <tool>: trust step failed: … (continuing to install)` or `… trust step exited <code> …`) and **continues to the install attempt** rather than aborting — and a trust failure **does NOT set `anyFailed`**. The install's own exit code is the sole authority on whether the tool succeeded (so a genuine untrusted-tap failure surfaces as brew's own install error, not a duplicate trust error). The new `brewTrustFormula(ctx, formula) (int, error)` helper in `brew.go` routes through `proc.RunForeground` (Constitution I), foregrounded so the user sees brew's own `Trusted formula:` / `Already trusted formula:` line.
+- **Bootstrap note.** shll cannot trust its own formula before it exists — `brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll` remains the one-time README bootstrap. `shll install` owns trust for the other six.
 
-`TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` and `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` (overriding `osGoos` via `setOsGoos`) assert the recorded `brew install` `Request` carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` on linux and carries no such env on darwin.
+> **The 38a6 Linux sandbox-trust workaround is REMOVED (change 0854, closes backlog `[tkch]`).** The temporary `brewEnv()` / `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` injection on `brew install` is gone — the upstream Homebrew bug it worked around is fixed in 6.0.4, and the per-formula trust above is the correct DX. The brew install call site is now plain `proc.RunForeground(ctx, brewBinary, "install", t.Formula)` (no env). The change requires Homebrew ≥ 6.0.4; the floor is documented in the README, not gated in code. See [cli/update §removal of the 38a6 workaround](/cli/update.md#removal-of-the-38a6-linux-workaround-change-0854) for the same removal on update/upgrade, and [internal/proc](/internal/proc.md) (the `Env`/`RunForegroundEnv` plumbing was reverted).
+
+Tests (`install_test.go`): `TestInstall_TrustsEachFormulaBeforeInstall` (per-tool trust precedes the install, and is per-formula — never `--tap`), `TestInstall_NoTrustSkipsTrustStep` (`--no-trust` → no `brew trust` calls), `TestInstall_TrustUnavailableSkipsGracefully` (older brew → no trust calls, install proceeds, exit 0), `TestInstall_TrustFailureContinues` (trust non-zero → warning, install still attempted, exit reflects install only). The removed-workaround tests `TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` / `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` are gone.
 
 ## `--dry-run` (change 6vuo)
 
@@ -167,8 +176,10 @@ Covered scenarios (`src/cmd/shll/install_test.go`):
 - `TestInstall_SubsetArgOrderIndependentRosterOrder` *(change b2vg)* — `shll install fab-kit wt` (both missing) → installs `wt` before `fab-kit` (roster order).
 - `TestInstall_SubsetNamedAlreadyInstalled` *(change b2vg)* — `shll install hop` when hop is already installed → the `All sahil87 tools already installed.` nothing-to-do note, exit 0.
 - `TestInstall_SubsetDryRunPreviewFiltered` *(change b2vg)* — `shll install --dry-run` of a subset → preview lists only the named-and-missing subset in roster order, exit 0, no write.
-- `TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux` *(change 38a6)* — `setOsGoos("linux")` → every recorded `brew install` `Request` carries `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`.
-- `TestInstall_BrewInstallNoWorkaroundEnvOnDarwin` *(change 38a6)* — `setOsGoos("darwin")` → no `brew install` `Request` carries the workaround env (the Linux gate is off).
+- `TestInstall_TrustsEachFormulaBeforeInstall` *(change 0854)* — per-tool `brew trust --formula sahil87/tap/<formula>` precedes that tool's `brew install` (asserts `trustIdx < installIdx`), and the trust call is per-formula, never `--tap`.
+- `TestInstall_NoTrustSkipsTrustStep` *(change 0854)* — `shll install --no-trust` → no `brew trust` invocation recorded, every missing tool still installed.
+- `TestInstall_TrustUnavailableSkipsGracefully` *(change 0854)* — older brew (no `brew trust`) → the trust step is skipped silently, install proceeds, exit 0.
+- `TestInstall_TrustFailureContinues` *(change 0854)* — a per-formula trust exits non-zero → a warning is written to stderr and `brew install` for that tool is still attempted; a trust failure alone does not flip the run to exit 1.
 
 The shared resolver is unit-tested directly in `tools_test.go` (shared with `update` — see [cli/update test seam](/cli/update.md#test-seam)); `install` is the `allowShll=false` caller.
 
@@ -179,6 +190,7 @@ Per-tool header/tail behavior (change y630) plus the change-6vuo `[N/M]` counter
 - Subprocess wrapper conventions: [internal/proc](/internal/proc.md).
 - The hardcoded roster: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
 - The shared `shllSelf` descriptor + the unified shll-first ordering (the informational line is install's instance): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling inspect surfaces that render shll as a full entry: [cli/list](/cli/list.md#the-prepended-shll-first-row-change-bb7r) and [cli/doctor](/cli/doctor.md#the-prepended-shll-first-row-change-bb7r).
-- Sibling lifecycle command: [cli/update](/cli/update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](/cli/update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`.
+- Sibling lifecycle command: [cli/update](/cli/update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](/cli/update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`. `update` deliberately does NOT mutate trust (change 0854) — it relies on `install` having trusted the tools.
+- Trust helpers `brewTrustFormula`/`brewTrustAvailable` live in `brew.go`: [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The read-only sibling check that surfaces an installed-but-untrusted tool: [cli/doctor §the trust sub-check](/cli/doctor.md#the-trust-sub-check-change-0854).
 - Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll).
-- Constitution III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation), VII (Minimal Surface Area).
+- Constitution I (Security First — the trust ceremony routes through `internal/proc`), III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation — trust degrades, not aborts, when `brew trust` is absent or fails), VII (Minimal Surface Area — `--no-trust` is a flag on existing `install`, no new command).

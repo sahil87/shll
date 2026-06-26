@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/sahil87/shll/internal/proc"
 )
 
 // Canonical block fragments under the NEW combined sentinel, for test
@@ -17,30 +15,12 @@ import (
 const (
 	tNewBlockZsh    = "# >>> shll >>>\neval \"$(shll shell-init zsh)\"\n# <<< shll <<<\n"
 	tNewBlockBash   = "# >>> shll >>>\neval \"$(shll shell-init bash)\"\n# <<< shll <<<\n"
-	tCombinedZsh    = "# >>> shll >>>\nexport HOMEBREW_REQUIRE_TAP_TRUST=1\neval \"$(shll shell-init zsh)\"\n# <<< shll <<<\n"
 	tLegacyBlockZsh = "# >>> shll shell-init >>>\neval \"$(shll shell-init zsh)\"\n# <<< shll shell-init <<<\n"
+	// tStaleExportBlockZsh is a block left behind by a former `--trust-tap`
+	// install: it carries the now-unmanaged export line above the eval line. The
+	// next plain `shll shell-setup` run must rewrite it to the eval-only block.
+	tStaleExportBlockZsh = "# >>> shll >>>\nexport HOMEBREW_REQUIRE_TAP_TRUST=1\neval \"$(shll shell-init zsh)\"\n# <<< shll <<<\n"
 )
-
-// installTrustSuccessRunner installs a fake proc.Runner that simulates a modern
-// brew where `brew trust` is available and the ceremony succeeds. Returns the fake
-// so callers can inspect recorded calls (e.g. assert `brew trust --tap sahil87/tap`
-// ran).
-func installTrustSuccessRunner(t *testing.T) *fakeRunner {
-	t.Helper()
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case req.Name == brewBinary && len(req.Args) == 1 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 5.1.14\n")}
-		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help":
-			return proc.Result{Stdout: []byte("trust\n")}
-		case req.Name == brewBinary && len(req.Args) == 3 && req.Args[0] == "trust":
-			return proc.Result{ExitCode: 0}
-		}
-		return proc.Result{}
-	}}
-	installFakeRunner(t, f)
-	return f
-}
 
 // setOsGoos swaps the package-level osGoos variable for the duration of a test
 // and restores it via t.Cleanup. Used by tests that exercise the darwin vs.
@@ -186,15 +166,6 @@ func TestBuildBlock_Bash(t *testing.T) {
 	got := string(buildBlock("bash"))
 	if got != tNewBlockBash {
 		t.Fatalf("block = %q, want %q", got, tNewBlockBash)
-	}
-}
-
-func TestBuildBlock_CombinedTrust(t *testing.T) {
-	// buildBlockBody with both managed lines: export must precede eval, single
-	// trailing newline, new sentinel pair (note close uses `<<<`).
-	got := string(buildBlockBody(wantLines(blockMatch{}, "zsh", true)))
-	if got != tCombinedZsh {
-		t.Fatalf("combined block = %q, want %q", got, tCombinedZsh)
 	}
 }
 
@@ -371,6 +342,196 @@ func TestInstall_UnreadableRcFile(t *testing.T) {
 	}
 }
 
+func TestPlainInstall_NewSentinelEvalOnly(t *testing.T) {
+	// shll shell-setup on a fresh file uses the new sentinel and contains ONLY the
+	// eval line (no export line — trust is no longer shell-setup's concern).
+	rc := makeRC(t, "")
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got, _ := os.ReadFile(rc)
+	if string(got) != tNewBlockZsh {
+		t.Fatalf("file = %q, want eval-only new-sentinel block %q", got, tNewBlockZsh)
+	}
+	if strings.Contains(string(got), "HOMEBREW_REQUIRE_TAP_TRUST") {
+		t.Fatalf("plain install wrote a trust export line: %q", got)
+	}
+}
+
+// --- --trust-tap removal ------------------------------------------------------
+
+func TestTrustTapFlagRemoved(t *testing.T) {
+	// --trust-tap is gone: the flag is unregistered and the Long help no longer
+	// documents it.
+	cmd := newShellSetupCmd()
+	if cmd.Flags().Lookup("trust-tap") != nil {
+		t.Fatal("--trust-tap flag should be removed")
+	}
+	if strings.Contains(cmd.Long, "--trust-tap") {
+		t.Fatal("Long help should no longer mention --trust-tap")
+	}
+	// Passing --trust-tap must error as an unknown flag.
+	rc := makeRC(t, "export FOO=bar\n")
+	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
+	if err == nil {
+		t.Fatal("expected an unknown-flag error for --trust-tap")
+	}
+}
+
+// --- stale export-line migration (change 260626-0854) -------------------------
+
+func TestMigration_StripsStaleExportLine(t *testing.T) {
+	// A block left by a former --trust-tap install carries the now-unmanaged
+	// export line. The next plain shell-setup run rewrites it to eval-only,
+	// dropping the stale line; surrounding content is preserved.
+	rc := makeRC(t, "export FOO=bar\n"+tStaleExportBlockZsh+"export BAR=baz\n")
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
+	}
+	got := string(mustRead(t, rc))
+	want := "export FOO=bar\n" + tNewBlockZsh + "export BAR=baz\n"
+	if got != want {
+		t.Fatalf("file =\n%q\nwant\n%q", got, want)
+	}
+	if strings.Contains(got, "HOMEBREW_REQUIRE_TAP_TRUST") {
+		t.Fatalf("stale export line survived the rewrite:\n%q", got)
+	}
+	// Exactly one block (no duplicate eval, no second block).
+	if n := strings.Count(got, "# >>> shll >>>"); n != 1 {
+		t.Fatalf("found %d shll blocks, want exactly 1: %q", n, got)
+	}
+}
+
+func TestMigration_StaleExportThenReRunIsNoop(t *testing.T) {
+	// After the stale export is stripped to eval-only, a second run is a
+	// byte-identical no-op (idempotency restored).
+	rc := makeRC(t, "export FOO=bar\n"+tStaleExportBlockZsh)
+	if _, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"}); err != nil {
+		t.Fatalf("first run err = %v", err)
+	}
+	afterFirst := string(mustRead(t, rc))
+	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("second run err = %v", err)
+	}
+	if string(mustRead(t, rc)) != afterFirst {
+		t.Fatalf("second run mutated the already-cleaned block")
+	}
+	if !strings.Contains(stderr, "already installed in "+rc) {
+		t.Fatalf("stderr = %q, want already-installed no-op on the second run", stderr)
+	}
+}
+
+// --- migration ----------------------------------------------------------------
+
+func TestMigration_LegacyEvalOnlyMigratesOnPlainInstall(t *testing.T) {
+	// Plain shell-setup migrates the legacy sentinel (carrying eval forward) to
+	// the new sentinel.
+	rc := makeRC(t, tLegacyBlockZsh)
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got := string(mustRead(t, rc))
+	if got != tNewBlockZsh {
+		t.Fatalf("file = %q, want migrated eval-only new block %q", got, tNewBlockZsh)
+	}
+}
+
+func TestMigration_LegacyWithSurroundingPreserved(t *testing.T) {
+	rc := makeRC(t, "export FOO=bar\n"+tLegacyBlockZsh+"export BAR=baz\n")
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got := string(mustRead(t, rc))
+	if strings.Contains(got, "# >>> shll shell-init >>>") {
+		t.Fatalf("legacy sentinel still present:\n%q", got)
+	}
+	want := "export FOO=bar\n" + tNewBlockZsh + "export BAR=baz\n"
+	if got != want {
+		t.Fatalf("file =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestMigration_BothSentinelsPresentMergeToOne(t *testing.T) {
+	// Hand-edited corrupted state: a legacy block AND a new block both present →
+	// merge to a single new-sentinel eval-only block (no export line is ever
+	// written, since shell-setup no longer manages trust).
+	original := "export A=1\n" + tLegacyBlockZsh + "export B=2\n" + tNewBlockZsh + "export C=3\n"
+	rc := makeRC(t, original)
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got := string(mustRead(t, rc))
+	if strings.Contains(got, "# >>> shll shell-init >>>") {
+		t.Fatalf("legacy sentinel survived merge:\n%q", got)
+	}
+	if n := strings.Count(got, "# >>> shll >>>"); n != 1 {
+		t.Fatalf("found %d new-sentinel blocks, want exactly 1:\n%q", n, got)
+	}
+	if strings.Contains(got, "HOMEBREW_REQUIRE_TAP_TRUST") {
+		t.Fatalf("merged block must not carry an export line:\n%q", got)
+	}
+}
+
+func TestMigration_BothSentinelsPresentReverseOrderMergeToOne(t *testing.T) {
+	// New block appears BEFORE the legacy block — exercises the descending-splice
+	// ordering in rewriteBlocks (insertAt picks the earliest start regardless).
+	original := "export A=1\n" + tNewBlockZsh + "export B=2\n" + tLegacyBlockZsh + "export C=3\n"
+	rc := makeRC(t, original)
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got := string(mustRead(t, rc))
+	if strings.Contains(got, "# >>> shll shell-init >>>") {
+		t.Fatalf("legacy sentinel survived merge:\n%q", got)
+	}
+	if n := strings.Count(got, "# >>> shll >>>"); n != 1 {
+		t.Fatalf("found %d new-sentinel blocks, want exactly 1:\n%q", n, got)
+	}
+	// Merged block lands at the earliest block position (where the new block was).
+	want := "export A=1\n" + tNewBlockZsh + "export B=2\nexport C=3\n"
+	if got != want {
+		t.Fatalf("file =\n%q\nwant\n%q", got, want)
+	}
+}
+
+func TestMigration_PartialUnclosedRefuses(t *testing.T) {
+	// Open sentinel without a matching close → refuse, exit 2, file untouched.
+	original := "export FOO=bar\n# >>> shll >>>\neval \"$(shll shell-init zsh)\"\n"
+	rc := makeRC(t, original)
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	var withCode *errExitCode
+	if !errors.As(err, &withCode) || withCode.code != 2 {
+		t.Fatalf("err = %v, want errExitCode{code:2}", err)
+	}
+	if !strings.Contains(withCode.msg, "no matching closing sentinel") {
+		t.Fatalf("msg = %q, want corrupted-block diagnostic", withCode.msg)
+	}
+	got := string(mustRead(t, rc))
+	if got != original {
+		t.Fatalf("file mutated despite refusal:\n%q", got)
+	}
+}
+
+func TestMigration_PartialUnclosedLegacyRefuses(t *testing.T) {
+	original := "# >>> shll shell-init >>>\neval \"$(shll shell-init zsh)\"\n"
+	rc := makeRC(t, original)
+	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
+	var withCode *errExitCode
+	if !errors.As(err, &withCode) || withCode.code != 2 {
+		t.Fatalf("err = %v, want errExitCode{code:2}", err)
+	}
+	if string(mustRead(t, rc)) != original {
+		t.Fatal("file mutated despite refusal")
+	}
+}
+
 // --- --print -----------------------------------------------------------------
 
 func TestPrint_EmitsExactBlock(t *testing.T) {
@@ -398,6 +559,18 @@ func TestPrint_AcceptsShellPositional(t *testing.T) {
 	}
 	if !strings.Contains(stdout, `eval "$(shll shell-init bash)"`) {
 		t.Fatalf("stdout = %q, want bash body line", stdout)
+	}
+}
+
+func TestPrint_NoExportLine(t *testing.T) {
+	// --print never emits the trust export line — trust is not shell-setup's job.
+	rc := makeRC(t, "")
+	stdout, _, err := runShellSetupCmd(t, []string{"--print", "--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(stdout, "HOMEBREW_REQUIRE_TAP_TRUST") {
+		t.Fatalf("--print emitted a trust export line: %q", stdout)
 	}
 }
 
@@ -433,6 +606,22 @@ func TestUninstall_RemovesBlock(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "Removed shll shell integration from "+rc) {
 		t.Fatalf("stdout = %q, want removal message", stdout)
+	}
+}
+
+func TestUninstall_RemovesStaleExportBlock(t *testing.T) {
+	// Uninstall removes the WHOLE block even when it still carries a stale export
+	// line (both sentinels + both lines go).
+	original := "export FOO=bar\n" + tStaleExportBlockZsh + "export BAR=baz\n"
+	rc := makeRC(t, original)
+	_, _, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	got := string(mustRead(t, rc))
+	want := "export FOO=bar\nexport BAR=baz\n"
+	if got != want {
+		t.Fatalf("file =\n%q\nwant\n%q", got, want)
 	}
 }
 
@@ -496,258 +685,6 @@ func TestUninstall_PreservesSymlink(t *testing.T) {
 	}
 }
 
-func TestPrintAndUninstallMutuallyExclusive(t *testing.T) {
-	_, _, err := runShellSetupCmd(t, []string{"--print", "--uninstall", "zsh"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	var withCode *errExitCode
-	if !errors.As(err, &withCode) || withCode.code != 2 {
-		t.Fatalf("err = %v, want errExitCode{code:2}", err)
-	}
-	if !strings.Contains(withCode.msg, "mutually exclusive") {
-		t.Fatalf("msg = %q, want mutually-exclusive message", withCode.msg)
-	}
-}
-
-// --- --trust-tap: flag wiring -------------------------------------------------
-
-func TestTrustTap_FlagRecognized(t *testing.T) {
-	// --help must mention --trust-tap, and the flag must not error as unknown.
-	installTrustSuccessRunner(t)
-	rc := makeRC(t, "export FOO=bar\n")
-	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("--trust-tap rejected: %v", err)
-	}
-	// Help text documents the flag.
-	cmd := newShellSetupCmd()
-	if cmd.Flags().Lookup("trust-tap") == nil {
-		t.Fatal("--trust-tap flag not registered")
-	}
-	if !strings.Contains(cmd.Long, "--trust-tap") {
-		t.Fatal("Long help does not document --trust-tap")
-	}
-}
-
-func TestTrustTap_MutualExclusionUnchangedWithTrustTap(t *testing.T) {
-	_, _, err := runShellSetupCmd(t, []string{"--print", "--uninstall", "--trust-tap", "zsh"})
-	var withCode *errExitCode
-	if !errors.As(err, &withCode) || withCode.code != 2 {
-		t.Fatalf("err = %v, want errExitCode{code:2}", err)
-	}
-	if !strings.Contains(withCode.msg, "mutually exclusive") {
-		t.Fatalf("msg = %q, want mutual-exclusion message unchanged", withCode.msg)
-	}
-}
-
-// --- --trust-tap: genuine trust (ceremony + policy) ---------------------------
-
-func TestTrustTap_FreshCombinedBlock(t *testing.T) {
-	f := installTrustSuccessRunner(t)
-	rc := makeRC(t, "export FOO=bar\n")
-	stdout, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
-	}
-	got, _ := os.ReadFile(rc)
-	want := "export FOO=bar\n" + tCombinedZsh
-	if string(got) != want {
-		t.Fatalf("file =\n%q\nwant\n%q", got, want)
-	}
-	if !invocationsContain(f.recordedCalls(), brewBinary, "trust", "--tap", tapName) {
-		t.Fatalf("ceremony not invoked; calls=%+v", f.recordedCalls())
-	}
-	if !strings.Contains(stdout, "Installed shll shell integration to "+rc) {
-		t.Fatalf("stdout = %q, want install confirmation", stdout)
-	}
-}
-
-func TestTrustTap_MergeExportIntoEvalOnlyBlock(t *testing.T) {
-	// Already-set-up user (eval-only block) adds trust → export merged in place.
-	f := installTrustSuccessRunner(t)
-	rc := makeRC(t, "export FOO=bar\n"+tNewBlockZsh)
-	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
-	}
-	got, _ := os.ReadFile(rc)
-	want := "export FOO=bar\n" + tCombinedZsh
-	if string(got) != want {
-		t.Fatalf("file =\n%q\nwant\n%q", got, want)
-	}
-	// Exactly one block (no duplicate eval, no second block).
-	if n := strings.Count(string(got), "# >>> shll >>>"); n != 1 {
-		t.Fatalf("found %d shll blocks, want exactly 1: %q", n, got)
-	}
-	if !invocationsContain(f.recordedCalls(), brewBinary, "trust", "--tap", tapName) {
-		t.Fatal("ceremony not invoked")
-	}
-}
-
-func TestTrustTap_MergeEvalIntoExportOnlyBlock(t *testing.T) {
-	// Trust-first user (export-only block) later runs plain shell-setup →
-	// eval merged in; export preserved.
-	exportOnly := "# >>> shll >>>\nexport HOMEBREW_REQUIRE_TAP_TRUST=1\n# <<< shll <<<\n"
-	rc := makeRC(t, "export FOO=bar\n"+exportOnly)
-	_, stderr, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
-	}
-	got, _ := os.ReadFile(rc)
-	want := "export FOO=bar\n" + tCombinedZsh
-	if string(got) != want {
-		t.Fatalf("file =\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestTrustTap_FullReRunIsByteIdenticalNoop(t *testing.T) {
-	installTrustSuccessRunner(t)
-	original := "export FOO=bar\n" + tCombinedZsh
-	rc := makeRC(t, original)
-	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
-	}
-	got, _ := os.ReadFile(rc)
-	if string(got) != original {
-		t.Fatalf("file mutated on no-op re-run:\n got %q\nwant %q", got, original)
-	}
-	if !strings.Contains(stderr, "already installed in "+rc) {
-		t.Fatalf("stderr = %q, want already-installed no-op message", stderr)
-	}
-}
-
-func TestPlainInstall_NewSentinelEvalOnly(t *testing.T) {
-	// shll shell-setup (no --trust-tap) on a fresh file uses the new sentinel
-	// and contains ONLY the eval line (no export line).
-	rc := makeRC(t, "")
-	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	got, _ := os.ReadFile(rc)
-	if string(got) != tNewBlockZsh {
-		t.Fatalf("file = %q, want eval-only new-sentinel block %q", got, tNewBlockZsh)
-	}
-	if strings.Contains(string(got), "HOMEBREW_REQUIRE_TAP_TRUST") {
-		t.Fatalf("plain install wrote the export line: %q", got)
-	}
-}
-
-// --- migration ----------------------------------------------------------------
-
-func TestMigration_LegacyEvalOnlyMigratesOnTrustTap(t *testing.T) {
-	installTrustSuccessRunner(t)
-	rc := makeRC(t, "export FOO=bar\n"+tLegacyBlockZsh+"export BAR=baz\n")
-	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil; stderr=%q", err, stderr)
-	}
-	got := string(mustRead(t, rc))
-	// Legacy sentinel gone, new combined block in its place, surrounding content
-	// preserved.
-	if strings.Contains(got, "# >>> shll shell-init >>>") {
-		t.Fatalf("legacy sentinel still present:\n%q", got)
-	}
-	want := "export FOO=bar\n" + tCombinedZsh + "export BAR=baz\n"
-	if got != want {
-		t.Fatalf("file =\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestMigration_LegacyEvalOnlyMigratesOnPlainInstall(t *testing.T) {
-	// Plain shell-setup also migrates the sentinel (carrying eval forward),
-	// without adding the export line.
-	rc := makeRC(t, tLegacyBlockZsh)
-	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	got := string(mustRead(t, rc))
-	if got != tNewBlockZsh {
-		t.Fatalf("file = %q, want migrated eval-only new block %q", got, tNewBlockZsh)
-	}
-}
-
-func TestMigration_BothSentinelsPresentMergeToOne(t *testing.T) {
-	installTrustSuccessRunner(t)
-	// Hand-edited corrupted state: a legacy block AND a new block both present.
-	original := "export A=1\n" + tLegacyBlockZsh + "export B=2\n" + tNewBlockZsh + "export C=3\n"
-	rc := makeRC(t, original)
-	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	got := string(mustRead(t, rc))
-	if strings.Contains(got, "# >>> shll shell-init >>>") {
-		t.Fatalf("legacy sentinel survived merge:\n%q", got)
-	}
-	if n := strings.Count(got, "# >>> shll >>>"); n != 1 {
-		t.Fatalf("found %d new-sentinel blocks, want exactly 1:\n%q", n, got)
-	}
-	if !strings.Contains(got, "HOMEBREW_REQUIRE_TAP_TRUST=1") {
-		t.Fatalf("merged block missing export line:\n%q", got)
-	}
-}
-
-func TestMigration_BothSentinelsPresentReverseOrderMergeToOne(t *testing.T) {
-	installTrustSuccessRunner(t)
-	// New block appears BEFORE the legacy block — exercises the descending-splice
-	// ordering in rewriteBlocks (insertAt picks the earliest start regardless).
-	original := "export A=1\n" + tNewBlockZsh + "export B=2\n" + tLegacyBlockZsh + "export C=3\n"
-	rc := makeRC(t, original)
-	_, _, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	got := string(mustRead(t, rc))
-	if strings.Contains(got, "# >>> shll shell-init >>>") {
-		t.Fatalf("legacy sentinel survived merge:\n%q", got)
-	}
-	if n := strings.Count(got, "# >>> shll >>>"); n != 1 {
-		t.Fatalf("found %d new-sentinel blocks, want exactly 1:\n%q", n, got)
-	}
-	// Merged block lands at the earliest block position (where the new block was).
-	want := "export A=1\n" + tCombinedZsh + "export B=2\nexport C=3\n"
-	if got != want {
-		t.Fatalf("file =\n%q\nwant\n%q", got, want)
-	}
-}
-
-func TestMigration_PartialUnclosedRefuses(t *testing.T) {
-	// Open sentinel without a matching close → refuse, exit 2, file untouched.
-	original := "export FOO=bar\n# >>> shll >>>\neval \"$(shll shell-init zsh)\"\n"
-	rc := makeRC(t, original)
-	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
-	var withCode *errExitCode
-	if !errors.As(err, &withCode) || withCode.code != 2 {
-		t.Fatalf("err = %v, want errExitCode{code:2}", err)
-	}
-	if !strings.Contains(withCode.msg, "no matching closing sentinel") {
-		t.Fatalf("msg = %q, want corrupted-block diagnostic", withCode.msg)
-	}
-	got := string(mustRead(t, rc))
-	if got != original {
-		t.Fatalf("file mutated despite refusal:\n%q", got)
-	}
-}
-
-func TestMigration_PartialUnclosedLegacyRefuses(t *testing.T) {
-	original := "# >>> shll shell-init >>>\neval \"$(shll shell-init zsh)\"\n"
-	rc := makeRC(t, original)
-	_, _, err := runShellSetupCmd(t, []string{"--rc-file", rc, "zsh"})
-	var withCode *errExitCode
-	if !errors.As(err, &withCode) || withCode.code != 2 {
-		t.Fatalf("err = %v, want errExitCode{code:2}", err)
-	}
-	if string(mustRead(t, rc)) != original {
-		t.Fatal("file mutated despite refusal")
-	}
-}
-
-// --- uninstall: legacy + new sentinels ----------------------------------------
-
 func TestUninstall_RemovesLegacyBlock(t *testing.T) {
 	original := "export FOO=bar\n" + tLegacyBlockZsh + "export BAR=baz\n"
 	rc := makeRC(t, original)
@@ -776,119 +713,17 @@ func TestUninstall_RemovesBothSentinelBlocks(t *testing.T) {
 	}
 }
 
-func TestUninstall_DoesNotUntrust(t *testing.T) {
-	f := installTrustSuccessRunner(t)
-	rc := makeRC(t, "export FOO=bar\n"+tCombinedZsh)
-	_, _, err := runShellSetupCmd(t, []string{"--uninstall", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v", err)
+func TestPrintAndUninstallMutuallyExclusive(t *testing.T) {
+	_, _, err := runShellSetupCmd(t, []string{"--print", "--uninstall", "zsh"})
+	if err == nil {
+		t.Fatal("expected error")
 	}
-	for _, c := range f.recordedCalls() {
-		if c.Name == brewBinary && len(c.Args) > 0 && c.Args[0] == "untrust" {
-			t.Fatalf("uninstall invoked brew untrust: %+v", c)
-		}
+	var withCode *errExitCode
+	if !errors.As(err, &withCode) || withCode.code != 2 {
+		t.Fatalf("err = %v, want errExitCode{code:2}", err)
 	}
-}
-
-// --- --print --trust-tap ------------------------------------------------------
-
-func TestPrintTrustTap_CombinedNoFileNoCeremony(t *testing.T) {
-	f := installTrustSuccessRunner(t)
-	rc := makeRC(t, "export FOO=bar\n")
-	stdout, _, err := runShellSetupCmd(t, []string{"--print", "--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if stdout != tCombinedZsh {
-		t.Fatalf("stdout = %q, want combined block %q", stdout, tCombinedZsh)
-	}
-	// No file modification.
-	if string(mustRead(t, rc)) != "export FOO=bar\n" {
-		t.Fatal("--print mutated the file")
-	}
-	// No ceremony under --print.
-	if invocationsContain(f.recordedCalls(), brewBinary, "trust", "--tap", tapName) {
-		t.Fatal("--print ran the trust ceremony")
-	}
-}
-
-// --- degradation --------------------------------------------------------------
-
-func TestTrustTap_DegradesWhenTrustUnavailable(t *testing.T) {
-	// brew present but `brew trust` unrecognized: write eval, skip export, exit 0.
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case req.Name == brewBinary && len(req.Args) == 1 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 3.0.0\n")}
-		case req.Name == brewBinary && len(req.Args) >= 1 && req.Args[0] == "trust":
-			return proc.Result{Err: errors.New("Error: Unknown command: trust")}
-		}
-		return proc.Result{}
-	}}
-	installFakeRunner(t, f)
-	rc := makeRC(t, "export FOO=bar\n")
-	stdout, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil (degraded success)", err)
-	}
-	got := string(mustRead(t, rc))
-	want := "export FOO=bar\n" + tNewBlockZsh // eval written, NO export
-	if got != want {
-		t.Fatalf("file =\n%q\nwant eval-only %q", got, want)
-	}
-	if strings.Contains(got, "HOMEBREW_REQUIRE_TAP_TRUST") {
-		t.Fatalf("export line written despite unavailable trust:\n%q", got)
-	}
-	if !strings.Contains(stderr, "HOMEBREW_NO_REQUIRE_TAP_TRUST=1") || !strings.Contains(stderr, "HOMEBREW_NO_ENV_HINTS=1") {
-		t.Fatalf("stderr = %q, want it to name the env-var escape hatches", stderr)
-	}
-	_ = stdout
-}
-
-func TestTrustTap_DegradesWhenBrewAbsent(t *testing.T) {
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		return proc.Result{Err: proc.ErrNotFound}
-	}}
-	installFakeRunner(t, f)
-	rc := makeRC(t, "export FOO=bar\n")
-	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil (degraded success)", err)
-	}
-	got := string(mustRead(t, rc))
-	if got != "export FOO=bar\n"+tNewBlockZsh {
-		t.Fatalf("file = %q, want eval-only block (export skipped, brew absent)", got)
-	}
-	if !strings.Contains(stderr, "Homebrew is not installed") {
-		t.Fatalf("stderr = %q, want brew-absent diagnostic", stderr)
-	}
-}
-
-func TestTrustTap_DegradesWhenCeremonyNonZero(t *testing.T) {
-	// brew present, trust available, but the ceremony itself fails (non-zero).
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case req.Name == brewBinary && len(req.Args) == 1 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 5.1.14\n")}
-		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help":
-			return proc.Result{Stdout: []byte("trust\n")}
-		case req.Name == brewBinary && len(req.Args) == 3 && req.Args[0] == "trust":
-			return proc.Result{ExitCode: 1}
-		}
-		return proc.Result{}
-	}}
-	installFakeRunner(t, f)
-	rc := makeRC(t, "export FOO=bar\n")
-	_, stderr, err := runShellSetupCmd(t, []string{"--trust-tap", "--rc-file", rc, "zsh"})
-	if err != nil {
-		t.Fatalf("err = %v, want nil (degraded success)", err)
-	}
-	got := string(mustRead(t, rc))
-	if got != "export FOO=bar\n"+tNewBlockZsh {
-		t.Fatalf("file = %q, want eval-only block (export skipped, ceremony failed)", got)
-	}
-	if stderr == "" {
-		t.Fatal("stderr empty, want a ceremony-failure diagnostic")
+	if !strings.Contains(withCode.msg, "mutually exclusive") {
+		t.Fatalf("msg = %q, want mutually-exclusive message", withCode.msg)
 	}
 }
 
@@ -943,9 +778,10 @@ func TestRoot_ShellInstallAliasResolves(t *testing.T) {
 }
 
 func TestNoProcImports(t *testing.T) {
-	// Defensive: shell_setup.go is file I/O only (Constitution I scope is
-	// subprocess execution; this command does not invoke subprocesses). Guard
-	// against future regressions that import internal/proc or os/exec.
+	// shell_setup.go is file I/O only (Constitution I scope is subprocess
+	// execution; this command invokes none). With the --trust-tap ceremony seam
+	// removed, the file is strictly file I/O — this guard is now stronger: there
+	// is no longer even a function-value seam bridging to brew.go.
 	src, err := os.ReadFile("shell_setup.go")
 	if err != nil {
 		t.Fatalf("read shell_setup.go: %v", err)
@@ -955,5 +791,10 @@ func TestNoProcImports(t *testing.T) {
 	}
 	if bytes.Contains(src, []byte(`"os/exec"`)) {
 		t.Errorf("shell_setup.go must not import os/exec")
+	}
+	// Defensive: the trust ceremony seam (ensureTrustFunc) must be gone — its
+	// presence would mean subprocess work crept back toward this file.
+	if bytes.Contains(src, []byte("ensureTrustFunc")) {
+		t.Errorf("shell_setup.go must not reference the removed ensureTrustFunc seam")
 	}
 }

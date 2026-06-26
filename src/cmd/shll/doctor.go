@@ -57,6 +57,11 @@ const (
 	// `shll shell-setup` here, because shell-setup refuses to modify a corrupted
 	// block (exit 2) — the actionable fix is manual cleanup first.
 	suggestCorruptBlock = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll shell-setup'"
+	// suggestNotTrustedFmt takes the tool's formula (e.g. "sahil87/tap/hop"). An
+	// installed-but-untrusted tool still runs today, but its next `brew upgrade`
+	// (via `shll update` or plain brew) is refused on Homebrew 6.0+, so doctor
+	// WARNs with an actionable fix.
+	suggestNotTrustedFmt = "formula not trusted — run 'shll install' (or 'brew trust --formula %s'); future upgrades will fail without it"
 )
 
 // doctorResult is the typed per-tool record. It is the single source for BOTH the
@@ -80,16 +85,21 @@ func newDoctorCmd() *cobra.Command {
 		Short: "verify every sahil87 tool is installed, runnable, and wired",
 		Long: `Verify the sahil87 toolkit is correctly installed and wired. For every roster
 tool, doctor checks that (1) the binary is on PATH, (2) it reports a version (so
-a half-installed/stale brew link is caught), and (3) — for tools that ship shell
-integration (wt, tu, hop) — shll's composed shell-init eval block is present in
-your rc file.
+a half-installed/stale brew link is caught), (3) its Homebrew formula is trusted
+(so a future 'brew upgrade' won't be refused on Homebrew 6.0+), and (4) — for
+tools that ship shell integration (wt, tu, hop) — shll's composed shell-init eval
+block is present in your rc file.
 
 Each tool gets one line with an OK / WARN / FAIL marker; non-OK lines carry an
 actionable suggestion. A missing or non-running binary is FAIL; an installed tool
-that simply isn't wired into your shell is WARN (it still works when invoked
-directly). doctor exits non-zero if ANY tool is FAIL, so it is scriptable in CI.
+that simply isn't wired into your shell — or whose formula isn't trusted — is
+WARN (it still works when invoked directly). doctor exits non-zero if ANY tool is
+FAIL, so it is scriptable in CI.
 
-doctor is strictly read-only — it never installs, upgrades, or edits your rc file.
+The trust sub-check queries 'brew trust --json=v1' read-only; if your Homebrew is
+too old to ship 'brew trust' (where trust isn't required anyway), it is skipped
+silently. doctor is strictly read-only — it never installs, upgrades, trusts, or
+edits your rc file.
 
 Use --json to emit a machine-readable array (one object per tool) instead of the
 aligned text table; the same checks and the same exit contract apply.`,
@@ -121,6 +131,14 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// (shll's composed eval block covers them all), so resolve it ONCE up front.
 	fact := resolveWiringFact(env)
 
+	// The trust fact is a single brew-wide fact (one `brew trust --json=v1`
+	// query), so resolve it ONCE up front too — mirroring the single-rc-read
+	// wiring fact. Gated by brewTrustAvailable: a brew absent or too old to ship
+	// `brew trust` (pre-6.0, where trust isn't required anyway) yields
+	// available=false and the per-tool trust sub-check is skipped silently
+	// (Constitution V — never WARN on a state we can't determine).
+	trust := resolveTrustFact(ctx)
+
 	results := make([]doctorResult, 0, len(Roster)+1)
 	anyFail := false
 	// shll-first row: shll is the running process, so its binary is always
@@ -132,7 +150,7 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// cannot perturb the scriptable any-FAIL→exit-1 contract.
 	results = append(results, shllDoctorResult())
 	for _, tool := range Roster {
-		res := evaluateTool(ctx, tool, fact)
+		res := evaluateTool(ctx, tool, fact, trust)
 		if res.Status == markerFail {
 			anyFail = true
 		}
@@ -202,9 +220,58 @@ func resolveWiringFact(env func(string) string) wiringFact {
 	return wiringFact{shellResolved: true, wired: wired}
 }
 
+// trustFact captures Homebrew's current trust state, resolved once per doctor run
+// via `brew trust --json=v1`. available is false when brew is absent or too old to
+// ship `brew trust` — in which case the per-tool trust sub-check is skipped
+// silently (doctor never WARNs on a trust state it cannot determine). tapTrusted
+// is true when the whole sahil87 tap is trusted (which trusts every formula under
+// it); formulae is the set of individually-trusted fully-qualified formula names.
+type trustFact struct {
+	available  bool
+	tapTrusted bool
+	formulae   map[string]bool
+}
+
+// resolveTrustFact queries Homebrew's trust state once. It is gated by
+// brewTrustAvailable (the same capability probe `shll install` uses) so a pre-6.0
+// brew lacking `brew trust` yields available=false and the trust sub-check is
+// skipped. The query itself (`brew trust --json=v1`, via brewTrustList) is
+// strictly read-only and routes through internal/proc — doctor NEVER reads
+// ~/.homebrew/trust.json directly (Constitution III).
+func resolveTrustFact(ctx context.Context) trustFact {
+	if !brewTrustAvailable(ctx) {
+		return trustFact{available: false}
+	}
+	taps, formulae, ok := brewTrustList(ctx)
+	if !ok {
+		// brew ships `trust` but the JSON query failed/garbled — degrade to
+		// "cannot determine" rather than WARN on a guess.
+		return trustFact{available: false}
+	}
+	tapTrusted := false
+	for _, tp := range taps {
+		if tp == tapName {
+			tapTrusted = true
+			break
+		}
+	}
+	set := make(map[string]bool, len(formulae))
+	for _, fm := range formulae {
+		set[fm] = true
+	}
+	return trustFact{available: true, tapTrusted: tapTrusted, formulae: set}
+}
+
+// trusts reports whether the given roster formula counts as trusted: either the
+// whole tap is trusted, or the fully-qualified formula appears in the trusted set
+// (tap- and formula-level trust both count). Only meaningful when available.
+func (tf trustFact) trusts(formula string) bool {
+	return tf.tapTrusted || tf.formulae[formula]
+}
+
 // evaluateTool composes the per-tool checks into a doctorResult with the
 // worst-applicable marker (FAIL > WARN > OK) and the matching suggestion.
-func evaluateTool(ctx context.Context, tool Tool, fact wiringFact) doctorResult {
+func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFact) doctorResult {
 	res := doctorResult{
 		Tool:      tool.Name,
 		ShellInit: len(tool.ShellInit) > 0,
@@ -226,6 +293,19 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact) doctorResult 
 	res.OnPath = true
 	res.VersionOK = true
 	res.Version = version
+
+	// Trust sub-check (worst-check-wins WARN tier, alongside the wiring WARN).
+	// Applies to ALL installed roster tools — not just shell-init ones — since
+	// every formula needs trust to upgrade on Homebrew 6.0+. A binary FAIL already
+	// returned above, so it dominates. The trust WARN is checked before wiring:
+	// an untrusted tool's next upgrade is refused outright (higher impact than an
+	// unwired but functional tool), and both are WARN so the exit code is identical
+	// either way. Skipped silently when trust state is unavailable (Constitution V).
+	if trust.available && !trust.trusts(tool.Formula) {
+		res.Status = markerWarn
+		res.Suggestion = fmt.Sprintf(suggestNotTrustedFmt, tool.Formula)
+		return res
+	}
 
 	if !res.ShellInit {
 		// Non-shell-init tool: no wiring check applies — OK.

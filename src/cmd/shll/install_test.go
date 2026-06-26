@@ -21,7 +21,7 @@ func TestInstall_BrewMissing(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr, false, nil)
+	err := runInstall(context.Background(), &stdout, &stderr, false, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent", err)
 	}
@@ -47,7 +47,7 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"; got != want {
@@ -78,7 +78,7 @@ func TestInstall_NoneInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	for _, tool := range Roster {
@@ -111,7 +111,7 @@ func TestInstall_PartialInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v", err)
 	}
 	// Already-installed tools must NOT receive an install call.
@@ -150,7 +150,7 @@ func TestInstall_NoBrewUpdateInvoked(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v", err)
 	}
 	if invocationsContain(f.calls, brewBinary, "update", "--quiet") {
@@ -176,7 +176,7 @@ func TestInstall_OneInstallFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr, false, nil)
+	err := runInstall(context.Background(), &stdout, &stderr, false, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (overall failure)", err)
 	}
@@ -203,7 +203,7 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	// Headers carry the [N/M] counter over the missing subset (M=4), each header
@@ -233,7 +233,7 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"; got != want {
@@ -264,7 +264,7 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr, false, nil)
+	err := runInstall(context.Background(), &stdout, &stderr, false, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (one install failed)", err)
 	}
@@ -282,7 +282,7 @@ func TestInstall_DryRunPreview(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, true, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	// Longest missing label is "fab-kit" (7); shorter labels pad to 7. The shll-
@@ -316,7 +316,7 @@ func TestInstall_DryRunNoWrites(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, true, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -346,7 +346,7 @@ func TestInstall_DryRunEmptyCase(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, true, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
@@ -373,7 +373,7 @@ func TestInstall_ShllFirstInformationalLine(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	firstLine := strings.SplitN(stdout.String(), "\n", 2)[0]
@@ -398,7 +398,7 @@ func TestInstall_SubsetUnknownTargetHardErrors(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr, false, []string{"hpo"})
+	err := runInstall(context.Background(), &stdout, &stderr, false, false, []string{"hpo"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent for unknown target", err)
 	}
@@ -420,7 +420,7 @@ func TestInstall_SubsetShllRejected(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), &stdout, &stderr, false, []string{"shll"})
+	err := runInstall(context.Background(), &stdout, &stderr, false, false, []string{"shll"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent for `shll install shll`", err)
 	}
@@ -450,7 +450,7 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, []string{"fab-kit", "wt"}); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, []string{"fab-kit", "wt"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -496,7 +496,7 @@ func TestInstall_SubsetNamedAlreadyInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, []string{"hop"}); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, []string{"hop"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
@@ -519,7 +519,7 @@ func TestInstall_SubsetDryRunPreviewFiltered(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, true, []string{"fab-kit", "idea"}); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, true, false, []string{"fab-kit", "idea"}); err != nil {
 		t.Fatalf("runInstall --dry-run subset err = %v, want nil", err)
 	}
 	want := shllSelfInstallNote + "\n" +
@@ -545,7 +545,7 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	want := shllSelfInstallNote + "\n" +
@@ -560,15 +560,19 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 	}
 }
 
-// --- brewEnv workaround wiring (backlog [38a6]/[tkch]) ------------------------
+// --- per-formula trust before install (change 260626-0854) --------------------
 
-// noneInstalledRunner is the install respond function where brew is present but
-// every formula probes not-installed (so every roster tool gets `brew install`).
-func noneInstalledRunner() func(proc.Request) proc.Result {
+// noneInstalledTrustRunner reports brew present, `brew trust` available (so the
+// trust step runs by default), and every roster formula not-installed (so every
+// tool gets a `brew trust --formula` + `brew install`). trustResult lets a test
+// override the per-formula trust ceremony outcome.
+func noneInstalledTrustRunner(trustResult proc.Result) func(proc.Request) proc.Result {
 	return func(req proc.Request) proc.Result {
 		switch {
-		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
-			return proc.Result{Stdout: []byte("Homebrew 6.0\n")}
+		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help":
+			return proc.Result{Stdout: []byte("Usage: brew trust --formula <formula>\n")}
+		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "trust" && req.Args[1] == "--formula":
+			return trustResult
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
 			return proc.Result{Err: errors.New("not installed")}
 		}
@@ -576,44 +580,120 @@ func noneInstalledRunner() func(proc.Request) proc.Result {
 	}
 }
 
-func TestInstall_BrewInstallCarriesWorkaroundEnvOnLinux(t *testing.T) {
-	setOsGoos(t, "linux")
-	f := &fakeRunner{respond: noneInstalledRunner()}
+func TestInstall_TrustsEachFormulaBeforeInstall(t *testing.T) {
+	// Default (trust on), brew ships `brew trust`, everything missing → each tool
+	// is trusted per-formula BEFORE its install, in roster order, never --tap.
+	f := &fakeRunner{respond: noneInstalledTrustRunner(proc.Result{ExitCode: 0})}
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
 	for _, tool := range Roster {
-		c, ok := findCall(calls, brewBinary, "install", tool.Formula)
-		if !ok {
-			t.Fatalf("expected brew install %s, calls: %+v", tool.Formula, calls)
+		if !invocationsContain(calls, brewBinary, "trust", "--formula", tool.Formula) {
+			t.Errorf("expected `brew trust --formula %s`, calls: %+v", tool.Formula, calls)
 		}
-		if !envContains(c.Env, noRequireTapTrustEnv) {
-			t.Errorf("brew install %s Env = %v, want to contain %s on linux", tool.Formula, c.Env, noRequireTapTrustEnv)
+		// The trust call must precede the install call for that tool.
+		trustIdx, installIdx := -1, -1
+		for i, c := range calls {
+			if c.Name == brewBinary && len(c.Args) == 3 && c.Args[0] == "trust" && c.Args[1] == "--formula" && c.Args[2] == tool.Formula {
+				trustIdx = i
+			}
+			if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "install" && c.Args[1] == tool.Formula {
+				installIdx = i
+			}
+		}
+		if trustIdx == -1 || installIdx == -1 {
+			t.Fatalf("%s: missing trust/install (trust=%d, install=%d)", tool.Name, trustIdx, installIdx)
+		}
+		if trustIdx >= installIdx {
+			t.Errorf("%s: trust (%d) must precede install (%d)", tool.Name, trustIdx, installIdx)
+		}
+	}
+	// Per-formula, never whole-tap.
+	for _, c := range calls {
+		for _, a := range c.Args {
+			if a == "--tap" || a == "--taps" {
+				t.Fatalf("install used a whole-tap trust flag %q; want per-formula", a)
+			}
 		}
 	}
 }
 
-func TestInstall_BrewInstallNoWorkaroundEnvOnDarwin(t *testing.T) {
-	setOsGoos(t, "darwin")
-	f := &fakeRunner{respond: noneInstalledRunner()}
+func TestInstall_NoTrustSkipsTrustStep(t *testing.T) {
+	// --no-trust → no `brew trust` invocation, installs still run.
+	f := &fakeRunner{respond: noneInstalledTrustRunner(proc.Result{ExitCode: 0})}
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runInstall(context.Background(), &stdout, &stderr, false, true /*noTrust*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
+	for _, c := range calls {
+		if c.Name == brewBinary && len(c.Args) >= 1 && c.Args[0] == "trust" {
+			t.Fatalf("--no-trust must record no `brew trust` call, got %+v", c)
+		}
+	}
+	// Installs still happen for every missing tool.
 	for _, tool := range Roster {
-		c, ok := findCall(calls, brewBinary, "install", tool.Formula)
-		if !ok {
-			t.Fatalf("expected brew install %s, calls: %+v", tool.Formula, calls)
+		if !invocationsContain(calls, brewBinary, "install", tool.Formula) {
+			t.Errorf("expected brew install %s under --no-trust", tool.Formula)
 		}
-		if envContains(c.Env, noRequireTapTrustEnv) {
-			t.Errorf("brew install %s Env = %v, want NO workaround env on darwin", tool.Formula, c.Env)
+	}
+}
+
+func TestInstall_TrustUnavailableSkipsGracefully(t *testing.T) {
+	// Older brew: `brew trust --help` errors (unrecognized) → trust unavailable, so
+	// no `brew trust --formula` runs, the install proceeds, exit 0 (Constitution V).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == brewBinary && len(req.Args) >= 1 && req.Args[0] == "trust":
+			return proc.Result{Err: errors.New("Error: Unknown command: trust")}
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
+			return proc.Result{Err: errors.New("not installed")}
 		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (trust unavailable degrades)", err)
+	}
+	calls := f.recordedCalls()
+	for _, c := range calls {
+		if c.Name == brewBinary && len(c.Args) >= 2 && c.Args[0] == "trust" && c.Args[1] == "--formula" {
+			t.Fatalf("no `brew trust --formula` should run when trust is unavailable, got %+v", c)
+		}
+	}
+	// Installs still proceed.
+	if !invocationsContain(calls, brewBinary, "install", Roster[0].Formula) {
+		t.Errorf("install must proceed even when trust is unavailable")
+	}
+}
+
+func TestInstall_TrustFailureContinues(t *testing.T) {
+	// Trust available but a per-formula trust exits non-zero → warning to stderr,
+	// the install is still attempted, and the trust failure alone does NOT flip the
+	// run to exit 1 (the installs all succeed here).
+	f := &fakeRunner{respond: noneInstalledTrustRunner(proc.Result{ExitCode: 1})}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (trust failure is best-effort, installs succeeded)", err)
+	}
+	calls := f.recordedCalls()
+	// Installs were still attempted despite the trust failures.
+	for _, tool := range Roster {
+		if !invocationsContain(calls, brewBinary, "install", tool.Formula) {
+			t.Errorf("expected brew install %s despite trust failure", tool.Formula)
+		}
+	}
+	if !strings.Contains(stderr.String(), "trust step exited") {
+		t.Errorf("stderr = %q, want a trust-failure warning", stderr.String())
 	}
 }
