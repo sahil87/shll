@@ -49,7 +49,7 @@ brew trust --formula sahil87/tap/<formula>   # per tool in the install set, befo
 - **`--no-trust` flag**: skips the trust step entirely, for users who manage trust themselves.
 - **Granularity**: per-formula (`brew trust --formula sahil87/tap/<formula>`), NOT whole-tap — aligns with Homebrew's recommendation and trusts only what shll actually manages.
 - **Graceful degradation (Constitution V)**: if `brew trust` is unavailable (brew too old to ship it) or the ceremony fails, warn and continue to the install attempt rather than hard-aborting. On pre-6.0 brew, trust isn't required, so absence of `brew trust` is safe; on 6.0+, it's present. New helper `brewTrustFormula(ctx, formula)` in `brew.go` routes through `internal/proc` (Constitution I); reuse the existing `brewTrustAvailable` capability probe.
-- **Bootstrap note**: shll cannot trust its *own* formula before it exists — `brew trust sahil87/tap/shll && brew install sahil87/tap/shll` remains the one-time bootstrap (see README below). shll owns trust for the other six.
+- **Bootstrap note**: shll cannot trust its *own* formula before it exists — `brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll` remains the one-time bootstrap (see README below). shll owns trust for the other six.
 
 ### 2. `shll shell-setup` — remove `--trust-tap`, back to pure rc-wiring
 
@@ -71,8 +71,8 @@ brew trust --formula sahil87/tap/<formula>   # per tool in the install set, befo
 **Quick-start reorder** (bootstrap trust first):
 
 ```sh
-brew trust sahil87/tap/shll && brew install sahil87/tap/shll   # bootstrap: trust + install shll
-shll install                                                   # trusts (per-formula) + installs the other 6
+brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll   # bootstrap: trust + install shll
+shll install                                                             # trusts (per-formula) + installs the other 6
 shll shell-setup                                               # pure rc wiring — no trust flag
 exec $SHELL
 ```
@@ -134,7 +134,7 @@ This is the chosen closure for the "installed outside `shll install`" gap (e.g. 
 | 6 | Confident | On `brew trust` failure/absence, warn and continue (degrade, not abort) | Constitution V; pre-6.0 brew doesn't require trust so absence is safe, 6.0+ ships it | S:60 R:70 A:80 D:75 |
 | 7 | Certain | `doctor` gains a read-only trusted? check (in scope); `update` does NOT mutate trust | User explicitly chose option 2 (doctor check) and rejected option 3 (update trust mutation) | S:90 R:80 A:85 D:90 |
 | 8 | Confident | Shipping real `bottle do` bottles is out of scope (separate backlog item) | Big release-infra change across tap repos; clearly beyond this change | S:70 R:80 A:75 D:75 |
-| 9 | Certain | Bootstrap line `brew trust sahil87/tap/shll && brew install …` | Verified: idempotent trust, `&&` safe; shorthand infers --formula | S:85 R:95 A:95 D:80 |
+| 9 | Certain | Bootstrap line `brew trust --formula sahil87/tap/shll && brew install …` | Verified: idempotent trust, `&&` safe; per-formula trust uses the explicit `--formula` flag (Homebrew 6.x selects target type by flag — `brew trust --help`), consistent with the rest of the change | S:85 R:95 A:95 D:80 |
 | 10 | Confident | Create as fresh NL change ID, reference tkch for archive marking | Scope is a superset of tkch; fresh ID avoids implying change == tkch | S:70 R:75 A:70 D:65 |
 
 10 assumptions (5 certain, 5 confident, 0 tentative, 0 unresolved). Run /fab-clarify to review.

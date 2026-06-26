@@ -93,7 +93,7 @@ The change SHALL NOT add any in-code Homebrew version gate. The Homebrew >= 6.0.
 ### README + docs rewrite
 
 #### R11: Bootstrap-first quick-start
-README.md and `docs/site/install.md` SHALL present a bootstrap-first quick-start: `brew trust sahil87/tap/shll && brew install sahil87/tap/shll` (bootstrap), then `shll install`, then `shll shell-setup`, then `exec $SHELL`. The 3-line primary form (legible) MAY be accompanied by a chained one-liner variant.
+README.md and `docs/site/install.md` SHALL present a bootstrap-first quick-start: `brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll` (bootstrap), then `shll install`, then `shll shell-setup`, then `exec $SHELL`. The 3-line primary form (legible) MAY be accompanied by a chained one-liner variant.
 
 - **GIVEN** the README quick-start
 - **WHEN** a new user reads it
@@ -173,7 +173,7 @@ WHEN brew is absent OR too old to ship `brew trust` (pre-6.0), the trust sub-che
 
 ### Phase 7: docs
 
-- [x] T014 Rewrite `README.md`: bootstrap-first quick-start (`brew trust sahil87/tap/shll && brew install sahil87/tap/shll`, `shll install`, `shll shell-setup`, `exec $SHELL`) + chained one-liner variant; rewrite the "allowed by default" warning troubleshooting as a hard-block explanation (load-gate vs sandboxed-install-gate; why the bootstrap `brew trust` is required); remove all `--trust-tap` docs; document `--no-trust` on `shll install`; note Homebrew >= 6.0.4 + the `brew update` remedy. Update the `shll install` / `shll shell-setup` command sections and the composition table. <!-- R11 R12 R10 R1 R2 R13 -->
+- [x] T014 Rewrite `README.md`: bootstrap-first quick-start (`brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll`, `shll install`, `shll shell-setup`, `exec $SHELL`) + chained one-liner variant; rewrite the "allowed by default" warning troubleshooting as a hard-block explanation (load-gate vs sandboxed-install-gate; why the bootstrap `brew trust` is required); remove all `--trust-tap` docs; document `--no-trust` on `shll install`; note Homebrew >= 6.0.4 + the `brew update` remedy. Update the `shll install` / `shll shell-setup` command sections and the composition table. <!-- R11 R12 R10 R1 R2 R13 -->
 - [x] T015 Rewrite `docs/site/install.md` and update `docs/site/workflows.md`: same bootstrap-first ordering, hard-block troubleshooting, `--trust-tap` removal, `--no-trust` documentation, doctor trust sub-check mention, Homebrew >= 6.0.4 note. <!-- R11 R12 R10 -->
 
 ### Phase 8: build + verify
