@@ -15,3 +15,7 @@
 {"event":"review","result":"passed","ts":"2026-06-26T08:21:34Z"}
 {"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-06-26T08:35:59Z"}
 {"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-06-26T08:37:34Z"}
+{"delta":"+0.0","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-06-26T08:46:07Z"}
+{"delta":"+0.0","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-06-26T08:46:09Z"}
+{"delta":"+0.0","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-06-26T08:46:12Z"}
+{"event":"review","result":"passed","ts":"2026-06-26T08:48:25Z"}
