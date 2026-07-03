@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sahil87/shll/internal/changelog"
 	"github.com/sahil87/shll/internal/proc"
 )
 
@@ -1116,5 +1117,293 @@ func TestUpdate_DryRunEmptyCase(t *testing.T) {
 	}
 	if invocationsContain(f.recordedCalls(), brewBinary, "update", "--quiet") {
 		t.Fatal("brew update --quiet must NOT run in dry-run empty case")
+	}
+}
+
+// --- "What changed:" digest tail (change r01z) ---
+
+// versionTransitionRunner is a stateful fake whose `brew list --formula
+// --versions <formula>` returns beforeByFormula[formula] on its FIRST call for a
+// formula (the pre-upgrade probe / before-capture) and afterByFormula[formula] on
+// every subsequent call (the post-upgrade re-query) — so a tool's version
+// "changes" across the upgrade. `brew --version` reports brew present; all other
+// calls (brew update, upgrades, delegated `<tool> update`, `--help` probes)
+// succeed with empty output. It is concurrency-safe (probeRoster runs probes in
+// parallel) via its own mutex.
+type versionTransitionRunner struct {
+	mu     sync.Mutex
+	seen   map[string]int // formula → number of `brew list` calls so far
+	before map[string]string
+	after  map[string]string
+}
+
+func (r *versionTransitionRunner) respond(req proc.Request) proc.Result {
+	if req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version" {
+		return proc.Result{Stdout: []byte("Homebrew 4.0\n")}
+	}
+	if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+		formula := req.Args[3]
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		n := r.seen[formula]
+		r.seen[formula]++
+		leaf := strings.TrimPrefix(formula, formulaPrefix)
+		if n == 0 {
+			if v, ok := r.before[formula]; ok {
+				return proc.Result{Stdout: []byte(leaf + " " + v + "\n")}
+			}
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		if v, ok := r.after[formula]; ok {
+			return proc.Result{Stdout: []byte(leaf + " " + v + "\n")}
+		}
+		if v, ok := r.before[formula]; ok {
+			return proc.Result{Stdout: []byte(leaf + " " + v + "\n")}
+		}
+		return proc.Result{Err: errors.New("not installed")}
+	}
+	return proc.Result{}
+}
+
+func TestUpdate_DigestPrintsForBumpedTools(t *testing.T) {
+	// hop bumps 0.1.16 → 0.1.18 (2 releases); shll not brew-installed so it's out.
+	r := &versionTransitionRunner{
+		seen:   map[string]int{},
+		before: map[string]string{formulaPrefix + "hop": "0.1.16"},
+		after:  map[string]string{formulaPrefix + "hop": "0.1.18"},
+	}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+	changelogServer(t, map[string]string{
+		"hop": relJSON(
+			[3]string{"v0.1.18", "feat: non-interactive agent support", "b"},
+			[3]string{"v0.1.17", "fix: shim hardening", "b"},
+			[3]string{"v0.1.16", "old", "b"},
+		),
+	})
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "What changed:") {
+		t.Fatalf("out missing digest header:\n%s", out)
+	}
+	// Non-TTY buffer → ASCII-degraded arrow (`->`). Single-tool digest so no
+	// cross-tool column padding beyond the tool name.
+	if !strings.Contains(out, "hop 0.1.16 -> 0.1.18 (2 releases)") {
+		t.Fatalf("out missing hop transition line:\n%s", out)
+	}
+	// Title-only lines (NO bodies) for each release, newest first.
+	if !strings.Contains(out, "v0.1.18  feat: non-interactive agent support") ||
+		!strings.Contains(out, "v0.1.17  fix: shim hardening") {
+		t.Fatalf("out missing release title lines:\n%s", out)
+	}
+	// The copy-paste command names the bumped tool with its range.
+	if !strings.Contains(out, "Full notes: shll changelog hop@0.1.16..0.1.18") {
+		t.Fatalf("out missing full-notes command:\n%s", out)
+	}
+	// The digest is AFTER the summary tail.
+	if strings.Index(out, "Done —") > strings.Index(out, "What changed:") {
+		t.Fatalf("digest must follow the summary tail, out:\n%s", out)
+	}
+}
+
+func TestUpdate_NoDigestWhenNothingBumped(t *testing.T) {
+	// Same before/after version → no bump → the output is byte-identical to the
+	// pre-change golden (no "What changed:" block). Uses the existing all-installed
+	// golden from TestUpdate_HeadersAndTail.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{} }}
+	installFakeRunner(t, f)
+	t0 := time.Unix(1000, 0)
+	installFakeClock(t, t0, t0.Add(72*time.Second))
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	want := updateStatusLine + "\n" +
+		"==> [1/7] shll (self)\n" +
+		"\n==> [2/7] wt\n" +
+		"\n==> [3/7] idea\n" +
+		"\n==> [4/7] tu\n" +
+		"\n==> [5/7] rk\n" +
+		"\n==> [6/7] hop\n" +
+		"\n==> [7/7] fab-kit\n" +
+		"\nDone — 7 of 7 tools succeeded in 1m12s.\n"
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout with no bumps must equal the pre-change golden.\n got=%q\nwant=%q", got, want)
+	}
+	if strings.Contains(stdout.String(), "What changed:") {
+		t.Fatalf("no digest expected when nothing bumped, got:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_NoDigestUnderDryRun(t *testing.T) {
+	// --dry-run performs no upgrade, so there are no bumps and no digest.
+	r := &versionTransitionRunner{
+		seen:   map[string]int{},
+		before: map[string]string{formulaPrefix + "hop": "0.1.16"},
+		after:  map[string]string{formulaPrefix + "hop": "0.1.18"},
+	}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	if strings.Contains(stdout.String(), "What changed:") {
+		t.Fatalf("dry-run must print no digest, got:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_DigestSubsetNamesOnlyBumped(t *testing.T) {
+	// Subset run `shll update hop`: only hop is acted on and bumped, so the digest
+	// (and the printed command) name ONLY hop.
+	r := &versionTransitionRunner{
+		seen:   map[string]int{},
+		before: map[string]string{formulaPrefix + "hop": "0.1.16", formulaPrefix + "wt": "1.0.0"},
+		after:  map[string]string{formulaPrefix + "hop": "0.1.18", formulaPrefix + "wt": "1.1.0"},
+	}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+	changelogServer(t, map[string]string{
+		"hop": relJSON([3]string{"v0.1.18", "hop18", "b"}, [3]string{"v0.1.17", "hop17", "b"}),
+		"wt":  relJSON([3]string{"v1.1.0", "wt110", "b"}),
+	})
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hop"}); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Full notes: shll changelog hop@0.1.16..0.1.18") {
+		t.Fatalf("out missing hop-only command:\n%s", out)
+	}
+	if strings.Contains(out, "wt@") {
+		t.Fatalf("subset digest must NOT name wt (not in the subset), out:\n%s", out)
+	}
+}
+
+func TestUpdate_DigestUnavailableDegradesToCompareURL(t *testing.T) {
+	// hop bumps, but the release fetch fails (server 404s) → the digest degrades
+	// hop's entry to the compare URL and the exit code stays 0.
+	r := &versionTransitionRunner{
+		seen:   map[string]int{},
+		before: map[string]string{formulaPrefix + "hop": "0.1.16"},
+		after:  map[string]string{formulaPrefix + "hop": "0.1.18"},
+	}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+	changelogServer(t, map[string]string{}) // no repos → 404 → unavailable
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil (fetch failure must not change exit code)", err)
+	}
+	out := stdout.String()
+	// Non-TTY buffer → ASCII-degraded arrow + dash.
+	if !strings.Contains(out, "hop 0.1.16 -> 0.1.18 -- see "+changelog.CompareURL("hop", "0.1.16", "0.1.18")) {
+		t.Fatalf("out missing compare-URL degradation for hop:\n%s", out)
+	}
+}
+
+func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
+	// Two tools bump in one run: wt's releases are served (available), rk's repo
+	// 404s (unavailable). The digest must render wt as a full transition + title
+	// lines AND rk as a compare-URL fallback in the SAME block — partial
+	// degradation, exit code unaffected. wt precedes rk (roster order).
+	r := &versionTransitionRunner{
+		seen:   map[string]int{},
+		before: map[string]string{formulaPrefix + "wt": "1.0.0", formulaPrefix + "rk": "0.1.0"},
+		after:  map[string]string{formulaPrefix + "wt": "1.1.0", formulaPrefix + "rk": "0.2.0"},
+	}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+	// wt served; run-kit (rk's repo slug) absent → 404 → unavailable.
+	changelogServer(t, map[string]string{
+		"wt": relJSON([3]string{"v1.1.0", "wt110", "b"}),
+	})
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	out := stdout.String()
+	// wt: full transition + a title line (tag+title separated by two spaces).
+	if !strings.Contains(out, "wt 1.0.0 -> 1.1.0 (1 release)") || !strings.Contains(out, "v1.1.0  wt110") {
+		t.Fatalf("out missing available wt entry:\n%s", out)
+	}
+	// rk: compare-URL fallback (run-kit slug).
+	if !strings.Contains(out, "rk 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("run-kit", "0.1.0", "0.2.0")) {
+		t.Fatalf("out missing unavailable rk fallback:\n%s", out)
+	}
+	// Both name-columns are padded to the widest ("wt"/"rk" both 2 → no pad); and
+	// the copy-paste command names both bumped tools with their ranges.
+	if !strings.Contains(out, "Full notes: shll changelog wt@1.0.0..1.1.0 rk@0.1.0..0.2.0") {
+		t.Fatalf("out missing full-notes command naming both tools:\n%s", out)
+	}
+	// wt precedes rk (roster order).
+	if strings.Index(out, "wt 1.0.0") > strings.Index(out, "rk 0.1.0") {
+		t.Fatalf("digest must render wt before rk (roster order):\n%s", out)
+	}
+}
+
+func TestUpdate_DigestColumnAlignment(t *testing.T) {
+	// Column alignment (the intake's agreed sample): the tool-name column pads to
+	// the widest name and the `{old} → {new}` transition column pads so the
+	// `(N releases)` counts line up. tu (2) and fab-kit (7) differ in width, and
+	// their transitions differ in width, exercising BOTH pads.
+	r := &versionTransitionRunner{
+		seen:   map[string]int{},
+		before: map[string]string{formulaPrefix + "tu": "0.6.2", formulaPrefix + "fab-kit": "1.0.0"},
+		after:  map[string]string{formulaPrefix + "tu": "0.6.4", formulaPrefix + "fab-kit": "1.10.0"},
+	}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+	changelogServer(t, map[string]string{
+		"tu":      relJSON([3]string{"v0.6.4", "t4", "b"}, [3]string{"v0.6.3", "t3", "b"}),
+		"fab-kit": relJSON([3]string{"v1.10.0", "f", "b"}),
+	})
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	out := stdout.String()
+	// tu name padded to fab-kit width (7); transition "0.6.2 -> 0.6.4" (14) padded
+	// to "1.0.0 -> 1.10.0" width (15), so the count columns line up.
+	wantTu := "  tu      0.6.2 -> 0.6.4  (2 releases)\n"
+	wantFab := "  fab-kit 1.0.0 -> 1.10.0 (1 release)\n"
+	if !strings.Contains(out, wantTu) {
+		t.Fatalf("out missing aligned tu line %q:\n%s", wantTu, out)
+	}
+	if !strings.Contains(out, wantFab) {
+		t.Fatalf("out missing aligned fab-kit line %q:\n%s", wantFab, out)
+	}
+}
+
+func TestParseBrewVersion_MultiKegPicksMax(t *testing.T) {
+	// A multi-keg `brew list --versions` line lists every installed version in
+	// ARBITRARY order; parseBrewVersion must pick the MAX by numeric compare so a
+	// multi-keg host reports the current version, not an oldest-keg stale value.
+	cases := map[string]string{
+		"tu 0.6.2 0.6.4":        "0.6.4",  // ascending
+		"tu 0.6.4 0.6.2":        "0.6.4",  // descending — fields[1] is the OLDEST
+		"tu 0.6.2 0.6.10 0.6.4": "0.6.10", // numeric, not lexical
+		"tu 0.6.4":              "0.6.4",  // single keg
+		"tu":                    "",       // no version field
+	}
+	for in, want := range cases {
+		if got := parseBrewVersion(in + "\n"); got != want {
+			t.Errorf("parseBrewVersion(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

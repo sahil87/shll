@@ -13,6 +13,7 @@ Subcommands:
   shll doctor                 verify every sahil87 tool is installed, runnable, and wired (read-only)
   shll install                brew install every sahil87 tool that isn't already installed
   shll update                 brew update + brew upgrade for shll and every installed sahil87 tool
+  shll changelog              show release notes for sahil87 tools (what an update would bring)
   shll shell-init <shell>     emit a single eval-safe shell-init blob for all installed tools
   shll shell-setup [shell]    append the shell-init eval line to your rc file (idempotent)
   shll version                print versions of shll and every installed sahil87 tool
@@ -32,6 +33,7 @@ func newRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newInstallCmd(),
 		newUpdateCmd(),
+		newChangelogCmd(),
 		newShellInitCmd(),
 		newShellSetupCmd(),
 		newVersionCmd(),

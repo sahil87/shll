@@ -1,0 +1,13 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-03T13:11:32Z"}
+{"args":"shll changelog command + release-notes digest in shll update (from GitHub release pages)","cmd":"fab-new","event":"command","ts":"2026-07-03T13:11:32Z"}
+{"delta":"+4.0","event":"confidence","score":4,"trigger":"calc-score","ts":"2026-07-03T13:27:57Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-03T13:29:15Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T13:29:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T13:47:09Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-03T13:48:27Z"}
+{"event":"review","result":"failed","ts":"2026-07-03T14:10:07Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-03T14:10:07Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-03T14:25:28Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-03T14:49:32Z"}
+{"event":"review","result":"passed","ts":"2026-07-03T14:49:32Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-03T14:59:26Z"}

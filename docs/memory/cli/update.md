@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, installed-tool filtering, sequential `brew upgrade`, exit-code aggregation."
+description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, and the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, per-tool title lines + a copy-pasteable `shll changelog` command)."
 ---
 # cli/update
 
@@ -18,26 +18,26 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 2. **Instant status line.** Write `Checking installed sahil87 tools…` to stdout (named constant `updateStatusLine`, `src/cmd/shll/update.go:20`). This is the first visible byte, printed **unconditionally** before any probing — including before the nothing-to-do short-circuit — so the user gets immediate feedback during the (now concurrent) probe phase rather than staring at a blank terminal.
 
-3. **Parallel read-only capability probes.** `probeRoster(ctx)` (`src/cmd/shll/update.go:175`) dispatches one goroutine per roster tool and joins on a `sync.WaitGroup`; each goroutine runs `probeTool` (`src/cmd/shll/update.go:193`) and writes its result into a fixed-size `[]probeResult` slice **indexed by roster position** so results stay in roster order regardless of completion order. Per tool, `probeTool` determines two facts:
-   - **Installed?** — `isInstalled(ctx, t.Formula)` (`brew list --formula --versions`).
-   - **Supports `--skip-brew-update`?** — only for installed tools that have a non-empty `Update` argv: `toolSupportsSkipFlag` (`src/cmd/shll/update.go:209`) runs `<tool> update --help` via `proc.Run` (capture) and checks whether the output contains the literal substring `--skip-brew-update` (`strings.Contains`, never a regex — code-quality.md anti-pattern). A probe transport error is treated as "not supported" → graceful degradation to a plain `<tool> update`.
+3. **Parallel read-only capability probes.** `probeRoster(ctx)` dispatches one goroutine per roster tool and joins on a `sync.WaitGroup`; each goroutine runs `probeTool` and writes its result into a fixed-size `[]probeResult` slice **indexed by roster position** so results stay in roster order regardless of completion order. Per tool, `probeTool` determines three facts (the third added by change r01z):
+   - **Installed? + before-version** — a **single** `probeInstalledVersion(ctx, t.Formula)` read (`brew list --formula --versions`) yields BOTH the exit-code install fact AND the parsed installed version (`probeResult.beforeVersion`). This is the captured read the probe already pays for — never streamed foreground output (code-quality.md). `""` when not installed or unparseable (suppresses only this tool's digest entry, never its upgrade). See [version capture](#version-capture--the-what-changed-digest-change-r01z).
+   - **Supports `--skip-brew-update`?** — only for installed tools that have a non-empty `Update` argv: `toolSupportsSkipFlag` runs `<tool> update --help` via `proc.Run` (capture) and checks whether the output contains the literal substring `--skip-brew-update` (`strings.Contains`, never a regex — code-quality.md anti-pattern). A probe transport error is treated as "not supported" → graceful degradation to a plain `<tool> update`.
 
-4. **Detect shll-self brew install.** `isInstalled(ctx, shllFormula)` (`shllFormula = "sahil87/tap/shll"`, `src/cmd/shll/brew.go:28`). Drives whether the self-upgrade step in (7) runs. (This single probe runs after `probeRoster`, not inside it — shll is intentionally not in `Roster`.)
+4. **Detect shll-self brew install + before-version.** A single `probeInstalledVersion(ctx, shllFormula)` (`shllFormula = "sahil87/tap/shll"`, `src/cmd/shll/brew.go`) yields BOTH `shllInstalled` (drives whether the self-upgrade step in (7) runs) AND `beforeShll` (shll's pre-upgrade **brew-formula** version, feeding the digest — not the running process's ldflags version). Change r01z collapsed the former `isInstalled` + separate `installedVersion` pair here into this one read. (This single probe runs after `probeRoster`, not inside it — shll is intentionally not in `Roster`.)
 
 5. **Nothing-to-do → short-circuit.** If no roster tool is installed AND shll itself is not brew-installed, write `No sahil87 tools installed.` to stdout and return nil. Exit code: 0. Critically, **`brew update --quiet` is NOT invoked in this branch** — see Design Decision #9 below. Because the status line (step 2) already printed, the empty-case stdout reads exactly `Checking installed sahil87 tools…\nNo sahil87 tools installed.\n` (`TestUpdate_NoToolsInstalled`). When shll itself is brew-installed but no roster tools are, the short-circuit does NOT fire — the run proceeds and only self-upgrades shll (`TestUpdate_OnlyShllInstalled`).
 
 6. **Refresh metadata once.** `proc.RunForeground(ctx, brewBinary, "update", "--quiet")` (`update.go:242`) — foreground so users see brew's progress. Run exactly **once** per invocation, after probing and before any upgrade. Because each delegated `<tool> update --skip-brew-update` skips its own internal `brew update`, this is the only metadata refresh for the whole run (vs. N redundant refreshes if each tool refreshed independently — Design Decision #2 of this change). `proc.RunForeground` returns `(code, nil)` on a non-zero subprocess exit and `(_, err)` only on an exec/transport failure, so the branch checks **both** `code != 0` and `err != nil`. On failure, write `shll update: brew update failed: <detail>` to stderr and return `errSilent` (exit 1) — no upgrades attempted.
 
-7. **shll self-upgrade (when brew-installed).** If step (4) reported shll itself as brew-installed, print the `shll (self)` per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)` (`update.go:295`) *before* the roster loop. shll has no `update` subcommand to call on itself, so this stays a direct `brew upgrade` (not delegated). See [shll self-upgrade](#shll-self-upgrade) for rationale and edge cases. Failures here go through the same best-effort `anyFailed` path as roster failures, and contribute to the `total`/`succeeded` counts feeding the summary tail.
+7. **shll self-upgrade (when brew-installed).** If step (4) reported shll itself as brew-installed, print the `shll (self)` per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)) then run `proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)` *before* the roster loop. shll has no `update` subcommand to call on itself, so this stays a direct `brew upgrade` (not delegated). See [shll self-upgrade](#shll-self-upgrade) for rationale and edge cases. Failures here go through the same best-effort `anyFailed` path as roster failures, and contribute to the `total`/`succeeded` counts feeding the summary tail. **On success**, `shll update` re-queries `installedVersion(ctx, shllFormula)` (a cheap captured read) and records a bump against `beforeShll` if it changed — the digest input (change r01z).
 
-8. **Sequential per-tool upgrade (delegated).** For each installed tool in roster order, print its per-tool header then call `upgradeTool(ctx, t, probes[i].supportsSkipFlag)` (`src/cmd/shll/update.go:249`). Dispatch:
+8. **Sequential per-tool upgrade (delegated).** For each installed tool in roster order, print its per-tool header then call `upgradeTool(ctx, t, probes[i].supportsSkipFlag)`. On a successful (exit 0) upgrade, re-query `installedVersion(ctx, t.Formula)` and record a bump against `probes[i].beforeVersion` if it changed (change r01z — the digest input). Dispatch:
    - **has `Update` argv + supports the flag** → `<tool> update --skip-brew-update` (the `Update` argv with the flag appended).
    - **has `Update` argv but no flag (version skew)** → `<tool> update` with no flag — and it does **not** fall back to `brew upgrade`. This is the retry-without-flag contract for an installed tool predating the `--skip-brew-update` convention (Constitution V — Graceful Degradation).
    - **no `Update` argv (hypothetical future tool)** → `brew upgrade <formula>` fallback (today's pre-delegation behavior, retained for tools with no `update` subcommand), via plain `proc.RunForeground`. Because all six roster tools currently expose `update`, this fallback is **presently unreachable for the roster** — it is wired for correctness and future tools.
 
    Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
 
-9. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does **not** influence the exit code.
+9. **Summary tail, then the digest.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then the **"What changed:" digest** for the recorded bumps (change r01z — see [version capture](#version-capture--the-what-changed-digest-change-r01z)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). Both the tail and the digest are presentation-only and do **not** influence the exit code.
 
 > **Slice-aliasing guard.** The roster's `Update` argvs are shared, read-only slices. `upgradeTool` appends the flag via `appendArg` (`src/cmd/shll/update.go:236`), which always allocates a fresh slice (`make` + `copy`) so a naive `append` can never write into the shared backing array when spare capacity exists. The same helper builds the `--help` probe argv.
 
@@ -66,6 +66,50 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 **`--dry-run` previews the filtered subset.** The dry-run branch runs after the subset filter, so it previews only the validated subset in roster order (shll-self first when selected), header `Would update N tools (brew metadata refresh first):` with `N` = subset size. See [`--dry-run`](#dry-run-change-6vuo).
 
 **Shared resolver, single-sourced with `Roster`.** Both `runUpdate` and `runInstall` call `resolveTargets(args, allowShll)` (`src/cmd/shll/tools.go`) — `update` passes `allowShll=true`, `install` passes `false`. It performs **name validation only** (no brew/subprocess calls — the install-status check stays in the run functions where brew facts exist), and derives its valid-name list from the live `Roster` (via `rosterHas`/`validTargets`) so the two commands can never drift. See [cli/install §positional args](/cli/install.md#positional-tool-name-args--subset-targeting-change-b2vg) for the symmetric (roster-only) install behavior.
+
+## Version capture + the "What changed:" digest (change r01z)
+
+After a `shll update` run, the only record of *what changed* used to be buried in streamed brew/tool output — version transitions flashed by and release notes were never shown. Change r01z adds a compact **"What changed:"** digest tail plus a copy-pasteable full-notes command, built from before/after versions the run already captures. The digest is **presentation-only**: it never touches `anyFailed` or the process exit code.
+
+### Version capture (before + after)
+
+- **Before-version** — captured for free from the existing probe. `probeInstalledVersion(ctx, formula)` (`brew.go`) is the **sole** `brew list --formula --versions <formula>` invocation in `cmd/shll`; it returns both the exit-code install fact and the parsed version. `isInstalled` is now a one-line wrapper over it (`installed, _ := probeInstalledVersion(...)`), and `installedVersion` a wrapper returning just the version — so the identical brew read exists in exactly one place (the change-r01z rework collapsed the former duplicated `brew list` calls; see [Detection](#detection)). `probeTool` stores the version as `probeResult.beforeVersion`; shll-self's `beforeShll` comes from the single `probeInstalledVersion(ctx, shllFormula)` in step (4). Never streamed foreground output (code-quality.md anti-pattern).
+- **After-version** — after each **successful** (exit 0) upgrade, `installedVersion(ctx, formula)` is re-queried (a fresh cheap captured read) — for shll-self against `shllFormula`, for each roster tool against `t.Formula`. The re-query runs **only** for tools that exited 0.
+- **Multi-keg pick.** `parseBrewVersion` (`brew.go`) takes the max across `fields[1:]` of the `brew list --versions` line via `changelog.CompareVer` — a multi-keg host lists every installed version in **arbitrary** order (`tu 0.6.4 0.6.2`), so blindly taking `fields[1]` could report an oldest keg and suppress/misreport a transition. Pinned by `TestParseBrewVersion_MultiKegPicksMax`.
+
+`makeBump(tool, repo, old, new)` builds a `versionBump` **only** when both versions are known and differ (`old != "" && new != "" && old != new`) — the guard that keeps a no-op run's output byte-identical to before this change. Bumps are collected in roster order (shll first). Each `versionBump` carries `repo` (the GitHub slug — **not** always the name, rk's is `run-kit`) so the digest can fetch releases and build the compare URL.
+
+### Digest rendering (`printUpdateDigest`)
+
+For the recorded bumps, `printUpdateDigest(ctx, stdout, bumps, color)` fetches every tool's release range **concurrently** via `changelog.FetchAll` (reusing the [internal/changelog](/internal/changelog.md) fetch/filter code — single source of truth with `shll changelog`; the two differ only in rendering) and prints, after the summary tail:
+
+```
+What changed:
+  tu  0.6.2 → 0.6.4   (2 releases)
+    v0.6.4  fix: opencode session parsing
+    v0.6.3  feat: daily usage rollups
+  hop 0.1.16 → 0.1.18 (2 releases)
+    v0.1.18 feat: non-interactive agent support
+    v0.1.17 fix: shim hardening
+
+Full notes: shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18
+```
+
+(The intake's agreed shape. The exact column-aligned/ASCII-degraded goldens are `TestUpdate_DigestColumnAlignment` — e.g. `tu` padded to `fab-kit` width, `0.6.2 -> 0.6.4` padded so the counts align.)
+
+- **Titles only, no bodies** — one `{tag}  {title}` line per release (full bodies are one copy-paste away via the printed command). Displayed versions are the normalized (v-stripped) forms carried on the bump.
+- **Column alignment** (the intake's agreed sample): a two-pass layout pads the tool-name column to the widest name and the `{old} → {new}` transition column so the `(N releases)` counts line up; within each block, release tags pad to the widest tag so titles align. `digestToolIndent` (2 spaces) / `digestReleaseIndent` (4 spaces) named constants. Pinned by `TestUpdate_DigestColumnAlignment`.
+- **The full-notes command** (`digestSpecs`) names exactly the bumped tools with their ranges as `tool@old..new` specs, in digest order — a re-runnable `shll changelog ...` (`digestHeader`/`digestFullNotes` named constants).
+
+### Edge cases + degradation
+
+- **Nothing bumped** (all up-to-date or all failed) → `bumps` is empty → `printUpdateDigest` prints **nothing** (no `What changed:` block, no command). Output is byte-identical to before this change — the existing goldens hold (the test fake returns the same version before and after, so no bump). Pinned by `TestUpdate_NoDigestWhenNothingBumped`.
+- **`--dry-run`** → the dry-run branch returns before the write phase, so no upgrade runs, no bump is recorded, and no digest prints (`TestUpdate_NoDigestUnderDryRun`).
+- **Subset runs** → the digest covers only the bumped subset members and the command names only those tools (`TestUpdate_DigestSubsetNamesOnlyBumped`).
+- **Fetch unavailable / zero-in-range** → a bumped tool whose fetch fails, or whose fetched range holds zero matching releases (tag-scheme mismatch), degrades to `{tool} {old} → {new} — see {compareURL}` (no title lines); the rest of the digest still renders (`TestUpdate_DigestUnavailableDegradesToCompareURL`, `TestUpdate_DigestMixedAvailableAndUnavailable`). Never changes the exit code.
+- **ASCII degrade** → the digest's `→`/`—` glyphs degrade to `->`/`--` on a non-TTY / `NO_COLOR` stream (per-tool-output-separation spec). The `color` decision `runUpdate` computed once for the headers/tail is threaded into `printUpdateDigest`; the shared `arrow(color)`/`dash(color)` helpers (`ui.go`) do the swap. `bytes.Buffer` test writers deterministically hit the ASCII branch (`0.6.2 -> 0.6.4`).
+
+Covered end-to-end by `TestUpdate_DigestPrintsForBumpedTools` (bump → digest) and `TestUpdate_NoDigestWhenNothingBumped` (no bump → no digest, goldens preserved).
 
 ## Exit codes
 
@@ -108,10 +152,11 @@ The removed-workaround tests (`TestUpdate_LiveBrewCallsCarryWorkaroundEnvOnLinux
 
 ## Detection
 
-`isInstalled(ctx, formula)` in `src/cmd/shll/brew.go:52` is the single source of truth for "is this brew formula installed":
+`probeInstalledVersion(ctx, formula)` in `src/cmd/shll/brew.go` is the single source of truth for "is this brew formula installed" — and, since change r01z, for the installed version too:
 
-- Calls `brew list --formula --versions <formula>` via `proc.Run` (capture transport).
-- Returns `err == nil` — `brew list --versions <formula>` exits 0 when installed (with the version on stdout) and 1 when not. We don't parse stdout; the exit code is sufficient.
+- Calls `brew list --formula --versions <formula>` via `proc.Run` (capture transport) — the **sole** such invocation in `cmd/shll`.
+- Returns `(installed bool, version string)`: `installed` is `err == nil` (`brew list --versions <formula>` exits 0 when installed, 1 when not); `version` is `parseBrewVersion(stdout)` (the max keg version, `""` on any failure). The install fact still keys on the exit code; the version parse is the added, best-effort second return.
+- `isInstalled(ctx, formula)` is a thin one-line wrapper (`installed, _ := probeInstalledVersion(...)`) so boolean-only callers (`install.go`, the shll-self check, `changelog.go`'s no-range probe) share the one read; `installedVersion(ctx, formula)` wraps it returning just the version. Change r01z collapsed the former duplicated `brew list` reads into this single primitive (see [version capture](#version-capture--the-what-changed-digest-change-r01z)).
 
 Constraints (Design Decision #2):
 
@@ -317,6 +362,7 @@ Per-tool output separation (change y630) plus the change-6vuo `[N/M]` counter, d
 
 ## Cross-references
 
+- The "What changed:" digest's release fetch/filter (concurrent, degradation): [internal/changelog](/internal/changelog.md). The full-notes command it prints, and the shared fetch code: [cli/changelog](/cli/changelog.md).
 - Subprocess wrapper conventions: [internal/proc](/internal/proc.md).
 - The hardcoded roster and the `Update` capability field: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
 - The shared `shllSelf` display descriptor (change bb7r): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). `update`'s `shll (self)` first step is the established manage-side pattern that descriptor generalizes to `list`/`doctor`/`install`; `update.go` itself is unchanged (self-upgrade stays a dedicated `brew upgrade`, not a `shllSelf` consumer).
