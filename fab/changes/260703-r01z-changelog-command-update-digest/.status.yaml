@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 20
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-07-03T14:10:07Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-03T14:25:28Z"}
     review: {started_at: "2026-07-03T14:25:28Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-03T14:49:32Z"}
     hydrate: {started_at: "2026-07-03T14:49:32Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T14:59:26Z"}
-    ship: {started_at: "2026-07-03T14:59:26Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-07-03T14:59:26Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-03T15:01:12Z"}
+    review-pr: {started_at: "2026-07-03T15:01:12Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/31
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 2844
+    deleted: 37
+    net: 2807
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 2104
+        deleted: 14
+        net: 2090
     tests:
-        added: 0
+        added: 1014
         deleted: 0
-        net: 0
-    computed_at: "2026-07-03T14:59:26Z"
-    computed_at_stage: hydrate
+        net: 1014
+    computed_at: "2026-07-03T15:01:12Z"
+    computed_at_stage: ship
 summary: Add shll changelog command + update What-changed digest, backed by a new internal/changelog GitHub-releases fetch package (net/http isolated).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-03T14:59:26Z
+last_updated: 2026-07-03T15:01:12Z
