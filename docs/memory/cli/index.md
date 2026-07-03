@@ -4,6 +4,7 @@
 
 | File | Description |
 |------|-------------|
+| [changelog](changelog.md) | `shll changelog` — positional `tool@old..new` release-notes command: no-range installed→latest (incl. shll-self in the bare sweep), `(old, new]` range semantics, 10-release cap, up-to-date/no-releases/unavailable notices, ASCII-degraded framing, and always-exit-0 fetch degradation. |
 | [commands](commands.md) | Root command, subcommand wiring, exit-code sentinels (`errSilent`, `errExitCode`), version ldflags injection, and the hardcoded `Roster` slice. |
 | [doctor](doctor.md) | `shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe, `shell-setup`'s wiring detector, and `brew.go`'s trust list. |
 | [help-dump-contract](help-dump-contract.md) | Hidden `shll help-dump` subcommand — the frozen `help/<tool>.json` JSON contract (shared 7-tool, `wt.json` reference) and producer rules (programmatic cobra walk, filter completion/help/Hidden, prune-before-render). |
@@ -11,5 +12,5 @@
 | [list](list.md) | `shll list` — toolkit roster with install status, descriptions, and repo links; aligned table + `--json`; reuses the shared `toolInstalled` probe; the `rk`/`run-kit` repo-slug footgun. |
 | [shell-init](shell-init.md) | `shll shell-init <shell>` — composition rules across roster tools, eval-safety invariants, deterministic ordering. |
 | [shell-setup](shell-setup.md) | `shll shell-setup [shell]` (alias `shell-install`) — sentinel-wrapped rc-file block, pure rc-wiring (eval line only), idempotent install/`--print`/`--uninstall`, stale-export migration. |
-| [update](update.md) | `shll update` — brew detection, installed-tool filtering, sequential `brew upgrade`, exit-code aggregation. |
+| [update](update.md) | `shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, and the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, per-tool title lines + a copy-pasteable `shll changelog` command). |
 | [version](version.md) | `shll version` — column-aligned plain-text table, per-tool 2s timeout, ldflags-injected `shll` version; also hosts the shared `toolInstalled`/`probeToolVersion` install probe. |

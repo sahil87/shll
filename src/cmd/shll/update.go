@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sahil87/shll/internal/changelog"
 	"github.com/sahil87/shll/internal/proc"
 )
 
@@ -86,6 +87,11 @@ type probeResult struct {
 	// the `--skip-brew-update` flag. Only meaningful when installed and the tool
 	// has a non-empty Update argv.
 	supportsSkipFlag bool
+	// beforeVersion is the tool's installed version, captured from the SAME
+	// `brew list --formula --versions` read the install probe runs (never from
+	// streamed foreground output — code-quality.md). "" when not installed or the
+	// version could not be parsed. Feeds the post-upgrade "What changed:" digest.
+	beforeVersion string
 }
 
 // runUpdate is the implementation seam for `shll update`. Extracted from the
@@ -144,8 +150,12 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 
 	// Self-upgrade only when shll was installed via brew. A `go install` or
 	// local-build shll is not brew-managed and brew upgrade would error. For a
-	// subset run, shll is acted on only when it was explicitly named.
-	shllInstalled := isInstalled(ctx, shllFormula)
+	// subset run, shll is acted on only when it was explicitly named. ONE
+	// probeInstalledVersion read yields both the install fact AND shll's
+	// pre-upgrade formula version (beforeShll) — the same single-read pattern
+	// probeTool uses for roster tools, collapsing the former isInstalled +
+	// separate installedVersion pair into one brew call.
+	shllInstalled, beforeShll := probeInstalledVersion(ctx, shllFormula)
 	shllSelfInstalled := shllInstalled
 	if subset {
 		shllSelfInstalled = selfSelected && shllInstalled
@@ -286,12 +296,23 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 		printToolHeader(stdout, name, pos, total, color)
 	}
 
+	// bumps records the version transitions of tools that ACTUALLY changed
+	// (before != after, both known) after a successful upgrade — the input to the
+	// "What changed:" digest tail. Collected in roster order (shll first) so the
+	// digest renders deterministically. Presentation-only: it never touches
+	// anyFailed or the exit code.
+	var bumps []versionBump
+
 	// Self-upgrade shll first so subsequent operations in this run benefit from
 	// the updated binary on disk (the running process keeps its mapped image,
 	// but a follow-up invocation picks up the new binary). shll has no `update`
 	// subcommand to call on itself, so this stays a direct brew upgrade.
 	if shllSelfInstalled {
 		updateHeader(shllSelfLabel)
+		// shll's pre-upgrade formula version (beforeShll) was captured above by the
+		// single probeInstalledVersion read — a captured brew read, not the running
+		// process's ldflags version, so the digest reports the brew-formula
+		// transition the upgrade performed.
 		code, err := proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
@@ -300,6 +321,10 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 			anyFailed = true
 		} else {
 			succeeded++
+			// Re-query the after-version and record a bump when it changed.
+			if b, ok := makeBump(shllTargetToken, shllSelf.Repo, beforeShll, installedVersion(ctx, shllFormula)); ok {
+				bumps = append(bumps, b)
+			}
 		}
 	}
 
@@ -328,6 +353,11 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 			continue
 		}
 		succeeded++
+		// Re-query the new version (a cheap captured read) and record a bump when
+		// it actually changed from the pre-upgrade probe value.
+		if b, ok := makeBump(t.Name, t.Repo, probes[i].beforeVersion, installedVersion(ctx, t.Formula)); ok {
+			bumps = append(bumps, b)
+		}
 	}
 
 	// Summary tail: one line by exit-code counts (Done — N of M / X succeeded,
@@ -339,10 +369,53 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 	fmt.Fprintln(stdout)
 	printSummaryTail(stdout, succeeded, total, nowFunc().Sub(start), color)
 
+	// "What changed:" digest tail: for every tool whose version actually changed,
+	// fetch its release range and print a compact per-tool transition + title
+	// lines, then a copy-pasteable `shll changelog` command. When no tool bumped
+	// (all up-to-date or all failed), NOTHING prints — the output is byte-identical
+	// to before this change. The color decision computed once above is threaded in
+	// so the digest ASCII-degrades its `→`/`—` glyphs on a non-TTY/NO_COLOR stream
+	// (per-tool-output-separation spec). Presentation-only: it never influences
+	// anyFailed or the exit code below.
+	printUpdateDigest(ctx, stdout, bumps, color)
+
 	if anyFailed {
 		return errSilent
 	}
 	return nil
+}
+
+// versionBump is one tool whose version changed during a `shll update` run — the
+// digest tail's unit. Repo is the GitHub slug (not always the tool name — rk's is
+// run-kit) so the digest can fetch releases and build the compare URL.
+type versionBump struct {
+	tool string
+	repo string
+	old  string
+	new  string
+}
+
+// makeBump builds a versionBump when both versions are known AND they differ.
+// Returns ok=false (and no bump) when either version is empty (unknown) or they
+// are equal (nothing changed) — the guard that keeps a no-op run's output
+// byte-identical to before this change.
+//
+// Both versions are normalized via changelog.NormalizeVer (strip a leading `v`
+// and a brew `_N` revision suffix) BEFORE the equality guard, for two reasons:
+// (1) brew can report revision-suffixed versions like `0.6.4_1`, and passing the
+// raw form through would print a non-normalized transition and build a compare
+// URL like `.../compare/v0.6.4_1...` that has no matching Git tag — normalizing
+// here keeps the digest transition and changelog.CompareURL on the same footing
+// as the toolkit's tags; (2) a revision-only change (`0.6.4` → `0.6.4_1`) is not
+// a real version bump and normalizing before the equality check correctly
+// suppresses it from the digest (no release notes exist for a revision bump).
+func makeBump(tool, repo, old, new string) (versionBump, bool) {
+	old = changelog.NormalizeVer(old)
+	new = changelog.NormalizeVer(new)
+	if old == "" || new == "" || old == new {
+		return versionBump{}, false
+	}
+	return versionBump{tool: tool, repo: repo, old: old, new: new}, true
 }
 
 // probeRoster runs the read-only capability probes for every roster tool
@@ -370,10 +443,16 @@ func probeRoster(ctx context.Context) []probeResult {
 // Update argv. The help probe is skipped for uninstalled tools and for tools with
 // no Update argv (there is nothing to delegate to).
 func probeTool(ctx context.Context, t Tool) probeResult {
-	if !isInstalled(ctx, t.Formula) {
+	// One `brew list --formula --versions` read yields BOTH the exit-code install
+	// fact (unchanged from isInstalled — empty stdout with exit 0 still counts as
+	// installed) and the before-version. The before-version is best-effort: ""
+	// means "unknown" and suppresses only this tool's digest entry, never its
+	// upgrade.
+	installed, before := probeInstalledVersion(ctx, t.Formula)
+	if !installed {
 		return probeResult{}
 	}
-	res := probeResult{installed: true}
+	res := probeResult{installed: true, beforeVersion: before}
 	if len(t.Update) > 0 {
 		res.supportsSkipFlag = toolSupportsSkipFlag(ctx, t)
 	}
@@ -442,4 +521,113 @@ func appendArg(base []string, extra string) []string {
 	out := make([]string, len(base), len(base)+1)
 	copy(out, base)
 	return append(out, extra)
+}
+
+// Digest tail literals — named per code-quality.md (no magic strings). The
+// digest indent mirrors the tool/release nesting the user agreed to in the
+// intake's sample output.
+const (
+	digestHeader        = "What changed:"
+	digestFullNotes     = "Full notes: shll changelog"
+	digestToolIndent    = "  "
+	digestReleaseIndent = "    "
+)
+
+// printUpdateDigest prints the "What changed:" tail after the summary line, one
+// block per tool that ACTUALLY bumped (bumps already excludes no-change/unknown
+// tools, so an empty slice prints nothing — preserving the pre-change output
+// byte-for-byte). For each bumped tool it fetches the release range (concurrently)
+// and prints:
+//
+//	What changed:
+//	  tu   0.6.2 → 0.6.4   (2 releases)
+//	    v0.6.4  fix: opencode session parsing
+//	    v0.6.3  feat: daily usage rollups
+//
+//	Full notes: shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18
+//
+// The tool-name column and the `{old} → {new}` transition column are each padded
+// to their widest member so the `(N releases)` counts line up (the intake's
+// agreed sample), the same label-padding idiom printPreviewRows uses. Displayed
+// versions are the normalized (v-stripped) forms carried on the bump. On a
+// non-color stream the `→`/`—` glyphs ASCII-degrade to `->`/`--` (color threaded
+// in from runUpdate; per-tool-output-separation spec).
+//
+// A tool whose fetch is unavailable (or whose range holds zero matching releases)
+// degrades to `{tool} {old} → {new} — see {compareURL}` (Constitution V). The
+// digest is presentation-only — it NEVER changes the process exit code, and a
+// fetch failure here is silent beyond the fallback line.
+func printUpdateDigest(ctx context.Context, w io.Writer, bumps []versionBump, color bool) {
+	if len(bumps) == 0 {
+		return
+	}
+
+	reqs := make([]changelog.RangeReq, len(bumps))
+	for i, b := range bumps {
+		reqs[i] = changelog.RangeReq{Tool: b.tool, Repo: b.repo, Old: b.old, New: b.new}
+	}
+	results := changelog.FetchAll(ctx, reqs)
+
+	arr := arrow(color)
+
+	// First pass: compute the column widths so the tool names and the transition
+	// segments align (the `(N releases)` counts then line up under each other).
+	toolWidth, transWidth := 0, 0
+	transitions := make([]string, len(results))
+	for i, res := range results {
+		if len(res.Tool) > toolWidth {
+			toolWidth = len(res.Tool)
+		}
+		transitions[i] = fmt.Sprintf("%s %s %s", res.Old, arr, res.New)
+		if len(transitions[i]) > transWidth {
+			transWidth = len(transitions[i])
+		}
+	}
+
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, digestHeader)
+
+	for i, res := range results {
+		toolPad := strings.Repeat(" ", toolWidth-len(res.Tool))
+		if res.Unavailable || len(res.Releases) == 0 {
+			// Degrade: a fetch failure OR a tag-scheme mismatch that left zero
+			// matching releases → point at the compare URL, no title lines. The
+			// transition is NOT count-padded here (no trailing count column).
+			fmt.Fprintf(w, "%s%s%s %s %s see %s\n",
+				digestToolIndent, res.Tool, toolPad, transitions[i], dash(color), changelog.CompareURL(res.Repo, res.Old, res.New))
+			continue
+		}
+		n := len(res.Releases)
+		transPad := strings.Repeat(" ", transWidth-len(transitions[i]))
+		fmt.Fprintf(w, "%s%s%s %s%s (%d release%s)\n",
+			digestToolIndent, res.Tool, toolPad, transitions[i], transPad, n, plural(n))
+		// Align each release's tag column to the widest tag in THIS tool's block so
+		// titles line up under one another.
+		tagWidth := 0
+		for _, r := range res.Releases {
+			if len(r.Tag) > tagWidth {
+				tagWidth = len(r.Tag)
+			}
+		}
+		for _, r := range res.Releases {
+			// Title-only in the digest (NO bodies — those are one copy-paste away
+			// via the printed command below).
+			tagPad := strings.Repeat(" ", tagWidth-len(r.Tag))
+			fmt.Fprintf(w, "%s%s%s  %s\n", digestReleaseIndent, r.Tag, tagPad, r.Title)
+		}
+	}
+
+	// The copy-pasteable full-notes command names exactly the bumped tools with
+	// their ranges, in the same order as the digest blocks.
+	fmt.Fprintf(w, "\n%s %s\n", digestFullNotes, digestSpecs(bumps))
+}
+
+// digestSpecs renders the bumped tools as `tool@old..new` specs joined by spaces,
+// forming the argument list of the printed `shll changelog` command.
+func digestSpecs(bumps []versionBump) string {
+	specs := make([]string, len(bumps))
+	for i, b := range bumps {
+		specs[i] = fmt.Sprintf("%s%s%s%s%s", b.tool, specToolSep, b.old, specRangeSep, b.new)
+	}
+	return strings.Join(specs, " ")
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/sahil87/shll/internal/changelog"
 	"github.com/sahil87/shll/internal/proc"
 )
 
@@ -119,15 +120,77 @@ func brewTrustList(ctx context.Context) (taps, formulae []string, ok bool) {
 	return parsed.Taps, parsed.Formulae, true
 }
 
-// isInstalled reports whether the named formula is installed. Detection is via
-// `brew list --formula --versions <formula>` exit code (Design Decision #2 —
-// no regex over plain `brew list` output, no symlink-target inspection).
+// isInstalled reports whether the named formula is installed. It is a one-line
+// wrapper over probeInstalledVersion, discarding the version — so the single
+// `brew list --formula --versions <formula>` invocation lives in exactly one
+// place (probeInstalledVersion) and callers that need only the boolean
+// (install.go, update.go's shll-self check, changelog.go's no-range probe) share
+// that one read (Design Decision #2 — no regex over plain `brew list` output, no
+// symlink-target inspection; no duplicated brew invocation).
+func isInstalled(ctx context.Context, formula string) bool {
+	installed, _ := probeInstalledVersion(ctx, formula)
+	return installed
+}
+
+// probeInstalledVersion is the SOLE `brew list --formula --versions <formula>`
+// invocation in cmd/shll. It returns BOTH the exit-code install fact (installed
+// = the command exited 0 — empty stdout still counts as installed) AND the
+// parsed version string.
 //
 // `brew list --versions <formula>` exits 0 with the version string on stdout
-// when installed, and exits 1 with empty stdout when not. We treat any non-nil
-// captured-error as "not installed" — this covers both the exit-1 path and the
-// rare ErrNotFound path (brew itself missing — caller should have checked).
-func isInstalled(ctx context.Context, formula string) bool {
-	_, err := proc.Run(ctx, brewBinary, "list", "--formula", "--versions", formula)
-	return err == nil
+// when installed, and exits 1 with empty stdout when not. Any non-nil
+// captured-error is treated as "not installed" — covering both the exit-1 path
+// and the rare ErrNotFound path (brew itself missing — the caller should have
+// checked). On install it prints `<leaf> <version>` (and MAY list multiple keg
+// versions); parseBrewVersion picks the max, "" when the output is empty or an
+// unexpected shape (a best-effort capture — an unknown version suppresses only a
+// digest entry, never an upgrade). One brew call powers both facts (Constitution
+// I — proc, not raw exec; code-quality.md — never parse streamed foreground
+// output, and split on whitespace rather than a regex).
+func probeInstalledVersion(ctx context.Context, formula string) (installed bool, version string) {
+	out, err := proc.Run(ctx, brewBinary, "list", "--formula", "--versions", formula)
+	if err != nil {
+		return false, ""
+	}
+	return true, parseBrewVersion(string(out))
+}
+
+// installedVersion returns just the parsed installed version for a formula (""
+// when not installed or unparseable). A thin wrapper over probeInstalledVersion
+// for callers (the changelog no-range forms, the post-upgrade re-query) that only
+// need the version and treat "" as "unknown".
+func installedVersion(ctx context.Context, formula string) string {
+	_, v := probeInstalledVersion(ctx, formula)
+	return v
+}
+
+// parseBrewVersion extracts the installed version from `brew list --formula
+// --versions` stdout (`<leaf> <version...>` on the first non-empty line). Returns
+// "" when the output is empty or carries no version field. Whitespace split,
+// never a regex (code-quality.md anti-pattern).
+//
+// A formula with multiple kegs installed lists every version on the line
+// (`tu 0.6.2 0.6.4`) in ARBITRARY order, so fields[1] can be the oldest keg, not
+// the current one. We pick the MAX across fields[1:] by the toolkit's numeric
+// version compare (changelog.CompareVer) so a multi-keg host reports the version
+// an upgrade would land on, never a stale/suppressed transition.
+func parseBrewVersion(out string) string {
+	line := strings.TrimSpace(out)
+	if line == "" {
+		return ""
+	}
+	if nl := strings.IndexByte(line, '\n'); nl >= 0 {
+		line = strings.TrimSpace(line[:nl])
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return ""
+	}
+	max := fields[1]
+	for _, v := range fields[2:] {
+		if changelog.CompareVer(v, max) > 0 {
+			max = v
+		}
+	}
+	return max
 }

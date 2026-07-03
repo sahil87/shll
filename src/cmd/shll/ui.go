@@ -62,6 +62,53 @@ func printToolHeader(w io.Writer, name string, pos, total int, color bool) {
 	fmt.Fprintf(w, "==> [%d/%d] %s\n", pos, total, name)
 }
 
+// Glyph pairs for shll's own framing output in the changelog surface (the
+// `shll changelog` command and `shll update`'s "What changed:" digest). Each
+// pairs a Unicode glyph (used on a color-enabled TTY) with an ASCII fallback
+// (used on a non-TTY / NO_COLOR stream) per the per-tool-output-separation
+// spec's degrade rule: shll's OWN Unicode output degrades to ASCII so piped
+// output and CI logs stay clean. Named constants per code-quality.md.
+//
+// This is distinct from the summary-tail em-dash and the shell-init box-drawing
+// chars, which the spec explicitly EXEMPTS from the degrade (spec-defined
+// wording kept verbatim in both branches). These three glyphs sit in the
+// changelog surface's own framing, which the spec's general degrade rule covers.
+const (
+	arrowGlyph = "→"
+	arrowASCII = "->"
+	dashGlyph  = "—"
+	dashASCII  = "--"
+	moreGlyph  = "…"
+	moreASCII  = "..."
+)
+
+// arrow returns the version-transition arrow (`old → new`), degraded to `->` on
+// a non-color stream.
+func arrow(color bool) string {
+	if color {
+		return arrowGlyph
+	}
+	return arrowASCII
+}
+
+// dash returns the compare-URL fallback separator (`… — see <url>`), degraded to
+// `--` on a non-color stream.
+func dash(color bool) string {
+	if color {
+		return dashGlyph
+	}
+	return dashASCII
+}
+
+// more returns the cap-notice ellipsis (`… N more`), degraded to `...` on a
+// non-color stream.
+func more(color bool) string {
+	if color {
+		return moreGlyph
+	}
+	return moreASCII
+}
+
 // toolComment returns the shell-comment separator emitted by `shll shell-init` before
 // each contributing tool's init block, e.g. `# ── tu ──`. Unlike printToolHeader it is
 // ALWAYS plain ASCII-safe shell-comment text — never colored, never TTY-gated — because
