@@ -1407,3 +1407,38 @@ func TestParseBrewVersion_MultiKegPicksMax(t *testing.T) {
 		}
 	}
 }
+
+func TestMakeBump_NormalizesVersions(t *testing.T) {
+	// brew can report revision-suffixed versions like `0.6.4_1`. makeBump must
+	// normalize BOTH sides (strip `v` + `_N`) so the digest transition and the
+	// compare URL stay on the toolkit's tag footing — and a revision-only change
+	// (`0.6.4` → `0.6.4_1`) must NOT register as a bump (they normalize equal).
+	cases := []struct {
+		name       string
+		old, new   string
+		wantOK     bool
+		wantOldNew [2]string // only checked when wantOK
+	}{
+		{"revision suffix stripped", "0.6.2", "0.6.4_1", true, [2]string{"0.6.2", "0.6.4"}},
+		{"v-prefix stripped", "v0.6.2", "v0.6.4", true, [2]string{"0.6.2", "0.6.4"}},
+		{"both forms mixed", "0.6.2_1", "v0.6.4", true, [2]string{"0.6.2", "0.6.4"}},
+		{"revision-only change is no bump", "0.6.4", "0.6.4_1", false, [2]string{}},
+		{"empty new suppresses", "0.6.2", "", false, [2]string{}},
+		{"empty old suppresses", "", "0.6.4", false, [2]string{}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			b, ok := makeBump("tu", "tu", c.old, c.new)
+			if ok != c.wantOK {
+				t.Fatalf("makeBump(%q, %q) ok = %v, want %v", c.old, c.new, ok, c.wantOK)
+			}
+			if !c.wantOK {
+				return
+			}
+			if b.old != c.wantOldNew[0] || b.new != c.wantOldNew[1] {
+				t.Errorf("makeBump(%q, %q) = {old:%q new:%q}, want {old:%q new:%q}",
+					c.old, c.new, b.old, b.new, c.wantOldNew[0], c.wantOldNew[1])
+			}
+		})
+	}
+}

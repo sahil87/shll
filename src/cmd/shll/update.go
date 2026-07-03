@@ -399,7 +399,19 @@ type versionBump struct {
 // Returns ok=false (and no bump) when either version is empty (unknown) or they
 // are equal (nothing changed) — the guard that keeps a no-op run's output
 // byte-identical to before this change.
+//
+// Both versions are normalized via changelog.NormalizeVer (strip a leading `v`
+// and a brew `_N` revision suffix) BEFORE the equality guard, for two reasons:
+// (1) brew can report revision-suffixed versions like `0.6.4_1`, and passing the
+// raw form through would print a non-normalized transition and build a compare
+// URL like `.../compare/v0.6.4_1...` that has no matching Git tag — normalizing
+// here keeps the digest transition and changelog.CompareURL on the same footing
+// as the toolkit's tags; (2) a revision-only change (`0.6.4` → `0.6.4_1`) is not
+// a real version bump and normalizing before the equality check correctly
+// suppresses it from the digest (no release notes exist for a revision bump).
 func makeBump(tool, repo, old, new string) (versionBump, bool) {
+	old = changelog.NormalizeVer(old)
+	new = changelog.NormalizeVer(new)
 	if old == "" || new == "" || old == new {
 		return versionBump{}, false
 	}
