@@ -79,7 +79,7 @@ The Constitution-I-style boundary — `net/http` confined to this package exactl
 
 ## Cross-references
 
-- Command surface consuming this package: [cli/changelog](/cli/changelog.md) (full output) and [cli/update](/cli/update.md#version-capture--the-what-changed-digest-change-r01z) (titles-only digest) — the two surfaces differ only in rendering.
+- Command surface consuming this package: [cli/changelog](/cli/changelog.md) (full output) and [cli/update](/cli/update.md#version-capture--the-what-changed-digest-change-r01z) (the "What changed:" digest) — both surfaces share one release rendering (`renderReleases`, change 13k3); the digest adds a tool-name-bearing transition line above the shared release blocks.
 - Subprocess isolation sibling (the pattern this mirrors): [internal/proc](/internal/proc.md).
 - The `rk`/`run-kit` repo-slug footgun that `RangeReq.Repo` / `CompareURL` avoid re-open-coding: [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
 - Constitution I (net/http isolated in an internal package), II (stateless — every call re-fetches, no caching), V (any fetch failure degrades to a typed `Unavailable` Result).

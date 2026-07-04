@@ -14,9 +14,10 @@ import (
 // framing output. Hand-rolled standard codes declared as named constants so the
 // call sites never open-code escape strings (code-quality.md: named constants, no
 // magic strings). shll deliberately takes no external color-library dependency —
-// these four constants cover the two styled glyphs (a bold-cyan header arrow and a
-// green success check). Sub-tool output is never styled by shll; it streams through
-// untouched.
+// these constants cover shll's few styling roles: the bold-cyan per-tool header
+// run, the bold anchor lines on the changelog surfaces (via bold), and the
+// green/red status glyphs. Sub-tool output is never styled by shll; it streams
+// through untouched.
 const (
 	ansiReset    = "\033[0m"
 	ansiBold     = "\033[1m"
@@ -47,16 +48,18 @@ func colorEnabled(w io.Writer) bool {
 }
 
 // printToolHeader writes one labeled boundary line to w immediately before a tool's
-// foregrounded output, used by `shll update` and `shll install`. It carries a 1-based
-// progress counter `[pos/total]` so the user can see how far along a multi-tool run is
-// (`total` is computed once by the caller before the loop). With color it reads
-// `▸ [N/M] <name>` (bold-cyan arrow + bold name); plain it reads `==> [N/M] <name>` in
-// pure ASCII with no ANSI. The `==>` idiom matches Homebrew's own convention so the
-// plain form reads naturally alongside brew output. The color decision is passed in
-// (computed once by the caller via colorEnabled) so the function is trivially testable.
+// foregrounded output, used by `shll update`, `shll install`, and `shll changelog`. It
+// carries a 1-based progress counter `[pos/total]` so the user can see how far along a
+// multi-tool run is (`total` is computed once by the caller before the loop). With color
+// the WHOLE `▸ [N/M] <name>` run is a single bold-cyan span so tool boundaries pop
+// visually; plain it reads `==> [N/M] <name>` in pure ASCII with no ANSI. The `==>`
+// idiom matches Homebrew's own convention so the plain form reads naturally alongside
+// brew output. The color decision is passed in (computed once by the caller via
+// colorEnabled) so the function is trivially testable. Because all three surfaces share
+// this function, the bold-cyan header form covers them uniformly.
 func printToolHeader(w io.Writer, name string, pos, total int, color bool) {
 	if color {
-		fmt.Fprintf(w, "%s▸%s [%d/%d] %s%s%s\n", ansiBoldCyan, ansiReset, pos, total, ansiBold, name, ansiReset)
+		fmt.Fprintf(w, "%s▸ [%d/%d] %s%s\n", ansiBoldCyan, pos, total, name, ansiReset)
 		return
 	}
 	fmt.Fprintf(w, "==> [%d/%d] %s\n", pos, total, name)
@@ -107,6 +110,22 @@ func more(color bool) string {
 		return moreGlyph
 	}
 	return moreASCII
+}
+
+// bold wraps s in a plain bold ANSI span (ansiBold … ansiReset) when color is
+// enabled, returning s unchanged otherwise. It is the single place the
+// changelog-surface anchor styling (the digest / `shll changelog` transition
+// lines and release tag/title lines) is applied, so no call site open-codes an
+// escape string (code-quality.md: named constants, no magic strings). Plain
+// BOLD, not bold-cyan — bold-cyan (printToolHeader) stays reserved for the
+// per-tool headers so the visual hierarchy header > anchor > body is preserved.
+// Like the glyph helpers above, it is TTY-gated via the color decision threaded
+// in from the caller; a non-TTY / NO_COLOR stream stays ANSI-free.
+func bold(color bool, s string) string {
+	if color {
+		return ansiBold + s + ansiReset
+	}
+	return s
 }
 
 // toolComment returns the shell-comment separator emitted by `shll shell-init` before

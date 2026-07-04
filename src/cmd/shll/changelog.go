@@ -382,12 +382,15 @@ func installedVersionForSpec(ctx context.Context, s changelogSpec) string {
 
 // renderChangelogResult renders one tool's full changelog BODY (the per-tool
 // header is printed by the caller): either the unavailable/compare-URL fallback,
-// the "no releases in range" line, or each release (tag + title + full body)
-// newest-first, capped at changelogCapPerTool with a cap notice + compare URL on
-// overflow. res.Old/res.New are already normalized (v-stripped) by resolution, so
-// both sides of the transition read in one form. On a non-color stream the
-// `→`/`—`/`…` glyphs ASCII-degrade to `->`/`--`/`...` (per-tool-output-separation
-// spec); the color decision is threaded in from runChangelog.
+// the "no releases in range" line, or — via the shared renderReleases helper —
+// each release (tag + title + full body) newest-first, capped at
+// changelogCapPerTool with a cap notice + compare URL on overflow. res.Old/res.New
+// are already normalized (v-stripped) by resolution, so both sides of the
+// transition read in one form. The transition line is a navigational ANCHOR, so
+// it is bold when color is enabled (bold, NOT bold-cyan — bold-cyan is reserved
+// for the per-tool header). On a non-color stream the `→`/`—`/`…` glyphs
+// ASCII-degrade to `->`/`--`/`...` (per-tool-output-separation spec) and no ANSI
+// is emitted; the color decision is threaded in from runChangelog.
 func renderChangelogResult(w io.Writer, res changelog.Result, color bool) {
 	arr := arrow(color)
 	if res.Unavailable {
@@ -396,13 +399,31 @@ func renderChangelogResult(w io.Writer, res changelog.Result, color bool) {
 	}
 
 	n := len(res.Releases)
-	fmt.Fprintf(w, "%s %s %s (%d release%s)\n", res.Old, arr, res.New, n, plural(n))
+	fmt.Fprintln(w, bold(color, fmt.Sprintf("%s %s %s (%d release%s)", res.Old, arr, res.New, n, plural(n))))
 
 	if n == 0 {
 		fmt.Fprintln(w, "no releases in range")
 		return
 	}
 
+	renderReleases(w, res, color)
+}
+
+// renderReleases renders the release BLOCKS of a fetched range — each release's
+// `{tag}  {title}` line (a navigational ANCHOR, so bold when color is enabled)
+// followed by the full body markdown (trailing newlines trimmed; an empty body is
+// skipped), newest-first — capped at changelogCapPerTool with a
+// `… {N-cap} more — full changelog: {compareURL}` notice on overflow. It is the
+// single source of truth for release-block rendering, shared by
+// renderChangelogResult (`shll changelog`) and printUpdateDigest (the update
+// "What changed:" digest) so the two surfaces cannot drift (intake requirement).
+// The caller has already emitted the surface-specific transition line (the
+// changelog one, or the digest's tool-name-bearing one) and guaranteed
+// len(res.Releases) > 0. Each release block is preceded by a leading blank line
+// (preserved from the pre-extraction renderChangelogResult layout). On a
+// non-color stream no ANSI is emitted; the color decision is threaded in.
+func renderReleases(w io.Writer, res changelog.Result, color bool) {
+	n := len(res.Releases)
 	shown := res.Releases
 	capped := false
 	if n > changelogCapPerTool {
@@ -410,7 +431,7 @@ func renderChangelogResult(w io.Writer, res changelog.Result, color bool) {
 		capped = true
 	}
 	for _, r := range shown {
-		fmt.Fprintf(w, "\n%s  %s\n", r.Tag, r.Title)
+		fmt.Fprintf(w, "\n%s\n", bold(color, fmt.Sprintf("%s  %s", r.Tag, r.Title)))
 		body := strings.TrimRight(r.Body, "\n")
 		if body != "" {
 			fmt.Fprintln(w, body)

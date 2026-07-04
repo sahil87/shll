@@ -47,9 +47,9 @@ read-only aggregation.
 
 One labeled line per tool, immediately before that tool's foregrounded output:
 
-- **TTY + color enabled** → `▸ <tool>` (bold cyan arrow, bold tool name). Tool output
-  keeps its native color.
-- **Piped / `NO_COLOR` set / non-TTY** → `==> <tool>`, no ANSI. The degrade swaps both the
+- **TTY + color enabled** → `▸ [N/M] <tool>` — the whole `▸ [N/M] <tool>` run is a single
+  bold-cyan span. Tool output keeps its native color.
+- **Piped / `NO_COLOR` set / non-TTY** → `==> [N/M] <tool>`, no ANSI. The degrade swaps both the
   glyph (`▸` → `==>`) **and** any Unicode in shll's own output (e.g. `→` → `->`) so logs
   and CI stay clean ASCII. (Sub-tool output is passed through untouched either way.)
 
