@@ -42,19 +42,32 @@ func TestPrintToolHeader_ColorForm(t *testing.T) {
 	var buf bytes.Buffer
 	printToolHeader(&buf, "hop", 5, 6, true)
 	got := buf.String()
-	// Colored form uses the bold-cyan arrow glyph + bold name, terminated by a
-	// reset, via the named SGR constants, with the [N/M] progress counter.
-	if !strings.Contains(got, "▸") {
-		t.Fatalf("color header %q must contain the ▸ glyph", got)
+	// Colored form renders the WHOLE `▸ [N/M] name` run as a single bold-cyan span
+	// (change 13k3): one ansiBoldCyan open, the glyph + counter + name, then one
+	// ansiReset. Boundaries pop because the entire run is styled, not just the arrow.
+	if got != ansiBoldCyan+"▸ [5/6] hop"+ansiReset+"\n" {
+		t.Fatalf("color header = %q, want the whole run in one bold-cyan span", got)
 	}
-	if !strings.Contains(got, "[5/6]") {
-		t.Fatalf("color header %q must contain the [N/M] counter", got)
+	// A single bold-cyan span → exactly one open + one reset, and no bold-only span
+	// (the name is no longer separately ansiBold — it's inside the bold-cyan run).
+	if strings.Count(got, ansiBoldCyan) != 1 || strings.Count(got, ansiReset) != 1 {
+		t.Fatalf("color header %q must open bold-cyan once and reset once", got)
 	}
-	if !strings.Contains(got, ansiBoldCyan) || !strings.Contains(got, ansiBold) || !strings.Contains(got, ansiReset) {
-		t.Fatalf("color header %q must use the named SGR constants", got)
+}
+
+func TestBold_ColorWrapsPlainReturnsAsIs(t *testing.T) {
+	// The changelog-surface anchor helper (change 13k3): with color it wraps the
+	// string in a PLAIN bold span (ansiBold … ansiReset — NOT bold-cyan, which is
+	// reserved for printToolHeader); without color it returns the string verbatim
+	// (ANSI-free, so a non-TTY / NO_COLOR stream stays clean).
+	if got, want := bold(true, "v1.0.0  title"), ansiBold+"v1.0.0  title"+ansiReset; got != want {
+		t.Fatalf("bold(true, …) = %q, want %q", got, want)
 	}
-	if !strings.Contains(got, "hop") {
-		t.Fatalf("color header %q must contain the tool name", got)
+	if strings.Contains(bold(true, "x"), ansiBoldCyan) {
+		t.Fatalf("bold(true, …) must be plain bold, never bold-cyan")
+	}
+	if got := bold(false, "v1.0.0  title"); got != "v1.0.0  title" {
+		t.Fatalf("bold(false, …) = %q, want the string unchanged (no ANSI)", got)
 	}
 }
 
@@ -120,8 +133,8 @@ func TestFormatDuration(t *testing.T) {
 	}{
 		{72 * time.Second, "1m12s"},
 		{5 * time.Second, "5s"},
-		{1500 * time.Millisecond, "2s"},     // rounds to whole seconds
-		{400 * time.Millisecond, "0s"},      // sub-second rounds to 0s
+		{1500 * time.Millisecond, "2s"}, // rounds to whole seconds
+		{400 * time.Millisecond, "0s"},  // sub-second rounds to 0s
 		{90 * time.Minute, "1h30m0s"},
 	}
 	for _, c := range cases {

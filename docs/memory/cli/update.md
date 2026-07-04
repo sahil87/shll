@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, and the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, per-tool title lines + a copy-pasteable `shll changelog` command)."
+description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, and the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, full release bodies rendered inline via the shared `renderReleases` helper)."
 ---
 # cli/update
 
@@ -69,7 +69,9 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 ## Version capture + the "What changed:" digest (change r01z)
 
-After a `shll update` run, the only record of *what changed* used to be buried in streamed brew/tool output — version transitions flashed by and release notes were never shown. Change r01z adds a compact **"What changed:"** digest tail plus a copy-pasteable full-notes command, built from before/after versions the run already captures. The digest is **presentation-only**: it never touches `anyFailed` or the process exit code.
+After a `shll update` run, the only record of *what changed* used to be buried in streamed brew/tool output — version transitions flashed by and release notes were never shown. Change r01z adds a **"What changed:"** digest tail, built from before/after versions the run already captures. The digest is **presentation-only**: it never touches `anyFailed` or the process exit code.
+
+> **Full release notes now render inline (change 13k3, 2026-07-04).** Change r01z's digest showed only per-tool `{tag}  {title}` lines plus a copy-pasteable `Full notes: shll changelog tool@old..new` command ("titles only, NO bodies — one copy-paste away"). Change 13k3 **supersedes that decision**: the digest now renders each release's **full body inline**, in-process, from the same `changelog.FetchAll` data the digest already holds — never a subprocess to `shll changelog`. The release blocks are rendered by the **shared `renderReleases` helper** extracted from [`renderChangelogResult`](/cli/changelog.md#output-shape), so the digest and `shll changelog` cannot drift; the `Full notes:` command line and the `digestFullNotes` / `digestSpecs` / `digestReleaseIndent` symbols are **gone**. See [Digest rendering](#digest-rendering-printupdatedigest) below.
 
 ### Version capture (before + after)
 
@@ -81,35 +83,43 @@ After a `shll update` run, the only record of *what changed* used to be buried i
 
 ### Digest rendering (`printUpdateDigest`)
 
-For the recorded bumps, `printUpdateDigest(ctx, stdout, bumps, color)` fetches every tool's release range **concurrently** via `changelog.FetchAll` (reusing the [internal/changelog](/internal/changelog.md) fetch/filter code — single source of truth with `shll changelog`; the two differ only in rendering) and prints, after the summary tail:
+For the recorded bumps, `printUpdateDigest(ctx, stdout, bumps, color)` fetches every tool's release range **concurrently** via `changelog.FetchAll` (reusing the [internal/changelog](/internal/changelog.md) fetch/filter code — single source of truth with `shll changelog`; both surfaces share one release rendering, and the digest adds a tool-name-bearing transition line) and prints, after the summary tail (change 13k3 — full bodies inline):
 
 ```
 What changed:
-  tu  0.6.2 → 0.6.4   (2 releases)
-    v0.6.4  fix: opencode session parsing
-    v0.6.3  feat: daily usage rollups
-  hop 0.1.16 → 0.1.18 (2 releases)
-    v0.1.18 feat: non-interactive agent support
-    v0.1.17 fix: shim hardening
+  tu 0.6.2 → 0.6.4 (2 releases)
 
-Full notes: shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18
+v0.6.4  fix: opencode session parsing
+## What's Changed
+* fix: parse sessions with missing usage blocks
+
+v0.6.3  feat: daily usage rollups
+...
+
+  hop 0.1.16 → 0.1.18 (2 releases)
+
+v0.1.18 feat: non-interactive agent support
+...
 ```
 
-(The intake's agreed shape. The exact column-aligned/ASCII-degraded goldens are `TestUpdate_DigestColumnAlignment` — e.g. `tu` padded to `fab-kit` width, `0.6.2 -> 0.6.4` padded so the counts align.)
+(Change 13k3's shape — full release bodies inline, per-tool blocks blank-line separated. The exact ASCII-degraded goldens are `TestUpdate_DigestPrintsForBumpedTools`; on a `bytes.Buffer` writer the `→` degrades to `->` and no ANSI is emitted.)
 
-- **Titles only, no bodies** — one `{tag}  {title}` line per release (full bodies are one copy-paste away via the printed command). Displayed versions are the normalized (v-stripped) forms carried on the bump.
-- **Column alignment** (the intake's agreed sample): a two-pass layout pads the tool-name column to the widest name and the `{old} → {new}` transition column so the `(N releases)` counts line up; within each block, release tags pad to the widest tag so titles align. `digestToolIndent` (2 spaces) / `digestReleaseIndent` (4 spaces) named constants. Pinned by `TestUpdate_DigestColumnAlignment`.
-- **The full-notes command** (`digestSpecs`) names exactly the bumped tools with their ranges as `tool@old..new` specs, in digest order — a re-runnable `shll changelog ...` (`digestHeader`/`digestFullNotes` named constants).
+- **Full release bodies inline (change 13k3)** — each release renders as `{tag}  {title}` followed by its **full body markdown** (trailing newlines trimmed, empty bodies skipped), newest-first, via the shared **`renderReleases`** helper — the same rendering `shll changelog` uses (see [cli/changelog §output shape](/cli/changelog.md#output-shape)), so the two surfaces cannot drift. In-process from the existing `changelog.FetchAll` data — never a subprocess. This **supersedes the r01z "titles only, NO bodies — one copy-paste away" decision** (the copy-paste `shll changelog` command is gone; the notes are shown directly). Displayed versions are the normalized (v-stripped) forms carried on the bump.
+- **10-release cap + compare-URL cap notice (change 13k3)** — the digest now applies the same `changelogCapPerTool = 10` cap as `shll changelog`: only the 10 newest releases print, then `… {N-10} more — full changelog: {compareURL}` (the cap logic lives inside `renderReleases`), so a long-range bump never dumps unbounded text.
+- **No cross-tool alignment, no per-block tag padding (change 13k3)** — with multi-line bodies inline, the old two-pass column alignment (tool-name + transition padding so the `(N releases)` counts line up) and per-block tag padding are **meaningless and dropped**; release blocks adopt the shared `shll changelog` format verbatim. The per-tool transition line keeps the 2-space `digestToolIndent` under the `What changed:` header; release blocks render **unindented** (each preceded by a leading blank line) via `renderReleases`. The `digestReleaseIndent` constant is gone; only `digestHeader` / `digestToolIndent` remain.
+- **Bold-anchor transition line (change 13k3)** — the per-tool transition line `{tool} {old} → {new} ({N} release{s})` is a plain-bold navigational anchor (`bold(color, …)`, NOT bold-cyan — bold-cyan stays reserved for the [per-tool header](#per-tool-output-separation-change-y630); the [tag/title lines are bold too](/cli/changelog.md#output-shape) via the shared helper). The transition line **carries the tool name** — unlike `shll changelog`, whose tool name lives in the `printToolHeader` above the body.
+- **Tool blocks are blank-line separated (change 13k3, added post-review)** — a blank line precedes each per-tool block **except the first** (`if i > 0`), mirroring `runChangelog`'s per-tool separation so tools are never separated more weakly than the releases within one tool.
+- **No `Full notes:` command line (change 13k3)** — the trailing `Full notes: shll changelog tool@old..new …` line and the `digestFullNotes` constant + `digestSpecs` helper are **removed** (bodies are inline now; no other consumers — `grep` over `src/cmd/shll` confirms zero references).
 
 ### Edge cases + degradation
 
 - **Nothing bumped** (all up-to-date or all failed) → `bumps` is empty → `printUpdateDigest` prints **nothing** (no `What changed:` block, no command). Output is byte-identical to before this change — the existing goldens hold (the test fake returns the same version before and after, so no bump). Pinned by `TestUpdate_NoDigestWhenNothingBumped`.
 - **`--dry-run`** → the dry-run branch returns before the write phase, so no upgrade runs, no bump is recorded, and no digest prints (`TestUpdate_NoDigestUnderDryRun`).
 - **Subset runs** → the digest covers only the bumped subset members and the command names only those tools (`TestUpdate_DigestSubsetNamesOnlyBumped`).
-- **Fetch unavailable / zero-in-range** → a bumped tool whose fetch fails, or whose fetched range holds zero matching releases (tag-scheme mismatch), degrades to `{tool} {old} → {new} — see {compareURL}` (no title lines); the rest of the digest still renders (`TestUpdate_DigestUnavailableDegradesToCompareURL`, `TestUpdate_DigestMixedAvailableAndUnavailable`). Never changes the exit code.
-- **ASCII degrade** → the digest's `→`/`—` glyphs degrade to `->`/`--` on a non-TTY / `NO_COLOR` stream (per-tool-output-separation spec). The `color` decision `runUpdate` computed once for the headers/tail is threaded into `printUpdateDigest`; the shared `arrow(color)`/`dash(color)` helpers (`ui.go`) do the swap. `bytes.Buffer` test writers deterministically hit the ASCII branch (`0.6.2 -> 0.6.4`).
+- **Fetch unavailable / zero-in-range** → a bumped tool whose fetch fails, or whose fetched range holds zero matching releases (tag-scheme mismatch), degrades to `{tool} {old} → {new} — see {compareURL}` (no body lines exist to inline; Constitution V); the rest of the digest still renders (`TestUpdate_DigestUnavailableDegradesToCompareURL`, `TestUpdate_DigestMixedAvailableAndUnavailable`). Never changes the exit code. **The whole degrade line is bolded** (change 13k3) — a deliberate choice so it reads as a bold anchor like the available branch's transition line (this differs from `shll changelog`'s own unavailable line, which is left unstyled — a [known, reviewed-as-acceptable asymmetry](/cli/changelog.md#output-shape)).
+- **ASCII degrade** → the digest's `→`/`—`/`…` glyphs degrade to `->`/`--`/`...` on a non-TTY / `NO_COLOR` stream (per-tool-output-separation spec). The `color` decision `runUpdate` computed once for the headers/tail is threaded into `printUpdateDigest` and through to `renderReleases`; the shared `arrow(color)`/`dash(color)`/`more(color)` helpers (`ui.go`) do the swap, and `bold(color, …)` wraps the anchor lines only when color is on. `bytes.Buffer` test writers deterministically hit the ASCII/no-ANSI branch (`0.6.2 -> 0.6.4`).
 
-Covered end-to-end by `TestUpdate_DigestPrintsForBumpedTools` (bump → digest) and `TestUpdate_NoDigestWhenNothingBumped` (no bump → no digest, goldens preserved).
+Covered end-to-end by `TestUpdate_DigestPrintsForBumpedTools` (bump → digest with inline bodies, no `Full notes:` line) and `TestUpdate_NoDigestWhenNothingBumped` (no bump → no digest, goldens preserved). The dropped column-alignment golden `TestUpdate_DigestColumnAlignment` was removed/rewritten to the new unaligned inline shape (change 13k3).
 
 ## Exit codes
 
@@ -198,7 +208,7 @@ Design Decision #3 ("sequential, not parallel") governs **upgrades only**. Chang
 
 `shll update` frames each tool's foregrounded output with a labeled boundary so a multi-tool run is no longer one undifferentiated wall of text. All framing logic lives in the shared helper `src/cmd/shll/ui.go` (see [cli/commands](/cli/commands.md#file-layout-srccmdshll)); `update.go` only computes the color decision once and calls into it.
 
-- **Per-tool header with `[N/M]` progress counter (change 6vuo).** Immediately before each tool's foregrounded output, `printToolHeader(stdout, name, pos, total, color)` (`src/cmd/shll/ui.go:56`) writes `▸ [N/M] <tool>` (bold-cyan arrow + bold name) on a color-enabled TTY, or `==> [N/M] <tool>` in pure ASCII otherwise. The `==>` idiom matches Homebrew's convention so the plain form reads naturally alongside brew's own output. `N` is the running 1-based position; `M` is the total tools acted on this run, **computed up front before the loop** (`update.go:194` — `total` is the count of `probes[i].installed` plus `1` when shll is brew-installed) so every header can carry a stable denominator. The self-upgrade step (step 7) gets the header `shll (self)` and is **`[1/M]`** — it counts as a tool like any other, so the counter agrees with the summary tail's `total` (which also includes the self step); each roster tool (step 8) gets `t.Name` at its position. (The header stays minimal — just `▸ [N/M] <tool>`; a dimmed command echo like `$ tu update --skip-brew-update` was considered and rejected as noise duplicating `--help`.) See [Worked header example](#worked-header-example-change-6vuo).
+- **Per-tool header with `[N/M]` progress counter (change 6vuo; header color form updated by change 13k3).** Immediately before each tool's foregrounded output, `printToolHeader(stdout, name, pos, total, color)` (`src/cmd/shll/ui.go`) writes `▸ [N/M] <tool>` on a color-enabled TTY, or `==> [N/M] <tool>` in pure ASCII otherwise. **On the color branch the WHOLE `▸ [N/M] <tool>` run is a single bold-cyan span** (change 13k3 — was previously a bold-cyan arrow with a bold-default name), so tool boundaries pop visually. The plain branch stays byte-identical. The `==>` idiom matches Homebrew's convention so the plain form reads naturally alongside brew's own output. `N` is the running 1-based position; `M` is the total tools acted on this run, **computed up front before the loop** (`update.go:194` — `total` is the count of `probes[i].installed` plus `1` when shll is brew-installed) so every header can carry a stable denominator. The self-upgrade step (step 7) gets the header `shll (self)` and is **`[1/M]`** — it counts as a tool like any other, so the counter agrees with the summary tail's `total` (which also includes the self step); each roster tool (step 8) gets `t.Name` at its position. (The header stays minimal — just `▸ [N/M] <tool>`; a dimmed command echo like `$ tu update --skip-brew-update` was considered and rejected as noise duplicating `--help`.) See [Worked header example](#worked-header-example-change-6vuo).
 - **Section spacing (change 6vuo).** A single blank line precedes each per-tool header **except the first**, and a single blank line precedes the summary tail — so each tool's streamed output is visually separated from the next header and from the tail. The loop emits the leading `\n` via the `updateHeader` closure (`update.go:206`, `if pos > 1`); the pre-tail blank is `fmt.Fprintln(stdout)` immediately before `printSummaryTail` (`update.go:264`). The empty/short-circuit case emits NO blank lines (its golden string is preserved — see [Empty case](#per-tool-output-separation-change-y630)).
 - **Summary tail with run duration (change 6vuo).** After the loop, `printSummaryTail(stdout, succeeded, total, elapsed, color)` (`src/cmd/shll/ui.go:96`) writes exactly one line derived from **exit codes only**, now with the wall-clock run duration appended to **both** forms: `Done — N of M tools succeeded in <dur>.` on full success (prefixed with a green `✓` when color), or `X succeeded, Y failed in <dur> — see above.` on partial failure (the duration sits **before** the em-dash). `total` counts every tool attempted (self-upgrade + each installed roster tool); `succeeded` counts those that exited 0 — these mirror the same per-tool facts that drive `anyFailed`. The duration is a **fact about the run, not an outcome claim** — the tail still **never** claims "updated" vs. "up-to-date" (the honesty constraint — streamed sub-tool output means shll knows only exit codes), and never changes the process exit code. Duration is rendered by `formatDuration` (`ui.go:80`) as `elapsed.Round(time.Second).String()` (e.g. `1m12s`; sub-second runs round to `0s`). See [Run duration and the clock seam](#run-duration-and-the-clock-seam-change-6vuo).
 - **Stream discipline (critical).** The header and tail are written to **stdout** — the same stream `proc.RunForeground` foregrounds sub-tool output onto (in production `cmd.OutOrStdout()` is `os.Stdout`). They are **never** written to stderr: a different buffer with independent flush timing would interleave unpredictably against the streamed output it labels. `TestUpdate_*` drive `runUpdate` with separate stdout/stderr buffers and assert header/tail text appears only in stdout.
@@ -362,7 +372,7 @@ Per-tool output separation (change y630) plus the change-6vuo `[N/M]` counter, d
 
 ## Cross-references
 
-- The "What changed:" digest's release fetch/filter (concurrent, degradation): [internal/changelog](/internal/changelog.md). The full-notes command it prints, and the shared fetch code: [cli/changelog](/cli/changelog.md).
+- The "What changed:" digest's release fetch/filter (concurrent, degradation): [internal/changelog](/internal/changelog.md). The shared release rendering (`renderReleases`, extracted from `renderChangelogResult`) the digest and `shll changelog` both use: [cli/changelog](/cli/changelog.md#output-shape).
 - Subprocess wrapper conventions: [internal/proc](/internal/proc.md).
 - The hardcoded roster and the `Update` capability field: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
 - The shared `shllSelf` display descriptor (change bb7r): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). `update`'s `shll (self)` first step is the established manage-side pattern that descriptor generalizes to `list`/`doctor`/`install`; `update.go` itself is unchanged (self-upgrade stays a dedicated `brew upgrade`, not a `shllSelf` consumer).

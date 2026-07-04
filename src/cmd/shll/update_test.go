@@ -1177,9 +1177,9 @@ func TestUpdate_DigestPrintsForBumpedTools(t *testing.T) {
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 	changelogServer(t, map[string]string{
 		"hop": relJSON(
-			[3]string{"v0.1.18", "feat: non-interactive agent support", "b"},
-			[3]string{"v0.1.17", "fix: shim hardening", "b"},
-			[3]string{"v0.1.16", "old", "b"},
+			[3]string{"v0.1.18", "feat: non-interactive agent support", "## What's Changed\n* agent mode"},
+			[3]string{"v0.1.17", "fix: shim hardening", "## What's Changed\n* shim fix"},
+			[3]string{"v0.1.16", "old", "old body"},
 		),
 	})
 
@@ -1191,19 +1191,28 @@ func TestUpdate_DigestPrintsForBumpedTools(t *testing.T) {
 	if !strings.Contains(out, "What changed:") {
 		t.Fatalf("out missing digest header:\n%s", out)
 	}
-	// Non-TTY buffer → ASCII-degraded arrow (`->`). Single-tool digest so no
-	// cross-tool column padding beyond the tool name.
+	// Non-TTY buffer → ASCII-degraded arrow (`->`). With inline bodies the digest
+	// drops the cross-tool column alignment; the transition line carries the tool
+	// name (unlike `shll changelog`, whose name is in the header above the body).
 	if !strings.Contains(out, "hop 0.1.16 -> 0.1.18 (2 releases)") {
 		t.Fatalf("out missing hop transition line:\n%s", out)
 	}
-	// Title-only lines (NO bodies) for each release, newest first.
+	// Tag/title lines for each release, newest first, EACH FOLLOWED BY ITS FULL
+	// BODY inline (change 13k3 — the notes render in-process, not one copy-paste away).
 	if !strings.Contains(out, "v0.1.18  feat: non-interactive agent support") ||
 		!strings.Contains(out, "v0.1.17  fix: shim hardening") {
-		t.Fatalf("out missing release title lines:\n%s", out)
+		t.Fatalf("out missing release tag/title lines:\n%s", out)
 	}
-	// The copy-paste command names the bumped tool with its range.
-	if !strings.Contains(out, "Full notes: shll changelog hop@0.1.16..0.1.18") {
-		t.Fatalf("out missing full-notes command:\n%s", out)
+	if !strings.Contains(out, "* agent mode") || !strings.Contains(out, "* shim fix") {
+		t.Fatalf("out missing inline release bodies:\n%s", out)
+	}
+	// v0.1.16 == old is excluded (outside (0.1.16, 0.1.18]).
+	if strings.Contains(out, "old body") {
+		t.Fatalf("out should exclude the release equal to the old bound:\n%s", out)
+	}
+	// The `Full notes:` tail line is GONE — the notes are inline now.
+	if strings.Contains(out, "Full notes:") {
+		t.Fatalf("out must NOT carry the dropped `Full notes:` line:\n%s", out)
 	}
 	// The digest is AFTER the summary tail.
 	if strings.Index(out, "Done —") > strings.Index(out, "What changed:") {
@@ -1262,7 +1271,7 @@ func TestUpdate_NoDigestUnderDryRun(t *testing.T) {
 
 func TestUpdate_DigestSubsetNamesOnlyBumped(t *testing.T) {
 	// Subset run `shll update hop`: only hop is acted on and bumped, so the digest
-	// (and the printed command) name ONLY hop.
+	// names ONLY hop.
 	r := &versionTransitionRunner{
 		seen:   map[string]int{},
 		before: map[string]string{formulaPrefix + "hop": "0.1.16", formulaPrefix + "wt": "1.0.0"},
@@ -1281,11 +1290,13 @@ func TestUpdate_DigestSubsetNamesOnlyBumped(t *testing.T) {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "Full notes: shll changelog hop@0.1.16..0.1.18") {
-		t.Fatalf("out missing hop-only command:\n%s", out)
+	// The digest covers ONLY the bumped subset member (hop) — its transition line
+	// is present and wt (outside the subset) never appears.
+	if !strings.Contains(out, "hop 0.1.16 -> 0.1.18 (2 releases)") {
+		t.Fatalf("out missing hop transition line:\n%s", out)
 	}
-	if strings.Contains(out, "wt@") {
-		t.Fatalf("subset digest must NOT name wt (not in the subset), out:\n%s", out)
+	if strings.Contains(out, "wt 1.0.0") || strings.Contains(out, "wt110") {
+		t.Fatalf("subset digest must NOT render wt (not in the subset), out:\n%s", out)
 	}
 }
 
@@ -1336,30 +1347,35 @@ func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
-	// wt: full transition + a title line (tag+title separated by two spaces).
+	// wt: full transition + a release tag/title line (tag+title separated by two
+	// spaces), rendered via the shared renderReleases helper.
 	if !strings.Contains(out, "wt 1.0.0 -> 1.1.0 (1 release)") || !strings.Contains(out, "v1.1.0  wt110") {
 		t.Fatalf("out missing available wt entry:\n%s", out)
 	}
-	// rk: compare-URL fallback (run-kit slug).
+	// rk: compare-URL fallback (run-kit slug) — no bodies exist to inline.
 	if !strings.Contains(out, "rk 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("run-kit", "0.1.0", "0.2.0")) {
 		t.Fatalf("out missing unavailable rk fallback:\n%s", out)
-	}
-	// Both name-columns are padded to the widest ("wt"/"rk" both 2 → no pad); and
-	// the copy-paste command names both bumped tools with their ranges.
-	if !strings.Contains(out, "Full notes: shll changelog wt@1.0.0..1.1.0 rk@0.1.0..0.2.0") {
-		t.Fatalf("out missing full-notes command naming both tools:\n%s", out)
 	}
 	// wt precedes rk (roster order).
 	if strings.Index(out, "wt 1.0.0") > strings.Index(out, "rk 0.1.0") {
 		t.Fatalf("digest must render wt before rk (roster order):\n%s", out)
 	}
+	// Tool blocks are blank-line separated (mirroring runChangelog's per-tool
+	// separation): wt's last body line ("b") is followed by a blank line before
+	// rk's transition line — tools are never separated more weakly than the
+	// releases within one tool.
+	if !strings.Contains(out, "b\n\n  rk 0.1.0") {
+		t.Fatalf("out missing blank line between wt and rk digest blocks:\n%s", out)
+	}
 }
 
-func TestUpdate_DigestColumnAlignment(t *testing.T) {
-	// Column alignment (the intake's agreed sample): the tool-name column pads to
-	// the widest name and the `{old} → {new}` transition column pads so the
-	// `(N releases)` counts line up. tu (2) and fab-kit (7) differ in width, and
-	// their transitions differ in width, exercising BOTH pads.
+func TestUpdate_DigestNoColumnAlignmentWithInlineBodies(t *testing.T) {
+	// With full bodies inline (change 13k3), the cross-tool two-pass column
+	// alignment is DROPPED — the per-tool transition line keeps only the 2-space
+	// digestToolIndent and is otherwise unpadded (padding is meaningless across
+	// multi-line body blocks). tu (2) and fab-kit (7) differ in name width and their
+	// transitions differ in width, so under the OLD contract they would have been
+	// padded to align; here neither is padded.
 	r := &versionTransitionRunner{
 		seen:   map[string]int{},
 		before: map[string]string{formulaPrefix + "tu": "0.6.2", formulaPrefix + "fab-kit": "1.0.0"},
@@ -1369,8 +1385,8 @@ func TestUpdate_DigestColumnAlignment(t *testing.T) {
 	installFakeRunner(t, f)
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 	changelogServer(t, map[string]string{
-		"tu":      relJSON([3]string{"v0.6.4", "t4", "b"}, [3]string{"v0.6.3", "t3", "b"}),
-		"fab-kit": relJSON([3]string{"v1.10.0", "f", "b"}),
+		"tu":      relJSON([3]string{"v0.6.4", "t4", "tu body"}, [3]string{"v0.6.3", "t3", "b"}),
+		"fab-kit": relJSON([3]string{"v1.10.0", "f", "fab body"}),
 	})
 
 	var stdout, stderr bytes.Buffer
@@ -1378,15 +1394,17 @@ func TestUpdate_DigestColumnAlignment(t *testing.T) {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
-	// tu name padded to fab-kit width (7); transition "0.6.2 -> 0.6.4" (14) padded
-	// to "1.0.0 -> 1.10.0" width (15), so the count columns line up.
-	wantTu := "  tu      0.6.2 -> 0.6.4  (2 releases)\n"
-	wantFab := "  fab-kit 1.0.0 -> 1.10.0 (1 release)\n"
-	if !strings.Contains(out, wantTu) {
-		t.Fatalf("out missing aligned tu line %q:\n%s", wantTu, out)
+	// Unpadded transition lines: just the 2-space indent + `{tool} {old} -> {new}
+	// (N release[s])`, no column padding after the tool name or the transition.
+	if !strings.Contains(out, "  tu 0.6.2 -> 0.6.4 (2 releases)\n") {
+		t.Fatalf("out missing UNpadded tu transition line:\n%s", out)
 	}
-	if !strings.Contains(out, wantFab) {
-		t.Fatalf("out missing aligned fab-kit line %q:\n%s", wantFab, out)
+	if !strings.Contains(out, "  fab-kit 1.0.0 -> 1.10.0 (1 release)\n") {
+		t.Fatalf("out missing UNpadded fab-kit transition line:\n%s", out)
+	}
+	// Bodies render inline for both tools.
+	if !strings.Contains(out, "tu body") || !strings.Contains(out, "fab body") {
+		t.Fatalf("out missing inline bodies for tu/fab-kit:\n%s", out)
 	}
 }
 

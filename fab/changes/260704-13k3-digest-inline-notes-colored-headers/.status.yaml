@@ -1,0 +1,55 @@
+id: 13k3
+name: 260704-13k3-digest-inline-notes-colored-headers
+created: 2026-07-04T04:11:02Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 10
+    acceptance_count: 14
+    acceptance_completed: 14
+confidence:
+    certain: 11
+    confident: 3
+    tentative: 0
+    unresolved: 0
+    score: 4.6
+    fuzzy: true
+    dimensions:
+        signal: 83.9
+        reversibility: 88.6
+        competence: 88.9
+        disambiguation: 82.1
+stage_metrics:
+    intake: {started_at: "2026-07-04T04:11:02Z", driver: fab-new, iterations: 1, completed_at: "2026-07-04T04:18:42Z"}
+    apply: {started_at: "2026-07-04T04:18:42Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-04T04:26:59Z"}
+    review: {started_at: "2026-07-04T04:26:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-04T04:45:32Z"}
+    hydrate: {started_at: "2026-07-04T04:45:32Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-04T04:51:35Z"}
+    ship: {started_at: "2026-07-04T04:51:35Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-04T04:51:35Z"
+    computed_at_stage: hydrate
+summary: 'shll update digest now renders full release bodies inline via the shared renderReleases helper (10-release cap, bold anchors); printToolHeader color form is one bold-cyan span; dropped digestFullNotes/digestSpecs/digestReleaseIndent and the Full notes: command line'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-04T04:51:35Z

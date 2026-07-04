@@ -370,8 +370,8 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 	printSummaryTail(stdout, succeeded, total, nowFunc().Sub(start), color)
 
 	// "What changed:" digest tail: for every tool whose version actually changed,
-	// fetch its release range and print a compact per-tool transition + title
-	// lines, then a copy-pasteable `shll changelog` command. When no tool bumped
+	// fetch its release range and print a bold per-tool transition line followed
+	// by its full release notes inline (shared `shll changelog` format). When no tool bumped
 	// (all up-to-date or all failed), NOTHING prints — the output is byte-identical
 	// to before this change. The color decision computed once above is threaded in
 	// so the digest ASCII-degrades its `→`/`—` glyphs on a non-TTY/NO_COLOR stream
@@ -524,39 +524,46 @@ func appendArg(base []string, extra string) []string {
 }
 
 // Digest tail literals — named per code-quality.md (no magic strings). The
-// digest indent mirrors the tool/release nesting the user agreed to in the
-// intake's sample output.
+// digest indent mirrors the tool nesting the user agreed to in the intake's
+// sample output; release blocks render unindented via the shared renderReleases
+// helper (the same format `shll changelog` uses).
 const (
-	digestHeader        = "What changed:"
-	digestFullNotes     = "Full notes: shll changelog"
-	digestToolIndent    = "  "
-	digestReleaseIndent = "    "
+	digestHeader     = "What changed:"
+	digestToolIndent = "  "
 )
 
 // printUpdateDigest prints the "What changed:" tail after the summary line, one
 // block per tool that ACTUALLY bumped (bumps already excludes no-change/unknown
 // tools, so an empty slice prints nothing — preserving the pre-change output
 // byte-for-byte). For each bumped tool it fetches the release range (concurrently)
-// and prints:
+// and prints an indented per-tool transition line followed by the tool's full
+// release notes inline:
 //
 //	What changed:
-//	  tu   0.6.2 → 0.6.4   (2 releases)
-//	    v0.6.4  fix: opencode session parsing
-//	    v0.6.3  feat: daily usage rollups
+//	  tu 0.6.2 → 0.6.4 (2 releases)
 //
-//	Full notes: shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18
+//	v0.6.4  fix: opencode session parsing
+//	## What's Changed
+//	* fix: parse sessions with missing usage blocks
 //
-// The tool-name column and the `{old} → {new}` transition column are each padded
-// to their widest member so the `(N releases)` counts line up (the intake's
-// agreed sample), the same label-padding idiom printPreviewRows uses. Displayed
-// versions are the normalized (v-stripped) forms carried on the bump. On a
-// non-color stream the `→`/`—` glyphs ASCII-degrade to `->`/`--` (color threaded
-// in from runUpdate; per-tool-output-separation spec).
+//	v0.6.3  feat: daily usage rollups
+//	...
+//
+// The release bodies are rendered IN-PROCESS from the data changelog.FetchAll
+// already returns (never a subprocess to `shll changelog`) via the shared
+// renderReleases helper, so the digest and `shll changelog` render releases in
+// one format — including the changelogCapPerTool cap with its compare-URL cap
+// notice on overflow — and cannot drift. The tool-name-bearing transition line is a
+// navigational ANCHOR, so it is bold when color is enabled (bold, NOT bold-cyan
+// — bold-cyan is reserved for the per-tool header). Displayed versions are the
+// normalized (v-stripped) forms carried on the bump. On a non-color stream the
+// `→`/`—`/`…` glyphs ASCII-degrade to `->`/`--`/`...` and no ANSI is emitted
+// (color threaded in from runUpdate; per-tool-output-separation spec).
 //
 // A tool whose fetch is unavailable (or whose range holds zero matching releases)
-// degrades to `{tool} {old} → {new} — see {compareURL}` (Constitution V). The
-// digest is presentation-only — it NEVER changes the process exit code, and a
-// fetch failure here is silent beyond the fallback line.
+// degrades to `{tool} {old} → {new} — see {compareURL}` (Constitution V; no
+// bodies exist to inline). The digest is presentation-only — it NEVER changes the
+// process exit code, and a fetch failure here is silent beyond the fallback line.
 func printUpdateDigest(ctx context.Context, w io.Writer, bumps []versionBump, color bool) {
 	if len(bumps) == 0 {
 		return
@@ -570,64 +577,31 @@ func printUpdateDigest(ctx context.Context, w io.Writer, bumps []versionBump, co
 
 	arr := arrow(color)
 
-	// First pass: compute the column widths so the tool names and the transition
-	// segments align (the `(N releases)` counts then line up under each other).
-	toolWidth, transWidth := 0, 0
-	transitions := make([]string, len(results))
-	for i, res := range results {
-		if len(res.Tool) > toolWidth {
-			toolWidth = len(res.Tool)
-		}
-		transitions[i] = fmt.Sprintf("%s %s %s", res.Old, arr, res.New)
-		if len(transitions[i]) > transWidth {
-			transWidth = len(transitions[i])
-		}
-	}
-
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, digestHeader)
 
 	for i, res := range results {
-		toolPad := strings.Repeat(" ", toolWidth-len(res.Tool))
+		// Blank line between tool blocks (mirroring runChangelog's per-tool
+		// separation) so tools are never separated more weakly than the releases
+		// within one tool.
+		if i > 0 {
+			fmt.Fprintln(w)
+		}
 		if res.Unavailable || len(res.Releases) == 0 {
 			// Degrade: a fetch failure OR a tag-scheme mismatch that left zero
-			// matching releases → point at the compare URL, no title lines. The
-			// transition is NOT count-padded here (no trailing count column).
-			fmt.Fprintf(w, "%s%s%s %s %s see %s\n",
-				digestToolIndent, res.Tool, toolPad, transitions[i], dash(color), changelog.CompareURL(res.Repo, res.Old, res.New))
+			// matching releases → point at the compare URL, no body lines. The
+			// whole transition-plus-fallback line is a bold anchor like the
+			// available branch.
+			fmt.Fprintln(w, bold(color, fmt.Sprintf("%s%s %s %s %s %s see %s",
+				digestToolIndent, res.Tool, res.Old, arr, res.New, dash(color), changelog.CompareURL(res.Repo, res.Old, res.New))))
 			continue
 		}
 		n := len(res.Releases)
-		transPad := strings.Repeat(" ", transWidth-len(transitions[i]))
-		fmt.Fprintf(w, "%s%s%s %s%s (%d release%s)\n",
-			digestToolIndent, res.Tool, toolPad, transitions[i], transPad, n, plural(n))
-		// Align each release's tag column to the widest tag in THIS tool's block so
-		// titles line up under one another.
-		tagWidth := 0
-		for _, r := range res.Releases {
-			if len(r.Tag) > tagWidth {
-				tagWidth = len(r.Tag)
-			}
-		}
-		for _, r := range res.Releases {
-			// Title-only in the digest (NO bodies — those are one copy-paste away
-			// via the printed command below).
-			tagPad := strings.Repeat(" ", tagWidth-len(r.Tag))
-			fmt.Fprintf(w, "%s%s%s  %s\n", digestReleaseIndent, r.Tag, tagPad, r.Title)
-		}
+		// The per-tool transition line CARRIES the tool name (unlike `shll
+		// changelog`, whose tool name lives in the printToolHeader above the body).
+		fmt.Fprintln(w, bold(color, fmt.Sprintf("%s%s %s %s %s (%d release%s)",
+			digestToolIndent, res.Tool, res.Old, arr, res.New, n, plural(n))))
+		// Full release notes inline, in the shared `shll changelog` format.
+		renderReleases(w, res, color)
 	}
-
-	// The copy-pasteable full-notes command names exactly the bumped tools with
-	// their ranges, in the same order as the digest blocks.
-	fmt.Fprintf(w, "\n%s %s\n", digestFullNotes, digestSpecs(bumps))
-}
-
-// digestSpecs renders the bumped tools as `tool@old..new` specs joined by spaces,
-// forming the argument list of the printed `shll changelog` command.
-func digestSpecs(bumps []versionBump) string {
-	specs := make([]string, len(bumps))
-	for i, b := range bumps {
-		specs[i] = fmt.Sprintf("%s%s%s%s%s", b.tool, specToolSep, b.old, specRangeSep, b.new)
-	}
-	return strings.Join(specs, " ")
 }

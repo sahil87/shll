@@ -95,6 +95,42 @@ func TestChangelog_ExplicitRangeHappyPath(t *testing.T) {
 	}
 }
 
+func TestRenderChangelogResult_ColorFormBoldAnchors(t *testing.T) {
+	// Change 13k3: the changelog-surface navigational anchors — the transition line
+	// and each release's tag/title line — are PLAIN BOLD when color is enabled
+	// (bold-cyan is reserved for the per-tool header). The release body is NOT an
+	// anchor and carries no styling. renderChangelogResult is driven directly with
+	// color=true (bytes.Buffer runs are always non-TTY, so this is the only path
+	// that exercises the color branch). renderReleases is exercised transitively.
+	res := changelog.Result{
+		Tool: "hop", Repo: "hop", Old: "0.1.16", New: "0.1.18",
+		Releases: []changelog.Release{
+			{Tag: "v0.1.18", Title: "feat: agent support", Body: "## What's Changed\n* agent"},
+		},
+	}
+	var buf bytes.Buffer
+	renderChangelogResult(&buf, res, true)
+	got := buf.String()
+
+	// Transition line bold-anchored (R3.3): the `{old} → {new} (N release[s])` run
+	// is wrapped in ansiBold … ansiReset, with the Unicode arrow (color branch).
+	if !strings.Contains(got, ansiBold+"0.1.16 → 0.1.18 (1 release)"+ansiReset) {
+		t.Fatalf("transition line must be a bold anchor with the Unicode arrow:\n%q", got)
+	}
+	// Release tag/title line bold-anchored (R3.2).
+	if !strings.Contains(got, ansiBold+"v0.1.18  feat: agent support"+ansiReset) {
+		t.Fatalf("release tag/title line must be a bold anchor:\n%q", got)
+	}
+	// The anchors are plain bold, never bold-cyan (reserved for the header, R3.4).
+	if strings.Contains(got, ansiBoldCyan) {
+		t.Fatalf("changelog anchors must be plain bold, never bold-cyan:\n%q", got)
+	}
+	// The body is not an anchor — the body text itself carries no ANSI wrap.
+	if !strings.Contains(got, "\n## What's Changed\n* agent\n") {
+		t.Fatalf("release body must render unstyled inline:\n%q", got)
+	}
+}
+
 func TestChangelog_UnknownTargetErrors(t *testing.T) {
 	installFakeRunner(t, &fakeRunner{})
 	var stdout, stderr bytes.Buffer
