@@ -1,0 +1,35 @@
+id: 9bak
+name: 260709-9bak-run-kit-rename-migration-guard
+created: 2026-07-09T14:39:18Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: ready
+    apply: pending
+    review: pending
+    hydrate: pending
+    ship: pending
+    review-pr: pending
+plan:
+    generated: false
+    task_count: 0
+    acceptance_count: 0
+    acceptance_completed: 0
+confidence:
+    certain: 3
+    confident: 7
+    tentative: 0
+    unresolved: 0
+    score: 3.5
+    fuzzy: true
+    dimensions:
+        signal: 59.5
+        reversibility: 84.5
+        competence: 75.5
+        disambiguation: 68.0
+stage_metrics:
+    intake: {started_at: "2026-07-09T14:39:18Z", driver: fab-new, iterations: 1}
+prs: []
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-09T14:41:57Z

@@ -1,0 +1,35 @@
+id: kkaj
+name: 260709-kkaj-shll-uninstall-command
+created: 2026-07-09T14:43:07Z
+created_by: sahil-noon
+change_type: refactor
+issues: []
+progress:
+    intake: ready
+    apply: pending
+    review: pending
+    hydrate: pending
+    ship: pending
+    review-pr: pending
+plan:
+    generated: false
+    task_count: 0
+    acceptance_count: 0
+    acceptance_completed: 0
+confidence:
+    certain: 2
+    confident: 5
+    tentative: 1
+    unresolved: 0
+    score: 4.0
+    fuzzy: true
+    dimensions:
+        signal: 56.9
+        reversibility: 82.5
+        competence: 76.3
+        disambiguation: 69.4
+stage_metrics:
+    intake: {started_at: "2026-07-09T14:43:07Z", driver: fab-new, iterations: 1}
+prs: []
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-09T14:44:42Z
