@@ -583,9 +583,15 @@ const (
 	// Takes the tool name. PRINT ONLY — shll never runs it.
 	migrationDaemonNoteFmt = "note: %[1]s daemon (if running) was not restarted by the brew-direct migration — run '%[1]s serve --restart' if you use it"
 	// migrationDualRackNoteFmt flags the state-C leftover (both kegs present). Takes
-	// (legacy formula, current formula). Detection only — shll never removes the
-	// orphan keg (that belongs to `shll uninstall` / manual brew).
-	migrationDualRackNoteFmt = "note: a leftover %s keg remains alongside %s — remove it with 'shll uninstall' or 'brew uninstall %s'"
+	// (legacy formula, current formula, tool name, legacy LEAF name). Detection only —
+	// shll never removes the orphan keg. It points at `shll uninstall <tool>` — the now-
+	// supported dual-rack cleanup (the sibling `shll uninstall` change), which probes-and-
+	// leaf-verifies before removing — as the primary fix. The brew-direct alternative is
+	// given by the LEGACY LEAF NAME (`brew uninstall rk`), NEVER the qualified old-name
+	// `brew uninstall sahil87/tap/rk`: post-rename brew re-resolves the qualified `rk` →
+	// `run-kit` and a blind qualified uninstall would delete the GOOD keg (the exact
+	// footgun `shll uninstall` exists to avoid). Bare `rk` targets only the orphan rack.
+	migrationDualRackNoteFmt = "note: a leftover %s keg remains alongside %s — remove it with 'shll uninstall %s' (or 'brew uninstall %s')"
 )
 
 // upgradeTool upgrades a single installed roster tool, foregrounded. For a tool
@@ -606,7 +612,7 @@ func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeR
 	// A non-migration run-kit upgrade that ends dual-rack (state C) still surfaces
 	// the cleanup note (detection happened in probeTool).
 	if p.dualRack {
-		fmt.Fprintf(stdout, migrationDualRackNoteFmt+"\n", t.LegacyFormula, t.Formula, t.LegacyFormula)
+		fmt.Fprintf(stdout, migrationDualRackNoteFmt+"\n", t.LegacyFormula, t.Formula, t.Name, t.LegacyName)
 	}
 	return code, err
 }
@@ -667,7 +673,7 @@ func migrateRunKit(ctx context.Context, stdout, stderr io.Writer, t Tool) (int, 
 	// `sahil87/tap/rk` probe that exits 0 reporting leaf `run-kit` (rename resolution
 	// pointing at the single migrated keg) is NOT a false dual-rack positive.
 	if legacyInstalled, legacyLeaf, _ := probeInstalledLeaf(ctx, t.LegacyFormula); legacyInstalled && legacyLeaf == t.LegacyName {
-		fmt.Fprintf(stdout, migrationDualRackNoteFmt+"\n", t.LegacyFormula, t.Formula, t.LegacyFormula)
+		fmt.Fprintf(stdout, migrationDualRackNoteFmt+"\n", t.LegacyFormula, t.Formula, t.Name, t.LegacyName)
 	}
 
 	return code, nil

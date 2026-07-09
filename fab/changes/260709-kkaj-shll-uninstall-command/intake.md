@@ -75,6 +75,8 @@ This makes `shll uninstall run-kit` the supported cleanup for the dual-rack stat
 - `cli/uninstall`: (new) command behavior — target resolution, confirmation gate, reverse-roster order, dual-name run-kit sweep, self-uninstall, exit-code aggregation
 - `cli/commands`: (modify) subcommand registration and the shll-self target handling note
 - `cli/install`: (modify) cross-reference as the counterpart command; shared brew-helper seam if refactored
+- `cli/update`: (modify) `migrationDualRackNoteFmt` retargeted at `shll uninstall <tool>` / leaf-name `brew uninstall rk` (the qualified old-name form was the rename-re-resolution footgun); §migration action step 4 wording is stale <!-- added post-review: the diff changed update.go's dual-rack note + state-C golden -->
+
 
 ## Impact
 

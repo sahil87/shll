@@ -25,6 +25,12 @@ const brewMissingHint = "shll update requires Homebrew. Install from https://bre
 // keeping `brewMissingHint` separate.
 const installBrewMissingHint = "shll install requires Homebrew. Install from https://brew.sh"
 
+// uninstallBrewMissingHint is the uninstall-command counterpart to brewMissingHint
+// / installBrewMissingHint. Each command uses a command-specific message so the
+// error tells the user which command they ran (the update spec's verbatim assertion
+// is preserved by keeping brewMissingHint separate).
+const uninstallBrewMissingHint = "shll uninstall requires Homebrew. Install from https://brew.sh"
+
 // shllFormula is the brew formula for shll itself. Used by `shll update` to
 // self-upgrade alongside the roster (shll is not in Roster — Roster is the
 // sub-tool list per Constitution III).

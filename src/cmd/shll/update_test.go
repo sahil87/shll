@@ -1808,6 +1808,19 @@ func TestUpdate_MigrationStateC_DualRack(t *testing.T) {
 	if !strings.Contains(out, "leftover "+runKitLegacyFormula+" keg remains alongside "+runKitFormula) {
 		t.Fatalf("out missing the dual-rack cleanup note:\n%s", out)
 	}
+	// The note points at `shll uninstall run-kit` (the now-supported, leaf-verified dual-
+	// rack cleanup) and gives the brew-direct alternative by the LEGACY LEAF NAME only.
+	if !strings.Contains(out, "shll uninstall run-kit") {
+		t.Errorf("dual-rack note must point at `shll uninstall run-kit`, out:\n%s", out)
+	}
+	if !strings.Contains(out, "brew uninstall rk") {
+		t.Errorf("dual-rack note's brew-direct alternative must be the leaf name `brew uninstall rk`, out:\n%s", out)
+	}
+	// It must NOT suggest the qualified old-name form — post-rename brew re-resolves
+	// `sahil87/tap/rk` → run-kit, so that would delete the good keg (the footgun).
+	if strings.Contains(out, "brew uninstall "+runKitLegacyFormula) {
+		t.Errorf("dual-rack note must NOT suggest the qualified `brew uninstall %s` (rename re-resolution deletes the good keg), out:\n%s", runKitLegacyFormula, out)
+	}
 	if invocationsContain(calls, brewBinary, "uninstall", runKitLegacyFormula) {
 		t.Fatal("dual-rack is detection-only — shll must NEVER uninstall the orphan keg")
 	}
