@@ -850,6 +850,19 @@ func TestDoctor_DualRackWarns(t *testing.T) {
 	if !strings.Contains(out, "leftover "+formulaPrefix+"rk keg") {
 		t.Fatalf("missing dual-rack cleanup suggestion:\n%s", out)
 	}
+	// The cleanup pointer MUST name the specific tool for the shll path (a bare
+	// `shll uninstall` sweeps the whole roster) and use the legacy LEAF name for the
+	// brew fallback — never the qualified legacy formula (which re-resolves to the
+	// renamed formula post-rename). Mirrors update.go's migrationDualRackNoteFmt.
+	if !strings.Contains(out, "shll uninstall run-kit") {
+		t.Fatalf("dual-rack suggestion must name the tool ('shll uninstall run-kit'), not a bare roster sweep:\n%s", out)
+	}
+	if !strings.Contains(out, "brew uninstall rk") {
+		t.Fatalf("dual-rack suggestion must use the legacy leaf name ('brew uninstall rk'):\n%s", out)
+	}
+	if strings.Contains(out, "brew uninstall "+formulaPrefix+"rk") {
+		t.Fatalf("dual-rack suggestion must NOT use the qualified legacy formula in the brew slot (re-resolution footgun):\n%s", out)
+	}
 }
 
 func TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail(t *testing.T) {

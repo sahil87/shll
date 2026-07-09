@@ -66,11 +66,16 @@ const (
 	// still installed under the old formula — the tool works, but is not yet on the
 	// renamed formula. Migration is one command. WARN, not FAIL (it still runs).
 	suggestPendingMigrationFmt = "pending migration from the legacy keg — run 'shll update %s'"
-	// suggestDualRackFmt takes (legacy formula, current formula). Both kegs are
-	// installed (the state-C leftover) — the tool works off the current keg, but an
-	// orphan legacy keg lingers. WARN with a manual-cleanup pointer (shll never
-	// removes it automatically).
-	suggestDualRackFmt = "a leftover %s keg remains alongside %s — remove it with 'shll uninstall' or 'brew uninstall %s'"
+	// suggestDualRackFmt takes (legacy formula, current formula, tool name, legacy
+	// leaf name). Both kegs are installed (the state-C leftover) — the tool works
+	// off the current keg, but an orphan legacy keg lingers. WARN with a
+	// manual-cleanup pointer (shll never removes it automatically). Mirrors
+	// update.go's migrationDualRackNoteFmt: the `shll uninstall %s` slot names the
+	// specific tool (a bare `shll uninstall` would sweep the whole roster), and the
+	// brew fallback uses the legacy LEAF name (`brew uninstall rk`) — never the
+	// qualified legacy formula (`sahil87/tap/rk`), which re-resolves through the tap
+	// to the renamed formula post-rename (the known footgun).
+	suggestDualRackFmt = "a leftover %s keg remains alongside %s — remove it with 'shll uninstall %s' or 'brew uninstall %s'"
 )
 
 // doctorResult is the typed per-tool record. It is the single source for BOTH the
@@ -362,7 +367,7 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFa
 	// either way). shll never removes the orphan (Constitution — detection only).
 	if migration.dualRack {
 		res.Status = markerWarn
-		res.Suggestion = fmt.Sprintf(suggestDualRackFmt, tool.LegacyFormula, tool.Formula, tool.LegacyFormula)
+		res.Suggestion = fmt.Sprintf(suggestDualRackFmt, tool.LegacyFormula, tool.Formula, tool.Name, tool.LegacyName)
 		return res
 	}
 
