@@ -5,17 +5,17 @@ created_by: sahil-noon
 change_type: fix
 issues: []
 progress:
-    intake: ready
-    apply: pending
-    review: pending
-    hydrate: pending
-    ship: pending
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
     review-pr: pending
 plan:
-    generated: false
-    task_count: 0
-    acceptance_count: 0
-    acceptance_completed: 0
+    generated: true
+    task_count: 21
+    acceptance_count: 24
+    acceptance_completed: 24
 confidence:
     certain: 3
     confident: 7
@@ -29,7 +29,26 @@ confidence:
         competence: 75.5
         disambiguation: 68.0
 stage_metrics:
-    intake: {started_at: "2026-07-09T14:39:18Z", driver: fab-new, iterations: 1}
+    intake: {started_at: "2026-07-09T14:39:18Z", driver: fab-new, iterations: 1, completed_at: "2026-07-09T14:47:48Z"}
+    apply: {started_at: "2026-07-09T15:30:55Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-09T15:41:38Z"}
+    review: {started_at: "2026-07-09T15:41:38Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-09T15:51:11Z"}
+    hydrate: {started_at: "2026-07-09T15:51:11Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-09T16:12:02Z"}
+    ship: {started_at: "2026-07-09T16:12:02Z", driver: fab-fff, iterations: 1}
 prs: []
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-09T16:12:02Z"
+    computed_at_stage: hydrate
+summary: 'rk→run-kit rename: roster identity flip (Name/Formula/Update run-kit, new LegacyName/LegacyFormula), legacy rk target alias, ErrNotFound-only PATH-probe fallback, and the brew-direct keg-leaf migration guard across update/install/doctor'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-09T14:41:57Z
+last_updated: 2026-07-09T16:12:02Z

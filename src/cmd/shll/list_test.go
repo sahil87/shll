@@ -76,24 +76,27 @@ func TestList_AllInstalled(t *testing.T) {
 }
 
 func TestList_SomeMissing(t *testing.T) {
-	// Everything installed except rk.
+	// Everything installed except run-kit. Its PATH probe (and the legacy `rk`
+	// fallback, also absent from the map) both fail → missing marker.
 	installed := allInstalled()
-	installed["rk"] = false
+	installed["run-kit"] = false
 	installFakeRunner(t, listFake(installed))
 
 	var stdout bytes.Buffer
 	if err := runList(context.Background(), &stdout, false); err != nil {
 		t.Fatalf("runList err = %v (must never error on a missing tool)", err)
 	}
+	sawRunKit := false
 	for _, line := range strings.Split(stdout.String(), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
 		}
 		// The name is the second field (after the status marker).
-		if len(fields) >= 2 && fields[1] == "rk" {
+		if len(fields) >= 2 && fields[1] == "run-kit" {
+			sawRunKit = true
 			if fields[0] != statusASCIIMissing {
-				t.Fatalf("rk row = %q, want missing marker %q", line, statusASCIIMissing)
+				t.Fatalf("run-kit row = %q, want missing marker %q", line, statusASCIIMissing)
 			}
 		}
 		if len(fields) >= 2 && fields[1] == "hop" {
@@ -101,6 +104,9 @@ func TestList_SomeMissing(t *testing.T) {
 				t.Fatalf("hop row = %q, want installed marker %q", line, statusASCIIInstalled)
 			}
 		}
+	}
+	if !sawRunKit {
+		t.Fatal("expected a run-kit row in the output")
 	}
 }
 
@@ -118,10 +124,11 @@ func TestList_RepoLinks(t *testing.T) {
 			t.Errorf("output missing repo URL %q for %s. output:\n%s", want, tool.Name, out)
 		}
 	}
-	// Regression guard for the rk/run-kit 404 footgun: rk MUST resolve to
-	// .../run-kit, never .../rk.
+	// Regression guard for the rk/run-kit 404 footgun: run-kit MUST resolve to
+	// .../run-kit, never .../rk. Post-rename Name == Repo == "run-kit", so the URL is
+	// composed straight from the name — but the guard stays as a safety net.
 	if !strings.Contains(out, githubOrgBase+"run-kit") {
-		t.Errorf("rk row must resolve to %s. output:\n%s", githubOrgBase+"run-kit", out)
+		t.Errorf("run-kit row must resolve to %s. output:\n%s", githubOrgBase+"run-kit", out)
 	}
 	if strings.Contains(out, githubOrgBase+"rk") {
 		t.Errorf("output must NOT contain the dead %s link. output:\n%s", githubOrgBase+"rk", out)
@@ -129,9 +136,9 @@ func TestList_RepoLinks(t *testing.T) {
 }
 
 func TestList_JSON(t *testing.T) {
-	// rk missing, the rest installed, so `installed` is exercised in both states.
+	// run-kit missing, the rest installed, so `installed` is exercised in both states.
 	installed := allInstalled()
-	installed["rk"] = false
+	installed["run-kit"] = false
 	installFakeRunner(t, listFake(installed))
 
 	var stdout bytes.Buffer
@@ -208,7 +215,7 @@ func TestList_JSON(t *testing.T) {
 		if got.Repo != githubOrgBase+tool.Repo {
 			t.Errorf("item %d repo = %q, want full URL %q", i+1, got.Repo, githubOrgBase+tool.Repo)
 		}
-		wantInstalled := tool.Name != "rk"
+		wantInstalled := tool.Name != "run-kit"
 		if got.Installed != wantInstalled {
 			t.Errorf("item %d (%s) installed = %v, want %v", i+1, tool.Name, got.Installed, wantInstalled)
 		}

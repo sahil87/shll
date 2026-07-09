@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll list` — toolkit roster with install status, descriptions, and repo links; aligned table + `--json`; reuses the shared `toolInstalled` probe; the `rk`/`run-kit` repo-slug footgun."
+description: "`shll list` — toolkit roster with install status, descriptions, and repo links; aligned table + `--json`; reuses the shared `toolInstalled` probe; the run-kit repo-slug footgun (retired post-rename, Name == Repo)."
 ---
 # cli/list
 
@@ -16,22 +16,22 @@ Source: `src/cmd/shll/list.go` (+ `list_test.go`). Reuses the shared install pro
 
 ### Default: aligned table
 
-A shll-first row, then one row per roster tool in `Roster` order (leaves-first: `wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit`). Columns: **status indicator · name · description · repo URL**. Column-aligned via `text/tabwriter` (`src/cmd/shll/list.go:130`) with the **same writer config as `version`**: minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
+A shll-first row, then one row per roster tool in `Roster` order (leaves-first: `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). Columns: **status indicator · name · description · repo URL**. Column-aligned via `text/tabwriter` (`src/cmd/shll/list.go`) with the **same writer config as `version`**: minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 
 ```
 ok  shll      the manager for the shll toolkit                                         https://github.com/sahil87/shll
 ok  wt        Git worktree management — create, list, open, delete worktrees           https://github.com/sahil87/wt
 ok  idea      Backlog idea management from the terminal                                https://github.com/sahil87/idea
 ok  tu        Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)   https://github.com/sahil87/tu
---  rk        Run-kit — tmux session manager with a web UI                             https://github.com/sahil87/run-kit
+--  run-kit   Run-kit — tmux session manager with a web UI (rk stays as an alias)      https://github.com/sahil87/run-kit
 ok  hop       Fast directory/project jumping across worktrees                          https://github.com/sahil87/hop
 ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)                 https://github.com/sahil87/fab-kit
 ```
 
-(The example shows the non-TTY ASCII status markers and `rk` missing; on a color-enabled terminal the status cells are the green `✓` / red `✗` glyphs.)
+(The example shows the non-TTY ASCII status markers and `run-kit` missing; on a color-enabled terminal the status cells are the green `✓` / red `✗` glyphs. A pre-rename install whose binary is still `rk` on PATH is shown *installed* via the [legacy-name probe fallback](/cli/version.md#the-legacy-name-path-probe-fallback-change-9bak), still under the display name `run-kit`.)
 
 - **A shll-first self-row (change bb7r — reverses lst7's "no self-row").** `list` now prepends a `shll` row using the **plain installed marker** (`ok` / green `✓` — the *same* rendering as an installed tool, NOT a distinct "self" marker: maximum visual uniformity was chosen), the manager description `"the manager for the shll toolkit"`, and the repo URL `https://github.com/sahil87/shll`. shll is always present (it is the running binary), so the marker is always installed. This **reverses change lst7's earlier "No `shll` self-row" decision** — see [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r). There are now `len(Roster)+1` rows.
-- The repo column is the full `https://github.com/sahil87/<Repo>` URL, built by `repoURL(t)` (the single URL-composition point — see [The rk/run-kit footgun](#the-rkrun-kit-footgun) below). For the shll row it is `repoURL(shllSelf)` → `https://github.com/sahil87/shll`.
+- The repo column is the full `https://github.com/sahil87/<Repo>` URL, built by `repoURL(t)` (the single URL-composition point — see [The run-kit repo-slug footgun](#the-run-kit-repo-slug-footgun-retired-by-change-9bak) below). For the shll row it is `repoURL(shllSelf)` → `https://github.com/sahil87/shll`.
 
 ### `--json`: bare JSON array
 
@@ -53,8 +53,8 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
     "installed": true
   },
   {
-    "name": "rk",
-    "description": "Run-kit — tmux session manager with a web UI",
+    "name": "run-kit",
+    "description": "Run-kit — tmux session manager with a web UI (rk stays as an alias)",
     "repo": "https://github.com/sahil87/run-kit",
     "installed": false
   }
@@ -107,13 +107,15 @@ This is the **install-mechanism-agnostic** notion of "installed = runnable on PA
 
 The color decision is computed once by `writeListTable` via `colorEnabled(w)` (`src/cmd/shll/ui.go:38`) and passed in, so `statusMarker` is trivially testable and the non-TTY/`NO_COLOR` path is guaranteed escape-free (a `bytes.Buffer` is never an `*os.File`, so tests deterministically hit the ASCII branch). The four marker strings are named constants — `statusGlyphInstalled`/`statusGlyphMissing`/`statusASCIIInstalled`/`statusASCIIMissing` (`src/cmd/shll/list.go:26`) — per code-quality.md (no magic strings). The shll-first table row reuses `statusMarker(true, color)`, so it always shows the installed marker.
 
-## The rk/run-kit footgun
+## The run-kit repo-slug footgun (retired by change 9bak)
 
-`Tool.Repo` is stored **explicitly** on the roster because a naive `github.com/sahil87/<binary-name>` URL would ship a dead link: **`github.com/sahil87/rk` is a 404** — rk's repository is named `run-kit` (HTTP-probed at intake: `sahil87/rk` → 404, `sahil87/run-kit` → 200; `README.md` already links `run-kit`). Every other tool's `Repo` equals its `Name`; only `rk` overrides it to `"run-kit"`.
+`Tool.Repo` is stored **explicitly** on the roster (not derived from `Name`). It originated as a footgun guard: before the rk→run-kit rename, a naive `github.com/sahil87/<binary-name>` URL would have shipped a **dead link** — `github.com/sahil87/rk` was a 404 while the repo was actually named `run-kit` (HTTP-probed at that intake: `sahil87/rk` → 404, `sahil87/run-kit` → 200). The tool `rk` therefore overrode `Repo` to `"run-kit"`.
 
-`repoURL(t)` (`src/cmd/shll/list.go:119`) = `githubOrgBase + t.Repo` is the **single URL-composition point**, so the table column and the JSON `repo` field can never drift. The shll-first row also routes through it (`repoURL(shllSelf)` → `https://github.com/sahil87/shll`), so shll's repo link cannot drift either. `githubOrgBase` (`"https://github.com/sahil87/"`, `src/cmd/shll/tools.go:60`) is a named constant — no open-coded URL prefix at any call site (code-quality.md). See [cli/commands §Hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster) for the `Tool` struct's `Description`/`Repo` fields and roster invariants.
+**Change 9bak retired the divergence.** The tool is now named `run-kit`, so `Name == Repo == "run-kit"` — and every other roster tool's `Repo` already equalled its `Name`, so **today no roster tool has `Repo != Name`**. The field stays explicit anyway, as documented future-proofing: if a future tool's binary name and repo slug diverge again, `Repo` is the seam that keeps `shll list` from emitting a dead link (and the `legacyAliases`/`LegacyName` machinery, not `Repo`, is what now carries the `rk` compatibility surface — see [cli/commands §the rk→run-kit rename](/cli/commands.md#the-rkrun-kit-rename--migration-fields-change-9bak)).
 
-Regression-guarded by `TestList_RepoLinks`, which asserts every row's repo column is `https://github.com/sahil87/<Repo>`, that `rk` resolves to `.../run-kit`, **and** that the dead `.../rk` link is *absent* — the headline footgun guard.
+`repoURL(t)` (`src/cmd/shll/list.go`) = `githubOrgBase + t.Repo` is the **single URL-composition point**, so the table column and the JSON `repo` field can never drift. The shll-first row also routes through it (`repoURL(shllSelf)` → `https://github.com/sahil87/shll`), so shll's repo link cannot drift either. `githubOrgBase` (`"https://github.com/sahil87/"`, `src/cmd/shll/tools.go`) is a named constant — no open-coded URL prefix at any call site (code-quality.md). See [cli/commands §Hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster) for the `Tool` struct's `Description`/`Repo` fields and roster invariants.
+
+Regression-guarded by `TestList_RepoLinks`, which asserts every row's repo column is `https://github.com/sahil87/<Repo>`, that `run-kit` resolves to `.../run-kit`, **and** that the dead `.../rk` link is *absent* — the guard survives the rename (the dead-link assertion now holds via `Name == Repo == "run-kit"` rather than an override).
 
 ## Constitution VII justification
 
@@ -134,7 +136,7 @@ Regression-guarded by `TestList_RepoLinks`, which asserts every row's repo colum
 
 ### #2 Repo slug stored explicitly on the roster
 
-> *Why*: `github.com/sahil87/rk` is a 404; a naive `<name>` URL ships a dead link. `Repo` defaults to `Name`, overridden to `run-kit` for `rk`.
+> *Why*: originally `github.com/sahil87/rk` was a 404, and a naive `<name>` URL would ship a dead link, so `Repo` was overridden to `run-kit` for the tool then named `rk`. Change 9bak's rk→run-kit rename made `Name == Repo` for every roster tool, so the override is gone — but the field stays explicit as future-proofing for a future name/slug divergence (deriving the URL from `Name` alone would re-introduce the footgun class).
 > *Rejected*: deriving the URL from `Name` alone.
 
 ### #3 Bare JSON array top-level
@@ -159,9 +161,9 @@ Regression-guarded by `TestList_RepoLinks`, which asserts every row's repo colum
 Scenarios (`src/cmd/shll/list_test.go`):
 
 - `TestList_AllInstalled` — `len(Roster)+1` rows: row 0 is the shll-first row (installed marker, `shllSelf.Name`, `shllSelf.Description`, `https://github.com/sahil87/shll`), then the roster in order (offset by 1), each carrying the installed ASCII marker (non-TTY path).
-- `TestList_SomeMissing` — `rk`'s `--version` fails → its row shows the `--` missing marker while `hop` shows `ok`; `runList` returns nil (must never error on a missing tool). (Rows are matched by name field, robust to the shll-first prepend.)
-- `TestList_RepoLinks` — every row's repo column is `https://github.com/sahil87/<Repo>`; `rk` resolves to `.../run-kit` and the dead `.../rk` link is absent (the 404 regression guard).
-- `TestList_JSON` — `--json` is valid JSON, `len == len(Roster)+1`; **object 0 is the shll-first object** (`name == shllSelf.Name`, `self:true`, `installed:true`, manager description, `repo == https://github.com/sahil87/shll`); the managed-tool objects follow in roster order (offset by 1), each with `self == false` (the `omitempty` field absent), correct per-field `name`/`description`/`repo`/`installed` reflecting the probe (rk missing); trailing newline, no ANSI, and the HTML-escaped `&` is absent while the literal `workspace & workflow` is present (the `SetEscapeHTML(false)` guard).
+- `TestList_SomeMissing` — `run-kit`'s `--version` fails → its row shows the `--` missing marker while `hop` shows `ok`; `runList` returns nil (must never error on a missing tool). (Rows are matched by name field, robust to the shll-first prepend.)
+- `TestList_RepoLinks` — every row's repo column is `https://github.com/sahil87/<Repo>`; `run-kit` resolves to `.../run-kit` and the dead `.../rk` link is absent (the 404 regression guard, now holding via `Name == Repo == "run-kit"`).
+- `TestList_JSON` — `--json` is valid JSON, `len == len(Roster)+1`; **object 0 is the shll-first object** (`name == shllSelf.Name`, `self:true`, `installed:true`, manager description, `repo == https://github.com/sahil87/shll`); the managed-tool objects follow in roster order (offset by 1), each with `self == false` (the `omitempty` field absent), correct per-field `name`/`description`/`repo`/`installed` reflecting the probe (run-kit missing); trailing newline, no ANSI, and the HTML-escaped `&` is absent while the literal `workspace & workflow` is present (the `SetEscapeHTML(false)` guard).
 - `TestList_NoANSI_Plain` — default output to a `bytes.Buffer` (non-TTY) has no `\x1b[` escapes.
 - `TestList_Order` — JSON: `len == len(Roster)+1`, position 0 is the shll-first object, then the roster entries index-paired to the live `Roster` (offset by 1), so a future reorder moves expected and actual in lockstep (no edit needed — matching `version_test.go`).
 - `TestList_RosterFieldsNonEmpty` — guards that every roster `Description` and every `Repo` is non-empty (regression against adding a tool without filling the new fields).

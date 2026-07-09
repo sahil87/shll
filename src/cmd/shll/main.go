@@ -1,6 +1,6 @@
 // Command shll is the meta-CLI for the sahil87 toolkit. It composes operations
-// that span every per-tool CLI (hop, wt, fab-kit, rk, tu, idea) so users have one
-// entry point for cross-toolkit concerns.
+// that span every per-tool CLI (hop, wt, fab-kit, run-kit, tu, idea) so users have
+// one entry point for cross-toolkit concerns.
 //
 // See `shll --help` for the user-facing surface; the canonical contract for this
 // binary lives in the active fab change spec (under fab/changes/) until hydrated
