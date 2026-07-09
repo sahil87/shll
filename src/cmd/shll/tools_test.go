@@ -210,6 +210,23 @@ func TestResolveTargets_LegacyAliasResolvesToCanonical(t *testing.T) {
 	}
 }
 
+func TestResolveTargets_RepeatedAliasRecordedOnce(t *testing.T) {
+	// Args form a SET: a repeated alias token (`rk rk`) resolves to a single
+	// canonical selection AND is recorded once in aliased, so the caller prints one
+	// rename notice (the once-per-run notice contract) — not one per occurrence.
+	selected, _, aliased, err := resolveTargets([]string{"rk", "rk"}, true)
+	if err != nil {
+		t.Fatalf("resolveTargets([rk rk]) err = %v, want nil", err)
+	}
+	got := toolNames(selected)
+	if len(got) != 1 || got[0] != "run-kit" {
+		t.Fatalf("resolveTargets([rk rk]) selected = %v, want [run-kit]", got)
+	}
+	if len(aliased) != 1 || aliased[0] != "rk" {
+		t.Fatalf("resolveTargets([rk rk]) aliased = %v, want [rk] (recorded once)", aliased)
+	}
+}
+
 func TestResolveTargets_ValidTargetsListsCanonicalOnly(t *testing.T) {
 	// The unknown-target diagnostic lists the canonical `run-kit`, never the legacy
 	// alias `rk`.
@@ -238,5 +255,13 @@ func TestPrintAliasNotices(t *testing.T) {
 	printAliasNotices(&buf, nil)
 	if buf.Len() != 0 {
 		t.Errorf("printAliasNotices(nil) wrote %q, want empty", buf.String())
+	}
+
+	// Defensive: a repeated token is announced once, and a token absent from
+	// legacyAliases is skipped (never a malformed `note: X is now ` line).
+	buf.Reset()
+	printAliasNotices(&buf, []string{"rk", "rk", "bogus"})
+	if got, want := buf.String(), "note: rk is now run-kit\n"; got != want {
+		t.Errorf("printAliasNotices([rk rk bogus]) = %q, want %q", got, want)
 	}
 }

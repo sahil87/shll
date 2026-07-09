@@ -100,9 +100,21 @@ const aliasNoticeFmt = "note: %s is now %s"
 // passed (in the order resolveTargets recorded them). Shared by `shll update` and
 // `shll install` so the notice wording is single-sourced. A nil/empty slice prints
 // nothing. IO is the caller's concern (resolveTargets stays IO-free).
+//
+// resolveTargets already de-duplicates aliased at its source (set semantics) and
+// only ever records genuine legacyAliases keys, but this printer is defensive on
+// both counts so it stays correct for any caller: it skips a token absent from
+// legacyAliases (which would otherwise print a malformed `note: X is now ` line
+// with an empty canonical), and de-dupes so a repeated token is announced once.
 func printAliasNotices(stdout io.Writer, aliased []string) {
+	seen := make(map[string]bool, len(aliased))
 	for _, a := range aliased {
-		fmt.Fprintf(stdout, aliasNoticeFmt+"\n", a, legacyAliases[a])
+		canonical, ok := legacyAliases[a]
+		if !ok || seen[a] {
+			continue
+		}
+		seen[a] = true
+		fmt.Fprintf(stdout, aliasNoticeFmt+"\n", a, canonical)
 	}
 }
 
@@ -219,10 +231,16 @@ func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelecte
 		}
 		// Legacy alias: resolve to the canonical Roster name and record the alias
 		// token so the caller can print the rename notice. Checked before rosterHas
-		// (an alias is by definition not a current Roster name).
+		// (an alias is by definition not a current Roster name). Args form a SET
+		// (see the doc comment), so a repeated alias token (e.g. `update rk rk`) is
+		// recorded ONCE — `wanted[canonical]` is idempotent, and appending to aliased
+		// is gated on the same first-seen check so the caller prints one notice per
+		// distinct alias, matching the once-per-run notice contract in update.go.
 		if canonical, ok := legacyAliases[a]; ok && rosterHas(canonical) {
+			if !wanted[canonical] {
+				aliased = append(aliased, a)
+			}
 			wanted[canonical] = true
-			aliased = append(aliased, a)
 			continue
 		}
 		if rosterHas(a) {
