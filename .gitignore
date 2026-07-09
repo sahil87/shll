@@ -49,3 +49,5 @@ dist/
 /.gemini
 
 .status.yaml.lock
+
+!fab/.fab-version
