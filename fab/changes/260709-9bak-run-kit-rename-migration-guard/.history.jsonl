@@ -1,3 +1,14 @@
 {"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-09T14:39:18Z"}
 {"args":"run-kit rename + migration guard — roster rename rk→run-kit, rk target alias, PATH-probe fallback, brew-keg migration guard in update/install paths","cmd":"fab-new","event":"command","ts":"2026-07-09T14:39:18Z"}
 {"delta":"+3.5","event":"confidence","score":3.5,"trigger":"calc-score","ts":"2026-07-09T14:41:49Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-09T14:47:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-09T14:47:48Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-09T15:19:33Z"}
+{"event":"review","result":"failed","ts":"2026-07-09T15:30:55Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-09T15:30:55Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-09T15:41:38Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-09T15:51:11Z"}
+{"event":"review","result":"passed","ts":"2026-07-09T15:51:11Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-09T16:12:02Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-09T16:15:05Z"}
+{"event":"review","result":"passed","ts":"2026-07-09T16:24:05Z"}

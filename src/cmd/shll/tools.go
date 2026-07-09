@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -48,10 +49,27 @@ type Tool struct {
 	// from the managed set (Constitution III — Tool Roster Source of Truth).
 	Description string
 	// Repo is the github.com/sahil87/<Repo> slug for the tool's source
-	// repository. It defaults to Name for most tools, but is NOT always equal
-	// to Name: rk's repository is `run-kit` (github.com/sahil87/rk is a 404).
-	// Stored explicitly so `shll list` never emits a dead link.
+	// repository. It defaults to Name for most tools. Historically it was NOT
+	// always equal to Name (rk's repo was `run-kit`); after the rk→run-kit rename
+	// Name and Repo match for run-kit, so today every roster entry's Repo equals
+	// its Name. The field stays explicit so `shll list` never emits a dead link
+	// if a future tool's binary name and repo slug diverge again.
 	Repo string
+	// LegacyName is the tool's PRIOR binary name, used ONLY as a display-surface
+	// PATH-probe fallback: when `<Name> --version` returns proc.ErrNotFound,
+	// probeToolVersion retries `<LegacyName> --version` so a pre-rename install
+	// (whose binary is still the old name on PATH) is shown as installed by
+	// list/version/doctor. Empty for every tool except run-kit ("rk"). This is a
+	// transitional field for the rk→run-kit rename — once legacy `rk`-only installs
+	// die out it becomes a no-op fallback and can be retired.
+	LegacyName string
+	// LegacyFormula is the tool's PRIOR fully-qualified brew formula, used ONLY by
+	// the update/install migration guard: when the current Formula is not installed
+	// but LegacyFormula's keg is present (classified by keg leaf name), the tool is
+	// a pre-rename install to be migrated brew-direct. Empty for every tool except
+	// run-kit ("sahil87/tap/rk"). Transitional — see the rk→run-kit migration guard
+	// in update.go; retire once legacy kegs die out.
+	LegacyFormula string
 }
 
 // githubOrgBase is the GitHub organization base URL for the sahil87 toolkit.
@@ -64,6 +82,42 @@ const githubOrgBase = "https://github.com/sahil87/"
 // open-code the string.
 const shellPlaceholder = "<shell>"
 
+// legacyAliases maps a retired tool token to its current canonical Roster name.
+// It is consulted by resolveTargets (before rosterHas) so `shll update rk` /
+// `shll install rk` keep working after the rk→run-kit rename — muscle memory and
+// existing scripts resolve to the canonical tool, and the caller prints a one-line
+// notice. Aliases NEVER appear in the valid-targets error diagnostic (that lists
+// canonical names only). Transitional for the rk→run-kit rename; retire when the
+// alias is no longer worth carrying.
+var legacyAliases = map[string]string{"rk": "run-kit"}
+
+// aliasNoticeFmt is the one-line notice printed (to stdout) when the user named a
+// legacy alias token — e.g. `note: rk is now run-kit`. Takes (alias, canonical).
+// Named per code-quality.md (no magic strings).
+const aliasNoticeFmt = "note: %s is now %s"
+
+// printAliasNotices writes one aliasNoticeFmt line per legacy alias the user
+// passed (in the order resolveTargets recorded them). Shared by `shll update` and
+// `shll install` so the notice wording is single-sourced. A nil/empty slice prints
+// nothing. IO is the caller's concern (resolveTargets stays IO-free).
+//
+// resolveTargets already de-duplicates aliased at its source (set semantics) and
+// only ever records genuine legacyAliases keys, but this printer is defensive on
+// both counts so it stays correct for any caller: it skips a token absent from
+// legacyAliases (which would otherwise print a malformed `note: X is now ` line
+// with an empty canonical), and de-dupes so a repeated token is announced once.
+func printAliasNotices(stdout io.Writer, aliased []string) {
+	seen := make(map[string]bool, len(aliased))
+	for _, a := range aliased {
+		canonical, ok := legacyAliases[a]
+		if !ok || seen[a] {
+			continue
+		}
+		seen[a] = true
+		fmt.Fprintf(stdout, aliasNoticeFmt+"\n", a, canonical)
+	}
+}
+
 // Roster is the hardcoded sahil87 toolkit list. Order matters and is declared
 // leaves-first: every tool appears after all of its dependencies, so dependents
 // are processed only once their dependencies are done.
@@ -72,9 +126,9 @@ const shellPlaceholder = "<shell>"
 //   - fab-kit -> wt, fab-kit -> idea  (fab-kit's brew formula upgrades wt/idea)
 //   - hop -> wt                       (hop's brew formula upgrades wt; hop also
 //     invokes wt at runtime)
-//   - rk -> wt                        (rk invokes wt at runtime)
+//   - run-kit -> wt                   (run-kit invokes wt at runtime)
 //
-// so the leaves wt, idea, tu (no outgoing edges) precede the dependents rk,
+// so the leaves wt, idea, tu (no outgoing edges) precede the dependents run-kit,
 // hop, fab-kit. This is OUTPUT COHERENCE, not a correctness fix: brew already
 // resolves formula dependencies correctly and idempotently, and each
 // `<tool> update` is self-update-only, so the order can neither break nor
@@ -91,7 +145,7 @@ var Roster = []Tool{
 	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees"},
 	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal"},
 	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)"},
-	{Name: "rk", Formula: formulaPrefix + "rk", Update: []string{"rk", "update"}, Repo: "run-kit", Description: "Run-kit — tmux session manager with a web UI"},
+	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", LegacyFormula: formulaPrefix + "rk", Description: "Run-kit — tmux session manager with a web UI (rk stays as an alias)"},
 	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees"},
 	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)"},
 }
@@ -151,23 +205,42 @@ func shllSelfVersion() string {
 // already exist), so it makes no subprocess calls and is trivially unit-testable.
 //
 // Valid targets are the Roster names, plus shllTargetToken when allowShll is true
-// (`update` passes true; `install` passes false — shll is not installable). The args
-// form a SET, not a sequence: selected Tools are returned in Roster (leaves-first)
-// order regardless of the order they were supplied, and selfSelected reports whether
-// shll itself was named (the caller processes it first, before the roster loop).
+// (`update` passes true; `install` passes false — shll is not installable), plus the
+// legacyAliases keys (e.g. `rk` → `run-kit`), which resolve to their canonical
+// Roster tool. The args form a SET, not a sequence: selected Tools are returned in
+// Roster (leaves-first) order regardless of the order they were supplied, and
+// selfSelected reports whether shll itself was named (the caller processes it first,
+// before the roster loop). aliased lists the legacy alias tokens the caller passed
+// (in the order encountered) so the caller can print a one-line "note: rk is now
+// run-kit" notice — resolveTargets stays IO-free and does no printing itself.
 //
 // On ANY unknown arg, it returns a non-nil error naming ALL unknown args (a better
 // one-shot fix than reporting only the first) and listing the valid targets; the
-// caller writes it to stderr and exits non-zero with no side effects. A zero-length
-// args slice yields an empty selection and selfSelected=false (the caller keeps its
-// whole-roster path for that case).
-func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelected bool, err error) {
+// caller writes it to stderr and exits non-zero with no side effects. The error's
+// valid-targets list shows CANONICAL names only — legacy aliases are accepted but
+// never advertised. A zero-length args slice yields an empty selection,
+// selfSelected=false, and no aliases (the caller keeps its whole-roster path).
+func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelected bool, aliased []string, err error) {
 	// Validate every arg up front; collect unknowns so all are reported at once.
 	var unknown []string
 	wanted := make(map[string]bool, len(args))
 	for _, a := range args {
 		if allowShll && a == shllTargetToken {
 			selfSelected = true
+			continue
+		}
+		// Legacy alias: resolve to the canonical Roster name and record the alias
+		// token so the caller can print the rename notice. Checked before rosterHas
+		// (an alias is by definition not a current Roster name). Args form a SET
+		// (see the doc comment), so a repeated alias token (e.g. `update rk rk`) is
+		// recorded ONCE — `wanted[canonical]` is idempotent, and appending to aliased
+		// is gated on the same first-seen check so the caller prints one notice per
+		// distinct alias, matching the once-per-run notice contract in update.go.
+		if canonical, ok := legacyAliases[a]; ok && rosterHas(canonical) {
+			if !wanted[canonical] {
+				aliased = append(aliased, a)
+			}
+			wanted[canonical] = true
 			continue
 		}
 		if rosterHas(a) {
@@ -177,7 +250,7 @@ func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelecte
 		unknown = append(unknown, a)
 	}
 	if len(unknown) > 0 {
-		return nil, false, fmt.Errorf("unknown target%s %s (valid targets: %s)",
+		return nil, false, nil, fmt.Errorf("unknown target%s %s (valid targets: %s)",
 			plural(len(unknown)), quoteJoin(unknown), validTargets(allowShll))
 	}
 
@@ -188,7 +261,7 @@ func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelecte
 			selected = append(selected, t)
 		}
 	}
-	return selected, selfSelected, nil
+	return selected, selfSelected, aliased, nil
 }
 
 // rosterHas reports whether name is a Roster tool name. Source of truth is the live

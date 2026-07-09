@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll changelog` — positional `tool@old..new` release-notes command: no-range installed→latest (incl. shll-self in the bare sweep), `(old, new]` range semantics, 10-release cap, up-to-date/no-releases/unavailable notices, ASCII-degraded framing, and always-exit-0 fetch degradation."
+description: "`shll changelog` — positional `tool@old..new` release-notes command: no-range installed→latest (incl. shll-self in the bare sweep), `(old, new]` range semantics, 10-release cap, up-to-date/no-releases/unavailable notices, ASCII-degraded framing, always-exit-0 fetch degradation, and the legacy `rk` → run-kit target alias inherited via the shared resolver (change 9bak)."
 ---
 # cli/changelog
 
@@ -23,7 +23,8 @@ shll changelog tu@0.6.2..0.6.4          # explicit range: releases in (0.6.2, 0.
 shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18   # multiple (this is what `shll update`'s digest prints)
 ```
 
-- **Valid names** — the six Roster names **plus `shll`** itself. Names are validated via the shared `resolveTargets(names, true)` (`allowShll=true`), which reports **all** unknowns at once listing valid targets, matching `update`'s diagnostic: `shll changelog: unknown target "foo" (valid targets: shll, wt, idea, tu, rk, hop, fab-kit)` — with **no** network/brew side effect. (`parseChangelogSpecs` ignores the resolver's returned ordering and re-derives roster order + ranges itself.)
+- **Valid names** — the six Roster names **plus `shll`** itself. Names are validated via the shared `resolveTargets(names, true)` (`allowShll=true`), which reports **all** unknowns at once listing valid targets, matching `update`'s diagnostic: `shll changelog: unknown target "foo" (valid targets: shll, wt, idea, tu, run-kit, hop, fab-kit)` — with **no** network/brew side effect. (`parseChangelogSpecs` ignores the resolver's returned ordering and re-derives roster order + ranges itself.)
+- **The legacy alias `rk` → `run-kit` lands here for free (change 9bak).** Because `parseChangelogSpecs` routes names through the same shared `resolveTargets`, `shll changelog rk` (and `rk@old..new`) resolves the `rk` token to the canonical `run-kit` tool with **no bespoke changelog code** — the repo slug `run-kit` is unchanged, so the fetch/compare URL is identical. `rk` is never advertised in the valid-targets diagnostic (canonical names only). Unlike `update`/`install`, `changelog` does NOT print the `note: rk is now run-kit` line — it re-derives its own ordering from the resolved specs and drops the resolver's `aliased` return. Pinned by `TestChangelog_LegacyAliasResolvesToRunKit`.
 - **Versions** accepted with or without a `v` prefix; brew `_N` revision suffixes stripped. A `tu@v0.6.2..v0.6.4` spec parses **and displays** identically to the unprefixed form (`NormalizeVer` applied to both bounds — never echoes the user's raw `v`). Pinned by `TestChangelog_VPrefixedSpecNormalizes`.
 - **Dedup** — a repeated tool name keeps the last spec (map-by-name).
 - An `@` with a malformed body (missing `..` or an empty side) is a hard error: `invalid range "tu@0.6.2" (want tool@old..new)` (`TestChangelog_InvalidRangeErrors`).
@@ -46,7 +47,7 @@ A bare `shll changelog` builds `defaultChangelogSpecs()`: **shll itself first** 
 ### Named-but-not-installed
 
 Missing-tool handling depends on the form:
-- **No-range** (bare sweep member OR an explicitly-named `tool`) — a named-but-not-installed tool is an **error** only when explicitly named: `shll changelog: rk: not installed` (all missing names collected and reported at once, in spec/roster order, before any rendering). A bare-sweep member instead skips silently.
+- **No-range** (bare sweep member OR an explicitly-named `tool`) — a named-but-not-installed tool is an **error** only when explicitly named: `shll changelog: run-kit: not installed` (all missing names collected and reported at once, in spec/roster order, before any rendering). A bare-sweep member instead skips silently.
 - **Explicit range** — **never** an error; it never consults brew, so it works whether or not the tool is installed.
 
 Pinned by `TestChangelog_NamedNotInstalledErrorsNoRangeOnly`.
@@ -93,5 +94,6 @@ The changelog surface's own Unicode framing degrades on a non-TTY / `NO_COLOR` s
 - Shared version transitions + the `shll update` "What changed:" digest that renders inline release notes: [cli/update §"What changed:" digest](/cli/update.md#version-capture--the-what-changed-digest-change-r01z). Both surfaces share the `internal/changelog` fetch/filter code **and** one release rendering (`renderReleases`, change 13k3); the digest adds a tool-name-bearing transition line above the shared release blocks.
 - Root wiring + the eight-user-facing-subcommand count: [cli/commands](/cli/commands.md#cobra-root).
 - Shared `ui.go` framing (`printToolHeader`, color gating, glyph degrade): [cli/commands §shared UI helper](/cli/commands.md#shared-ui-helper-uigo).
-- The `rk`/`run-kit` repo-slug footgun (`Repo` field, single-sourced compare URLs): [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
+- The run-kit repo-slug footgun (`Repo` field, single-sourced compare URLs) — retired by the change-9bak rename (`Name == Repo == "run-kit"`), the field kept as future-proofing: [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster) and [cli/list §the run-kit repo-slug footgun](/cli/list.md#the-run-kit-repo-slug-footgun-retired-by-change-9bak).
+- The legacy `rk` → `run-kit` target alias that `changelog` inherits via the shared `resolveTargets` (change 9bak): [cli/commands §the legacy target alias](/cli/commands.md#the-legacy-target-alias-rk--run-kit).
 - ASCII-degrade rule: `docs/specs/per-tool-output-separation.md`.

@@ -173,6 +173,56 @@ func TestBrewTrustList_DegradesOnGarbageJSON(t *testing.T) {
 	}
 }
 
+// --- parseBrewLeaf / probeInstalledLeaf (rk→run-kit migration gate, change 9bak) -
+
+func TestParseBrewLeaf(t *testing.T) {
+	// The leaf is the FIRST whitespace field of the first non-empty line, matching
+	// real `brew list --formula --versions` output (`<leaf> <version...>`).
+	cases := map[string]string{
+		"rk 2.5.13":            "rk",      // legacy keg
+		"run-kit 3.0.0":        "run-kit", // migrated keg
+		"run-kit 3.0.0 2.5.16": "run-kit", // multi-keg — leaf is still the first field
+		"":                     "",        // not installed / empty
+		"   ":                  "",        // whitespace-only
+		"\nrun-kit 3.0.0\n":    "run-kit", // leading blank line skipped
+	}
+	for in, want := range cases {
+		if got := parseBrewLeaf(in); got != want {
+			t.Errorf("parseBrewLeaf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestProbeInstalledLeaf_ReturnsLeafAndVersion(t *testing.T) {
+	// State B is the load-bearing case: `brew list sahil87/tap/rk` EXITS 0 yet reports
+	// leaf `run-kit` (rename resolution). probeInstalledLeaf must surface that leaf so
+	// the migration gate can classify it migrated, not legacy.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" && req.Args[3] == formulaPrefix+"rk" {
+			return proc.Result{Stdout: []byte("run-kit 3.0.0\n")}
+		}
+		return proc.Result{Err: errors.New("not installed")}
+	}}
+	installFakeRunner(t, f)
+
+	installed, leaf, version := probeInstalledLeaf(context.Background(), formulaPrefix+"rk")
+	if !installed {
+		t.Fatal("installed = false, want true (state B: legacy formula probe exits 0)")
+	}
+	if leaf != "run-kit" {
+		t.Errorf("leaf = %q, want run-kit (rename resolution — NOT the legacy leaf)", leaf)
+	}
+	if version != "3.0.0" {
+		t.Errorf("version = %q, want 3.0.0", version)
+	}
+
+	// Not-installed → all zero values.
+	installed, leaf, version = probeInstalledLeaf(context.Background(), formulaPrefix+"run-kit")
+	if installed || leaf != "" || version != "" {
+		t.Errorf("not-installed probe = (%v, %q, %q), want (false, \"\", \"\")", installed, leaf, version)
+	}
+}
+
 // Sanity guard kept from the prior ceremony tests: tapName is the bare tap, no
 // trailing slash (distinct from formulaPrefix). Still referenced by doctor's
 // tap-level trust check and the trust-JSON parse.

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -186,6 +187,82 @@ func TestVersion_TimeoutHandling(t *testing.T) {
 		if strings.HasPrefix(line, "hop") && !strings.Contains(line, notInstalledLabel) {
 			t.Fatalf("hop row = %q, want %q for timeout", line, notInstalledLabel)
 		}
+	}
+}
+
+// --- legacy-name PATH-probe fallback (rk→run-kit, change 9bak) ----------------
+
+// runKitTool returns the live run-kit roster entry (which carries LegacyName "rk").
+func runKitTool(t *testing.T) Tool {
+	t.Helper()
+	for _, tool := range Roster {
+		if tool.Name == "run-kit" {
+			return tool
+		}
+	}
+	t.Fatal("run-kit not found in Roster")
+	return Tool{}
+}
+
+func TestProbeToolVersion_LegacyNameFallbackOnErrNotFound(t *testing.T) {
+	// The primary `run-kit --version` is ErrNotFound (binary not on PATH under the
+	// new name), but the legacy `rk` binary IS present → the fallback finds it and
+	// returns its output. Display name stays run-kit (the caller uses tool.Name).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Err: proc.ErrNotFound}
+		}
+		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Stdout: []byte("rk v2.5.13\n")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	rk := runKitTool(t)
+	out, err := probeToolVersion(context.Background(), rk)
+	if err != nil {
+		t.Fatalf("probeToolVersion err = %v, want nil (legacy fallback should succeed)", err)
+	}
+	if !strings.Contains(string(out), "2.5.13") {
+		t.Fatalf("probe output = %q, want the legacy `rk` binary's version", string(out))
+	}
+	// toolInstalled sees it installed; toolVersion normalizes it — both with the
+	// run-kit display identity.
+	if !toolInstalled(context.Background(), rk) {
+		t.Error("toolInstalled = false, want true via the legacy fallback")
+	}
+	if got := toolVersion(context.Background(), rk); got != "v2.5.13" {
+		t.Errorf("toolVersion = %q, want v2.5.13", got)
+	}
+}
+
+func TestProbeToolVersion_NoFallbackOnNonErrNotFound(t *testing.T) {
+	// A present-but-broken run-kit (`--version` exits non-zero — NOT ErrNotFound)
+	// must NOT silently defer to the legacy `rk` binary. The primary error is
+	// returned; `rk` is never probed.
+	rkProbed := false
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Err: errors.New("run-kit: boom")}
+		}
+		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			rkProbed = true
+			return proc.Result{Stdout: []byte("rk v2.5.13\n")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	rk := runKitTool(t)
+	if _, err := probeToolVersion(context.Background(), rk); err == nil {
+		t.Fatal("probeToolVersion err = nil, want the primary non-ErrNotFound error (no fallback)")
+	}
+	if rkProbed {
+		t.Fatal("the legacy `rk` binary must NOT be probed on a non-ErrNotFound primary error")
+	}
+	if toolInstalled(context.Background(), rk) {
+		t.Error("toolInstalled = true, want false (present-but-broken run-kit is not installed via fallback)")
 	}
 }
 
