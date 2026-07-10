@@ -62,6 +62,20 @@ const (
 	// (via `shll update` or plain brew) is refused on Homebrew 6.0+, so doctor
 	// WARNs with an actionable fix.
 	suggestNotTrustedFmt = "formula not trusted — run 'shll install' (or 'brew trust --formula %s'); future upgrades will fail without it"
+	// suggestPendingMigrationFmt takes the tool name. A legacy keg (leaf `rk`) is
+	// still installed under the old formula — the tool works, but is not yet on the
+	// renamed formula. Migration is one command. WARN, not FAIL (it still runs).
+	suggestPendingMigrationFmt = "pending migration from the legacy keg — run 'shll update %s'"
+	// suggestDualRackFmt takes (legacy formula, current formula, tool name, legacy
+	// leaf name). Both kegs are installed (the state-C leftover) — the tool works
+	// off the current keg, but an orphan legacy keg lingers. WARN with a
+	// manual-cleanup pointer (shll never removes it automatically). Mirrors
+	// update.go's migrationDualRackNoteFmt: the `shll uninstall %s` slot names the
+	// specific tool (a bare `shll uninstall` would sweep the whole roster), and the
+	// brew fallback uses the legacy LEAF name (`brew uninstall rk`) — never the
+	// qualified legacy formula (`sahil87/tap/rk`), which re-resolves through the tap
+	// to the renamed formula post-rename (the known footgun).
+	suggestDualRackFmt = "a leftover %s keg remains alongside %s — remove it with 'shll uninstall %s' or 'brew uninstall %s'"
 )
 
 // doctorResult is the typed per-tool record. It is the single source for BOTH the
@@ -139,6 +153,13 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// (Constitution V — never WARN on a state we can't determine).
 	trust := resolveTrustFact(ctx)
 
+	// Migration facts for tools that declare a LegacyFormula (run-kit): reuse the
+	// SAME detection gate `shll update`/`shll install` use (probeRunKitMigration) so
+	// doctor's pending-migration / dual-rack classification cannot drift from what
+	// the update path acts on (Constitution III). Read-only — the gate only runs
+	// `brew list`. Keyed by tool name; a tool with no LegacyFormula has no entry.
+	migration := resolveMigrationFacts(ctx)
+
 	results := make([]doctorResult, 0, len(Roster)+1)
 	anyFail := false
 	// shll-first row: shll is the running process, so its binary is always
@@ -150,7 +171,7 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// cannot perturb the scriptable any-FAIL→exit-1 contract.
 	results = append(results, shllDoctorResult())
 	for _, tool := range Roster {
-		res := evaluateTool(ctx, tool, fact, trust)
+		res := evaluateTool(ctx, tool, fact, trust, migration[tool.Name])
 		if res.Status == markerFail {
 			anyFail = true
 		}
@@ -269,30 +290,86 @@ func (tf trustFact) trusts(formula string) bool {
 	return tf.tapTrusted || tf.formulae[formula]
 }
 
+// resolveMigrationFacts classifies every LegacyFormula-bearing tool (run-kit) via
+// the SHARED migration gate (probeRunKitMigration — the same detection
+// `shll update`/`shll install` use), keyed by tool name. Read-only (only `brew
+// list`). Tools with no LegacyFormula are absent from the map, so evaluateTool's
+// zero-value probeResult (needsMigration=false, dualRack=false) applies to them —
+// no migration WARN. Resolved once per doctor run, mirroring the single-shared-fact
+// pattern of the wiring/trust checks.
+func resolveMigrationFacts(ctx context.Context) map[string]probeResult {
+	facts := make(map[string]probeResult)
+	for _, t := range Roster {
+		if t.LegacyFormula == "" {
+			continue
+		}
+		installed, leaf, before := probeInstalledLeaf(ctx, t.Formula)
+		facts[t.Name] = probeRunKitMigration(ctx, t, installed, leaf, before)
+	}
+	return facts
+}
+
 // evaluateTool composes the per-tool checks into a doctorResult with the
-// worst-applicable marker (FAIL > WARN > OK) and the matching suggestion.
-func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFact) doctorResult {
+// worst-applicable marker (FAIL > WARN > OK) and the matching suggestion. The
+// migration arg is the shared migration-gate classification for a LegacyFormula
+// tool (run-kit); it is the zero value (no migration) for every other tool.
+func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFact, migration probeResult) doctorResult {
 	res := doctorResult{
 		Tool:      tool.Name,
 		ShellInit: len(tool.ShellInit) > 0,
 	}
 
+	// The `--version` PATH probe runs FIRST so the reported on_path/version_ok/version
+	// fields are HONEST for every tool — including a pending-migration run-kit — rather
+	// than asserted. --json consumers (CI) read these fields; hardcoding
+	// on_path:true/version_ok:true for a pending migration would misreport observed
+	// state A (an unlinked legacy keg is NOT on PATH). The migration WARN below still
+	// DOMINATES the surfaced status and suggestion; it just no longer fabricates the
+	// probe facts.
 	version, state := probeVersion(ctx, tool)
+	// Set the machine-readable probe facts ONCE, honestly, from the probe outcome:
+	// on_path is true unless the binary is missing; version_ok/version only when the
+	// probe reported a usable version. Every branch below (migration WARN, FAIL,
+	// dual-rack WARN, OK) keeps these fields — none re-asserts them.
+	res.OnPath = state != versionMissing
+	res.VersionOK = state == versionOK
+	if state == versionOK {
+		res.Version = version
+	}
+
+	// Pending-migration WARN takes precedence over the binary check for a legacy
+	// keg: the tool IS installed (brew knows the keg exists) but sits on the retired
+	// formula — even the unlinked-keg pathology (state A, where the PATH probe FAILs,
+	// so on_path/version_ok stay honestly false above) is a "pending migration", not a
+	// genuine "not installed". WARN with the one-command fix; read-only, exit
+	// unaffected.
+	if migration.needsMigration {
+		res.Status = markerWarn
+		res.Suggestion = fmt.Sprintf(suggestPendingMigrationFmt, tool.Name)
+		return res
+	}
+
 	switch state {
 	case versionMissing:
 		res.Status = markerFail
 		res.Suggestion = fmt.Sprintf(suggestMissingFmt, tool.Formula)
 		return res
 	case versionUnreportable:
-		res.OnPath = true
 		res.Status = markerFail
 		res.Suggestion = fmt.Sprintf(suggestUnreportableFmt, tool.Name, tool.Formula)
 		return res
 	}
-	// versionOK — binary checks pass.
-	res.OnPath = true
-	res.VersionOK = true
-	res.Version = version
+	// versionOK — binary checks pass; the probe facts are already set above.
+
+	// Dual-rack WARN (state C): the tool is migrated/present but an orphan legacy
+	// keg lingers. WARN with a cleanup pointer; checked before trust/wiring so the
+	// leftover is surfaced (all three are WARN, so the exit code is unaffected
+	// either way). shll never removes the orphan (Constitution — detection only).
+	if migration.dualRack {
+		res.Status = markerWarn
+		res.Suggestion = fmt.Sprintf(suggestDualRackFmt, tool.LegacyFormula, tool.Formula, tool.Name, tool.LegacyName)
+		return res
+	}
 
 	// Trust sub-check (worst-check-wins WARN tier, alongside the wiring WARN).
 	// Applies to ALL installed roster tools — not just shell-init ones — since
@@ -357,16 +434,21 @@ func shllDoctorResult() doctorResult {
 	}
 }
 
-// probeVersion runs a single `<tool> --version` probe (bounded by versionTimeout)
-// and classifies the outcome into the three-way versionState. It reuses the SAME
-// primitives as version.go's toolVersion (proc.Run + normalizeVersion) so the
-// version-reporting behavior stays single-sourced; the only difference is that
-// doctor keeps missing and unreportable apart (toolVersion folds both into
-// notInstalledLabel). Constitution I: subprocess execution routes through proc.
+// probeVersion runs the shared `<tool> --version` probe (bounded by versionTimeout,
+// via probeToolVersion) and classifies the outcome into the three-way versionState.
+// It reuses version.go's probeToolVersion so the probe invocation AND the rk→run-kit
+// ErrNotFound-only LEGACY-NAME FALLBACK live in exactly one place (version.go); the
+// only thing doctor adds here is the three-way classification, because it keeps
+// missing and unreportable apart (toolVersion folds both into notInstalledLabel).
+//
+// The legacy-name fallback (retry `<tool.LegacyName> --version` when the primary
+// name is proc.ErrNotFound only) is inherited from probeToolVersion — a migrated
+// install whose binary is still `rk` on PATH reports a version rather than FAILing,
+// while a present-but-broken `run-kit` (non-zero exit / timeout) stays unreportable
+// and does NOT defer to `rk`. Constitution I: subprocess execution routes through
+// proc (inside probeToolVersion).
 func probeVersion(ctx context.Context, tool Tool) (string, versionState) {
-	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
-	defer cancel()
-	out, err := proc.Run(subCtx, tool.Name, "--version")
+	out, err := probeToolVersion(ctx, tool)
 	if err != nil {
 		if errors.Is(err, proc.ErrNotFound) {
 			return "", versionMissing

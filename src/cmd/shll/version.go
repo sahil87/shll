@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -63,16 +64,38 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 
 // probeToolVersion is the single definition of the install-mechanism-agnostic
 // "installed = runnable on PATH" probe shared by toolVersion and toolInstalled.
-// It invokes `<tool> --version` via proc.Run (Constitution I — subprocess via
+// It invokes `<tool.Name> --version` via proc.Run (Constitution I — subprocess via
 // internal/proc), bounded by versionTimeout, and returns the captured output and
 // any error. ANY error (proc.ErrNotFound for a missing binary, non-zero exit,
 // timeout) means "not installed"; callers map that to their own representation
 // (notInstalledLabel for version, a bool for toolInstalled). This is NOT the
 // brew probe (isInstalled in brew.go) used by install/update.
+//
+// LEGACY-NAME FALLBACK (rk→run-kit rename): when the primary probe fails with
+// proc.ErrNotFound ONLY — i.e. `<tool.Name>` is not on PATH — AND the tool declares
+// a LegacyName, it retries once with the legacy binary name so a pre-rename install
+// (whose binary is still `rk`, not `run-kit`) is reported installed by
+// list/version/doctor. The fallback fires ONLY on ErrNotFound: a present-but-broken
+// `run-kit` (non-zero exit, timeout/deadline) must NOT silently defer to `rk` — its
+// own error is returned. This serves DISPLAY surfaces only; the display name stays
+// tool.Name regardless of which probe name succeeded, and the brew-keg migration
+// gate (update.go) is independent of this PATH probe. Transitional — a no-op once
+// legacy `rk`-only installs die out.
 func probeToolVersion(ctx context.Context, tool Tool) ([]byte, error) {
+	out, err := probeVersionByName(ctx, tool.Name)
+	if errors.Is(err, proc.ErrNotFound) && tool.LegacyName != "" {
+		return probeVersionByName(ctx, tool.LegacyName)
+	}
+	return out, err
+}
+
+// probeVersionByName runs `<name> --version` under a versionTimeout deadline via
+// proc.Run (capture). Factored out of probeToolVersion so the legacy-name fallback
+// reuses the exact same bounded invocation for the retry.
+func probeVersionByName(ctx context.Context, name string) ([]byte, error) {
 	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
 	defer cancel()
-	return proc.Run(subCtx, tool.Name, "--version")
+	return proc.Run(subCtx, name, "--version")
 }
 
 // toolInstalled reports whether the tool's binary is runnable on PATH, by

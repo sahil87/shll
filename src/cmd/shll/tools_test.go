@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -20,10 +21,10 @@ type rosterEdge struct {
 // re-touching a leaf already reported done). The runtime-invocation edges are
 // encoded too so the contract documents how the tools actually relate.
 //
-// IMPORTANT for the reader: a runtime-invocation edge (e.g. rk -> wt, because
-// `rk riff` shells out to `wt create`) does NOT mean `rk update` touches `wt`
-// during `shll update` — each `<tool> update` is self-update-only. Runtime edges
-// matter for install/runtime ordering, not for any update-time upgrade cascade.
+// IMPORTANT for the reader: a runtime-invocation edge (e.g. run-kit -> wt, because
+// `run-kit riff` shells out to `wt create`) does NOT mean `run-kit update` touches
+// `wt` during `shll update` — each `<tool> update` is self-update-only. Runtime
+// edges matter for install/runtime ordering, not for any update-time cascade.
 func TestRosterLeavesBeforeDependents(t *testing.T) {
 	edges := []rosterEdge{
 		{dependent: "fab-kit", dep: "wt"},   // brew-upgrade dep
@@ -32,9 +33,9 @@ func TestRosterLeavesBeforeDependents(t *testing.T) {
 		// (`hop open` delegates to wt's menu; `hop ls --trees` fans out
 		// `wt list --json`).
 		{dependent: "hop", dep: "wt"},
-		// rk -> wt is a runtime-invocation dep (`rk riff` shells out to
-		// `wt create`) — NOT an `rk update`-time upgrade of wt.
-		{dependent: "rk", dep: "wt"},
+		// run-kit -> wt is a runtime-invocation dep (`run-kit riff` shells out to
+		// `wt create`) — NOT a `run-kit update`-time upgrade of wt.
+		{dependent: "run-kit", dep: "wt"},
 	}
 
 	// Build name -> roster index from the live Roster (no re-listing of tool
@@ -114,12 +115,15 @@ func toolNames(tools []Tool) []string {
 func TestResolveTargets_RosterOrderRegardlessOfArgOrder(t *testing.T) {
 	// Args in reverse roster order must still resolve to roster (leaves-first)
 	// order: fab-kit, wt → wt, fab-kit.
-	selected, self, err := resolveTargets([]string{"fab-kit", "wt"}, true)
+	selected, self, aliased, err := resolveTargets([]string{"fab-kit", "wt"}, true)
 	if err != nil {
 		t.Fatalf("resolveTargets err = %v, want nil", err)
 	}
 	if self {
 		t.Error("selfSelected should be false when shll is not named")
+	}
+	if len(aliased) != 0 {
+		t.Errorf("aliased = %v, want empty (no legacy alias named)", aliased)
 	}
 	got := toolNames(selected)
 	want := []string{"wt", "fab-kit"}
@@ -131,7 +135,7 @@ func TestResolveTargets_RosterOrderRegardlessOfArgOrder(t *testing.T) {
 func TestResolveTargets_ShllGatedByAllowShll(t *testing.T) {
 	// allowShll=true: `shll` is accepted and sets selfSelected, returns no roster
 	// Tools when it is the only arg.
-	selected, self, err := resolveTargets([]string{shllTargetToken}, true)
+	selected, self, _, err := resolveTargets([]string{shllTargetToken}, true)
 	if err != nil {
 		t.Fatalf("resolveTargets(allowShll=true) err = %v, want nil", err)
 	}
@@ -144,7 +148,7 @@ func TestResolveTargets_ShllGatedByAllowShll(t *testing.T) {
 
 	// allowShll=false: `shll` is an unknown target → error, and the error must NOT
 	// advertise shll as valid.
-	_, _, err = resolveTargets([]string{shllTargetToken}, false)
+	_, _, _, err = resolveTargets([]string{shllTargetToken}, false)
 	if err == nil {
 		t.Fatal("resolveTargets(allowShll=false) with `shll` should error")
 	}
@@ -157,7 +161,7 @@ func TestResolveTargets_ShllGatedByAllowShll(t *testing.T) {
 }
 
 func TestResolveTargets_MultipleUnknownAllReported(t *testing.T) {
-	_, _, err := resolveTargets([]string{"foo", "wt", "bar"}, true)
+	_, _, _, err := resolveTargets([]string{"foo", "wt", "bar"}, true)
 	if err == nil {
 		t.Fatal("resolveTargets with unknown args should error")
 	}
@@ -171,7 +175,7 @@ func TestResolveTargets_MultipleUnknownAllReported(t *testing.T) {
 }
 
 func TestResolveTargets_EmptyArgs(t *testing.T) {
-	selected, self, err := resolveTargets(nil, true)
+	selected, self, aliased, err := resolveTargets(nil, true)
 	if err != nil {
 		t.Fatalf("resolveTargets(nil) err = %v, want nil", err)
 	}
@@ -180,5 +184,84 @@ func TestResolveTargets_EmptyArgs(t *testing.T) {
 	}
 	if len(selected) != 0 {
 		t.Errorf("selected = %v, want empty for empty args", toolNames(selected))
+	}
+	if len(aliased) != 0 {
+		t.Errorf("aliased = %v, want empty for empty args", aliased)
+	}
+}
+
+// --- legacy alias rk → run-kit (change 9bak) ---
+
+func TestResolveTargets_LegacyAliasResolvesToCanonical(t *testing.T) {
+	// `rk` resolves to the canonical run-kit tool (for both update and install) and
+	// is signalled via the aliased slice so the caller can print the rename notice.
+	for _, allowShll := range []bool{true, false} {
+		selected, _, aliased, err := resolveTargets([]string{"rk"}, allowShll)
+		if err != nil {
+			t.Fatalf("resolveTargets([rk], allowShll=%v) err = %v, want nil", allowShll, err)
+		}
+		got := toolNames(selected)
+		if len(got) != 1 || got[0] != "run-kit" {
+			t.Fatalf("resolveTargets([rk]) selected = %v, want [run-kit]", got)
+		}
+		if len(aliased) != 1 || aliased[0] != "rk" {
+			t.Fatalf("resolveTargets([rk]) aliased = %v, want [rk]", aliased)
+		}
+	}
+}
+
+func TestResolveTargets_RepeatedAliasRecordedOnce(t *testing.T) {
+	// Args form a SET: a repeated alias token (`rk rk`) resolves to a single
+	// canonical selection AND is recorded once in aliased, so the caller prints one
+	// rename notice (the once-per-run notice contract) — not one per occurrence.
+	selected, _, aliased, err := resolveTargets([]string{"rk", "rk"}, true)
+	if err != nil {
+		t.Fatalf("resolveTargets([rk rk]) err = %v, want nil", err)
+	}
+	got := toolNames(selected)
+	if len(got) != 1 || got[0] != "run-kit" {
+		t.Fatalf("resolveTargets([rk rk]) selected = %v, want [run-kit]", got)
+	}
+	if len(aliased) != 1 || aliased[0] != "rk" {
+		t.Fatalf("resolveTargets([rk rk]) aliased = %v, want [rk] (recorded once)", aliased)
+	}
+}
+
+func TestResolveTargets_ValidTargetsListsCanonicalOnly(t *testing.T) {
+	// The unknown-target diagnostic lists the canonical `run-kit`, never the legacy
+	// alias `rk`.
+	_, _, _, err := resolveTargets([]string{"nope"}, true)
+	if err == nil {
+		t.Fatal("resolveTargets with unknown arg should error")
+	}
+	if !strings.Contains(err.Error(), "run-kit") {
+		t.Errorf("err = %v, want valid-targets to include canonical run-kit", err)
+	}
+	// The bare legacy token `rk` must NOT appear as a valid target (it appears only
+	// inside `run-kit`). Guard against a bare `, rk,` / `: rk,` listing.
+	if strings.Contains(err.Error(), " rk,") || strings.Contains(err.Error(), " rk)") {
+		t.Errorf("err = %v, valid-targets must not advertise the legacy alias rk", err)
+	}
+}
+
+func TestPrintAliasNotices(t *testing.T) {
+	var buf bytes.Buffer
+	printAliasNotices(&buf, []string{"rk"})
+	if got, want := buf.String(), "note: rk is now run-kit\n"; got != want {
+		t.Errorf("printAliasNotices = %q, want %q", got, want)
+	}
+	// Empty slice prints nothing.
+	buf.Reset()
+	printAliasNotices(&buf, nil)
+	if buf.Len() != 0 {
+		t.Errorf("printAliasNotices(nil) wrote %q, want empty", buf.String())
+	}
+
+	// Defensive: a repeated token is announced once, and a token absent from
+	// legacyAliases is skipped (never a malformed `note: X is now ` line).
+	buf.Reset()
+	printAliasNotices(&buf, []string{"rk", "rk", "bogus"})
+	if got, want := buf.String(), "note: rk is now run-kit\n"; got != want {
+		t.Errorf("printAliasNotices([rk rk bogus]) = %q, want %q", got, want)
 	}
 }

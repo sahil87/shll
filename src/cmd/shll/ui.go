@@ -65,6 +65,29 @@ func printToolHeader(w io.Writer, name string, pos, total int, color bool) {
 	fmt.Fprintf(w, "==> [%d/%d] %s\n", pos, total, name)
 }
 
+// stdinIsTTY is the package-level seam reporting whether an io.Reader is an
+// interactive terminal — used by the `shll uninstall` confirmation gate to decide
+// whether a `Proceed? [y/N]` prompt can be answered. It is a swappable var (mirroring
+// the proc.Runner / nowFunc injection pattern) so tests can force the interactive
+// branch deterministically: a bytes.Buffer / strings.Reader test stdin is never a real
+// *os.File terminal, so without a seam the prompt path could never be exercised. The
+// default is defaultStdinIsTTY.
+var stdinIsTTY = defaultStdinIsTTY
+
+// defaultStdinIsTTY is the production implementation: true only when r is a real
+// terminal (r is an *os.File AND term.IsTerminal reports true for its descriptor). It
+// mirrors colorEnabled's structure exactly. A pipe, a file redirect, or any
+// non-*os.File is never a terminal, so a non-TTY stdin without --yes is refused
+// (fail-safe for pipes/CI). Unlike colorEnabled it does NOT consult NO_COLOR — that
+// governs styling, not interactivity.
+func defaultStdinIsTTY(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
+
 // Glyph pairs for shll's own framing output in the changelog surface (the
 // `shll changelog` command and `shll update`'s "What changed:" digest). Each
 // pairs a Unicode glyph (used on a color-enabled TTY) with an ASCII fallback
@@ -190,8 +213,9 @@ type previewRow struct {
 // NOT run `brew update` (it is a write). Install has no metadata-refresh step, so its
 // header omits the annotation.
 const (
-	updatePreviewHeaderFmt  = "Would update %d tools (brew metadata refresh first):"
-	installPreviewHeaderFmt = "Would install %d tools:"
+	updatePreviewHeaderFmt    = "Would update %d tools (brew metadata refresh first):"
+	installPreviewHeaderFmt   = "Would install %d tools:"
+	uninstallPreviewHeaderFmt = "Would uninstall %d tools:"
 	// previewIndent prefixes every preview row; previewGap separates the padded
 	// label column from the command. Both are named so the alignment is not an
 	// open-coded literal.
@@ -212,6 +236,14 @@ func printUpdatePreview(w io.Writer, rows []previewRow) {
 // metadata-refresh annotation). Presentation-only — no subprocess calls.
 func printInstallPreview(w io.Writer, rows []previewRow) {
 	fmt.Fprintf(w, installPreviewHeaderFmt+"\n", len(rows))
+	printPreviewRows(w, rows)
+}
+
+// printUninstallPreview prints the `shll uninstall --dry-run` preview, mirroring
+// printUpdatePreview's aligned-column layout with the uninstall-specific header (no
+// metadata-refresh annotation). Presentation-only — no subprocess calls.
+func printUninstallPreview(w io.Writer, rows []previewRow) {
+	fmt.Fprintf(w, uninstallPreviewHeaderFmt+"\n", len(rows))
 	printPreviewRows(w, rows)
 }
 

@@ -200,7 +200,13 @@ func parseChangelogSpecs(args []string) ([]changelogSpec, error) {
 	}
 
 	// Split each arg into name + optional range, and collect the bare names for
-	// the shared validator (which reports all unknowns at once).
+	// the shared validator (which reports all unknowns at once). A legacy alias
+	// token (e.g. `rk`) is CANONICALIZED to its Roster name here so the roster-order
+	// emit below finds it and the release fetch uses the canonical Repo — `shll
+	// changelog rk` / `rk@old..new` work identically to `run-kit`. The alias is
+	// resolved via the same legacyAliases map resolveTargets consults, so changelog
+	// never carries bespoke alias logic (intake: in scope because name-matching
+	// reuses the shared helper).
 	byName := make(map[string]changelogSpec)
 	names := make([]string, 0, len(args))
 	for _, a := range args {
@@ -216,14 +222,18 @@ func parseChangelogSpecs(args []string) ([]changelogSpec, error) {
 			}
 			explicit, old, new = true, o, n
 		}
+		if canonical, ok := legacyAliases[name]; ok && rosterHas(canonical) {
+			name = canonical
+		}
 		names = append(names, name)
 		byName[name] = changelogSpec{name: name, explicit: explicit, old: old, new: new}
 	}
 
 	// Validate names via the shared resolver (allowShll=true). It reports all
 	// unknowns at once and lists valid targets; we ignore its returned ordering
-	// and re-derive order + ranges from byName below.
-	if _, _, err := resolveTargets(names, true); err != nil {
+	// and re-derive order + ranges from byName below. Names are already
+	// canonicalized above, so the resolver sees canonical tokens.
+	if _, _, _, err := resolveTargets(names, true); err != nil {
 		return nil, err
 	}
 

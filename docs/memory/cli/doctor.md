@@ -1,12 +1,12 @@
 ---
 type: memory
-description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe, `shell-setup`'s wiring detector, and `brew.go`'s trust list."
+description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired, run-kit migration pending/dual-rack), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe (incl. its legacy-name fallback), `shell-setup`'s wiring detector, `brew.go`'s trust list, and `update`'s migration gate."
 ---
 # cli/doctor
 
 `shll doctor` — verifies that every roster tool is installed, runnable, and (where applicable) wired into the shell. One status line per tool with an `OK` / `WARN` / `FAIL` marker; each non-OK line carries an actionable suggestion. Exits non-zero if **any** tool is FAIL, so it is scriptable in CI. Strictly read-only — it never installs, upgrades, or edits the rc file.
 
-Source: `src/cmd/shll/doctor.go`. Reuses the version probe primitives from `src/cmd/shll/version.go` (`proc.Run` + `versionTimeout` + `normalizeVersion`), the wiring detector from `src/cmd/shll/shell_setup.go` (`resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` — read-only), the trust-state primitives from `src/cmd/shll/brew.go` (`brewTrustAvailable` + `brewTrustList`, change 0854 — read-only), `ui.go`'s `colorEnabled` + ANSI constants for optional TTY color, and the `Roster` + `errSilent` from `src/cmd/shll/tools.go` / `main.go`. No new mechanism (Constitution III).
+Source: `src/cmd/shll/doctor.go`. Reuses the version probe from `src/cmd/shll/version.go` (`probeVersion` delegates to `probeToolVersion`, change 9bak — inheriting the bounded `versionTimeout` invocation, `normalizeVersion`, AND the rk→run-kit legacy-name fallback), the wiring detector from `src/cmd/shll/shell_setup.go` (`resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` — read-only), the trust-state primitives from `src/cmd/shll/brew.go` (`brewTrustAvailable` + `brewTrustList`, change 0854 — read-only), the shared rk→run-kit migration gate from `src/cmd/shll/update.go` (`probeRunKitMigration`, via `resolveMigrationFacts` — change 9bak, read-only), `ui.go`'s `colorEnabled` + ANSI constants for optional TTY color, and the `Roster` + `errSilent` from `src/cmd/shll/tools.go` / `main.go`. No new mechanism (Constitution III).
 
 ## Output shape
 
@@ -18,14 +18,14 @@ shll     OK    v0.1.0
 wt       OK    v1.4.0   wired
 idea     OK    v0.3.1
 tu       WARN  v2.0.0   not wired — run 'shll shell-setup' then 'exec $SHELL'
-rk       OK    v0.9.2
+run-kit  OK    v3.0.0
 hop      FAIL           run 'brew install sahil87/tap/hop'
 fab-kit  FAIL           installed but 'fab-kit --version' failed — try 'brew reinstall sahil87/tap/fab-kit'
 
 2 of 6 tools have problems. Run the suggested commands above, then re-run shll doctor.
 ```
 
-- Ordering is **shll-first, then leaves-first roster** (change bb7r): the always-OK `shll` row is prepended (`runDoctor`, `src/cmd/shll/doctor.go:133`), followed by the `Roster` in its declared `wt, idea, tu, rk, hop, fab-kit` order (leaves-first, change auvj). This makes the unified shll-first ordering established by `version`/`update` universal across the inspect/manage surface — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The `shll` row reads OK with a version and no detail; it never carries a wiring detail (`shell_init:false`).
+- Ordering is **shll-first, then leaves-first roster** (change bb7r): the always-OK `shll` row is prepended (`runDoctor`), followed by the `Roster` in its declared `wt, idea, tu, run-kit, hop, fab-kit` order (leaves-first, change auvj; `run-kit` was `rk` before the change-9bak rename). This makes the unified shll-first ordering established by `version`/`update` universal across the inspect/manage surface — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The `shll` row reads OK with a version and no detail; it never carries a wiring detail (`shell_init:false`).
 - **The shll row is excluded from the problem-count denominator.** In the example two roster tools FAIL, so the tail reads `2 of 6` — the denominator is `len(Roster)` (the checkable roster), NOT `len(results)` (`len(Roster)+1`, which would mis-report `2 of 7`). The always-OK shll row can never register a problem, so it is correctly excluded. See [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r) below.
 - Columns: `<name>  <MARKER>  <version>  <detail>`, aligned via `text/tabwriter` (`tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)` — same parameters as `version.go`).
 - The `<detail>` column is the suggestion on non-OK lines; on an OK wired shell-init tool it is the literal `wired`; on an OK non-shell-init tool (or an OK shell-init tool with no detail) it is empty.
@@ -43,7 +43,9 @@ For each `Tool` in `Roster`, `doctor` runs up to four checks:
 3. **Formula trusted** *(change 0854)* — for an installed tool (checks 1+2 passed), whether its Homebrew formula is trusted. An installed-but-untrusted tool still *runs*, but its next `brew upgrade` (via `shll update` or plain brew) is refused on Homebrew 6.0+, so this is a **WARN** (not FAIL). Applies to **all** installed roster tools (not just shell-init ones), since every formula needs trust to upgrade. The trust fact is a single brew-wide query, resolved once per run — see [The trust sub-check](#the-trust-sub-check-change-0854).
 4. **Shell integration wired** — runs **only** for tools where `len(tool.ShellInit) > 0`. The "wired" fact is whether shll's *own* composed eval block (`# >>> shll >>>` or the legacy `# >>> shll shell-init >>>` sentinel, with the `eval "$(shll shell-init <shell>)"` line) is present in the resolved rc file.
 
-**Which tools get the wiring check (derived from `Roster`, not the backlog prose).** "Ships shell-init" is `len(tool.ShellInit) > 0`, evaluated against the live `Roster`. The shell-init integrators are exactly **`wt`, `tu`, `hop`**. `idea`, `rk`, and `fab-kit` carry an empty `ShellInit` slice and get **checks 1+2 only** (`shell_init:false`, no wiring check). This **corrects the backlog prose**, which listed shell-init as "relevant for hop/wt/tu/**idea**" — `idea` ships no shell-init, so it is NOT wiring-checked. Per Constitution III (Tool Roster Source of Truth), `doctor` derives this from `Roster` so it stays correct as the roster evolves. ("run-kit" in the backlog prose is the roster tool `rk`.)
+For a `LegacyFormula`-bearing tool (run-kit), a **pending-migration / dual-rack sub-check** (change 9bak) is layered on top of these, both WARN — see [The pending-migration + dual-rack WARNs](#the-pending-migration--dual-rack-warns-change-9bak).
+
+**Which tools get the wiring check (derived from `Roster`, not the backlog prose).** "Ships shell-init" is `len(tool.ShellInit) > 0`, evaluated against the live `Roster`. The shell-init integrators are exactly **`wt`, `tu`, `hop`**. `idea`, `run-kit`, and `fab-kit` carry an empty `ShellInit` slice and get **checks 1+2 only** (`shell_init:false`, no wiring check). This **corrects the backlog prose**, which listed shell-init as "relevant for hop/wt/tu/**idea**" — `idea` ships no shell-init, so it is NOT wiring-checked. Per Constitution III (Tool Roster Source of Truth), `doctor` derives this from `Roster` so it stays correct as the roster evolves. (The backlog prose's "run-kit" IS this roster tool — post-change-9bak the roster name now matches.)
 
 The wiring fact is a **single rc-file fact** shared by every shell-init tool (shll's composed block covers them all), so `resolveWiringFact(env)` resolves it **once** up front and attributes it to each shell-init-shipping tool's line.
 
@@ -52,7 +54,7 @@ The wiring fact is a **single rc-file fact** shared by every shell-init tool (sh
 `doctor` prepends an always-OK `shll` row before walking the roster — `results = append(results, shllDoctorResult())` then the per-tool loop (`runDoctor`, `src/cmd/shll/doctor.go:133`). The row is built by `shllDoctorResult()` (`src/cmd/shll/doctor.go:268`), **directly — NOT via `evaluateTool`**, and is deliberately different from a roster tool in three load-bearing ways:
 
 1. **No self-subprocess.** `evaluateTool` always calls `probeVersion`, which spawns `<tool> --version`. `doctor` must not spawn `shll --version` on itself: shll is the running process, so its binary is definitionally on PATH and its version is read from the package `version` var via `shllSelfVersion()` (`src/cmd/shll/tools.go:143` → `normalizeVersion(version)`) — the same source as `shll version`'s own first row, so the two surfaces agree. Building the `doctorResult` directly avoids the circular, wasteful self-spawn.
-2. **Checks 1+2 only — no wiring check.** shll ships no shell-init of its own (shell-init is the [documented eval-safety exception](/cli/shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)), so it is treated like `idea`/`rk`/`fab-kit`: `ShellInit:false`, `Wired:false`, no wiring check applies.
+2. **Checks 1+2 only — no wiring check.** shll ships no shell-init of its own (shell-init is the [documented eval-safety exception](/cli/shell-init.md#the-deliberate-exception--do-not-unify-onto-the--header)), so it is treated like `idea`/`run-kit`/`fab-kit`: `ShellInit:false`, `Wired:false`, no wiring check applies.
 3. **Always OK, never touches `anyFail`.** The row's `Status` is hardcoded `markerOK` (binary present + version present), and the prepend in `runDoctor` does **not** run the `if res.Status == markerFail { anyFail = true }` branch that the roster loop runs. So the always-OK shll row **cannot perturb the scriptable any-FAIL→exit-1 contract**: a clean roster still exits 0, a roster with a FAIL still exits 1.
 
 ```go
@@ -77,20 +79,22 @@ The `Tool` name comes from the shared `shllSelf` descriptor (`src/cmd/shll/tools
 
 ## Marker derivation (worst-applicable-check wins: FAIL > WARN > OK)
 
-`evaluateTool(ctx, tool, fact, trust)` composes the checks into a `doctorResult` whose `Status` is the worst applicable check. The order inside `evaluateTool`: binary checks → trust check → wiring check (so trust is checked before wiring — see [trust ordering](#the-trust-sub-check-change-0854)):
+`evaluateTool(ctx, tool, fact, trust, migration)` composes the checks into a `doctorResult` whose `Status` is the worst applicable check. `evaluateTool` first runs the `--version` probe and sets the machine-readable `on_path`/`version_ok`/`version` fields **honestly from the probe outcome** (change 9bak — see below). It then applies, in order: **pending-migration WARN** (run-kit legacy keg) → binary FAIL → dual-rack WARN → trust check → wiring check.
 
 | Condition | Marker | Status set | JSON fields |
 |-----------|--------|-----------|-------------|
-| Binary missing (`versionMissing`) | **FAIL** | first | `on_path:false`, `version_ok:false`, `version:""` |
-| Binary present but version unreportable (`versionUnreportable`) | **FAIL** | first | `on_path:true`, `version_ok:false`, `version:""` |
-| Checks 1+2 pass; trust available and the formula is **not** trusted *(change 0854)* | **WARN** | after binary, before wiring | `on_path:true`, `version_ok:true` (`suggestNotTrustedFmt`) |
-| Checks 1+2 pass; shell-init tool whose `$SHELL` is unresolvable | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
-| Checks 1+2 pass; shell-init tool whose rc file has a **corrupted** shll block (open sentinel, no close) | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
-| Checks 1+2 pass; shell-init tool whose wiring is absent | **WARN** | after binary | `on_path:true`, `version_ok:true`, `wired:false` |
-| Checks 1+2 pass; non-shell-init tool (`idea`/`rk`/`fab-kit`), trusted (or trust unavailable) | **OK** | — | `shell_init:false`, `wired:false` |
+| `LegacyFormula` tool with a legacy `rk` keg (`needsMigration`) *(change 9bak)* | **WARN** | before binary FAIL | probe facts HONEST (`on_path`/`version_ok` reflect the real probe — false in the unlinked state A) (`suggestPendingMigrationFmt`) |
+| Binary missing (`versionMissing`) | **FAIL** | after migration | `on_path:false`, `version_ok:false`, `version:""` |
+| Binary present but version unreportable (`versionUnreportable`) | **FAIL** | after migration | `on_path:true`, `version_ok:false`, `version:""` |
+| Checks 1+2 pass; `LegacyFormula` tool with a dual-rack orphan (`dualRack`) *(change 9bak)* | **WARN** | after binary, before trust | `on_path:true`, `version_ok:true` (`suggestDualRackFmt`) |
+| Checks 1+2 pass; trust available and the formula is **not** trusted *(change 0854)* | **WARN** | after dual-rack, before wiring | `on_path:true`, `version_ok:true` (`suggestNotTrustedFmt`) |
+| Checks 1+2 pass; shell-init tool whose `$SHELL` is unresolvable | **WARN** | after trust | `on_path:true`, `version_ok:true`, `wired:false` |
+| Checks 1+2 pass; shell-init tool whose rc file has a **corrupted** shll block (open sentinel, no close) | **WARN** | after trust | `on_path:true`, `version_ok:true`, `wired:false` |
+| Checks 1+2 pass; shell-init tool whose wiring is absent | **WARN** | after trust | `on_path:true`, `version_ok:true`, `wired:false` |
+| Checks 1+2 pass; non-shell-init tool (`idea`/`run-kit`/`fab-kit`), trusted (or trust unavailable) | **OK** | — | `shell_init:false`, `wired:false` |
 | All applicable checks pass (incl. wired shell-init tool) | **OK** | — | `wired:true` for shell-init tools |
 
-A binary FAIL **dominates** both the trust and wiring checks — `evaluateTool` returns immediately on `versionMissing`/`versionUnreportable` before either is considered, so a tool that is also missing on PATH is FAIL, not WARN (`TestDoctor_MissingDominatesWiring`, `TestDoctor_BinaryFailDominatesTrust`).
+The **pending-migration WARN precedes the binary FAIL** deliberately (change 9bak): a legacy `rk` keg IS installed (brew knows the keg exists), even in the unlinked state A where the PATH probe FAILs — so it is a "pending migration", not a genuine "not installed". The WARN dominates the surfaced status/suggestion but does NOT fabricate the probe facts (they stay honest). Otherwise a binary FAIL **dominates** the dual-rack/trust/wiring checks — `evaluateTool` returns on `versionMissing`/`versionUnreportable` before any of them (`TestDoctor_MissingDominatesWiring`, `TestDoctor_BinaryFailDominatesTrust`). All WARN tiers are co-equal (same exit), so ordering among them only decides *which* suggestion surfaces.
 
 ### Marker constants (exact, `doctor.go`)
 
@@ -121,15 +125,15 @@ OK tools carry no suggestion (empty string).
 
 ## The version probe — `probeVersion` (why a local helper)
 
-`probeVersion(ctx, tool) (string, versionState)` (`doctor.go`) runs a single `<tool> --version` bounded by `versionTimeout` (2s) through `internal/proc` (Constitution I), and classifies the outcome into a three-way `versionState`:
+`probeVersion(ctx, tool) (string, versionState)` (`doctor.go`) classifies the `<tool> --version` outcome into a three-way `versionState`:
 
 | State | Trigger | Drives |
 |-------|---------|--------|
-| `versionMissing` | `proc.Run` returns `proc.ErrNotFound` | FAIL |
-| `versionUnreportable` | any other `proc.Run` error/timeout, OR `normalizeVersion(out) == ""` | FAIL |
-| `versionOK` | `proc.Run` succeeds and `normalizeVersion(out)` is non-empty | OK (captures the version string) |
+| `versionMissing` | `probeToolVersion` returns `proc.ErrNotFound` | FAIL |
+| `versionUnreportable` | any other error/timeout, OR `normalizeVersion(out) == ""` | FAIL |
+| `versionOK` | success and `normalizeVersion(out)` is non-empty | OK (captures the version string) |
 
-It reuses the **same primitives** as `version.go`'s `toolVersion` — `proc.Run` + `versionTimeout` + `normalizeVersion` — so the version-reporting behavior stays single-sourced and the two cannot drift. **Why a separate helper instead of calling `toolVersion` directly**: `toolVersion` collapses both the missing case AND the unreportable case into the single `notInstalledLabel` (`"not installed"`) label, because `version` doesn't need to tell them apart. `doctor` *does* need them apart — "not installed" → install suggestion, "stale brew link" → reinstall suggestion — so `probeVersion` keeps the three states distinct while leaving `toolVersion` untouched (its callers don't need the distinction). See [cli/version](/cli/version.md#per-tool-timeout). (Design Decision, change d0ct.)
+Since change 9bak it **calls `version.go`'s `probeToolVersion(ctx, tool)` directly** (not just the same primitives). This single-sources BOTH the bounded `versionTimeout` invocation AND the rk→run-kit **legacy-name fallback** (`probeToolVersion` retries `<tool.LegacyName> --version` on `proc.ErrNotFound` only), so a migrated run-kit whose binary is still `rk` on PATH reports `versionOK` here rather than `versionMissing` (`TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail`), while a present-but-broken `run-kit` stays unreportable and never defers to `rk`. **Why a separate helper instead of calling `toolVersion` directly**: `toolVersion` collapses both the missing case AND the unreportable case into the single `notInstalledLabel` (`"not installed"`) label, because `version` doesn't need to tell them apart. `doctor` *does* need them apart — "not installed" → install suggestion, "stale brew link" → reinstall suggestion — so `probeVersion` adds only the three-way classification on top of `probeToolVersion`, leaving `toolVersion` untouched (its callers don't need the distinction). See [cli/version §the legacy-name fallback](/cli/version.md#the-legacy-name-path-probe-fallback-change-9bak). (Design Decision, change d0ct; delegation added change 9bak — the earlier `<!-- rework -->` note that `probeVersion` duplicated the fallback verbatim was resolved by this delegation.)
 
 ## The wiring fact — `resolveWiringFact` (read-only reuse)
 
@@ -179,7 +183,19 @@ func (tf trustFact) trusts(formula string) bool {
 
 **The `shll` self row is unchanged** — it is built directly by `shllDoctorResult()` (no `evaluateTool`, no trust check); shll's own trust is the README bootstrap concern, not a roster-tool check. Not-installed tools already FAIL on the binary check, so trust is moot there.
 
-**Schema unchanged.** No new `trusted` JSON field was added — the untrusted state is reflected through the existing `Status: "WARN"` + `Suggestion` fields, so text and `--json` stay derived from the one `doctorResult` struct (adding a field would be a larger, less-reversible schema change). The read-only and any-FAIL→exit-1 / `--json` contracts are preserved — the only subprocesses added are `brew trust --help` (gate) and `brew trust --json=v1` (query), both read-only.
+**Schema unchanged.** No new `trusted` JSON field was added — the untrusted state is reflected through the existing `Status: "WARN"` + `Suggestion` fields, so text and `--json` stay derived from the one `doctorResult` struct (adding a field would be a larger, less-reversible schema change). The read-only and any-FAIL→exit-1 / `--json` contracts are preserved — the trust sub-check's own subprocesses are `brew trust --help` (gate) and `brew trust --json=v1` (query), both read-only. (Change 9bak added more read-only subprocesses to `doctor` overall — the migration gate's `brew list --formula --versions` probes and the legacy `rk --version` PATH fallback — but those belong to the [pending-migration sub-check](#the-pending-migration--dual-rack-warns-change-9bak) and the [version probe](#the-version-probe--probeversion-why-a-local-helper), not the trust query; all remain strictly read-only, no brew writes.)
+
+## The pending-migration + dual-rack WARNs (change 9bak)
+
+For a `LegacyFormula`-bearing tool (run-kit), `doctor` surfaces two read-only WARNs mirroring the update-path migration states — reusing the **same** detection gate `shll update`/`shll install` use, so the classification cannot drift (Constitution III).
+
+- **The migration facts are resolved once up front** by `resolveMigrationFacts(ctx)` — for every roster tool that declares a `LegacyFormula`, it runs `probeInstalledLeaf(ctx, t.Formula)` and hands the result to the shared `probeRunKitMigration` gate, keyed by tool name. Read-only (only `brew list`), mirroring the single-shared-fact pattern of the wiring and trust checks. A tool with no `LegacyFormula` is absent from the map, so `evaluateTool` sees the zero-value `probeResult` (no migration WARN).
+- **Pending-migration WARN** (`needsMigration`, leaf `rk`) → `suggestPendingMigrationFmt` = `pending migration from the legacy keg — run 'shll update <tool>'`. It **precedes the binary FAIL** in `evaluateTool` (a legacy keg IS installed, even unlinked), so an unlinked state-A machine reads WARN "pending migration", not FAIL "not installed".
+- **Dual-rack WARN** (`dualRack`, both kegs present) → `suggestDualRackFmt` = `a leftover <legacy> keg remains alongside <current> — remove it with 'shll uninstall' or 'brew uninstall <legacy>'`. Checked after the binary FAIL, before trust/wiring. shll never removes the orphan (detection only).
+- **`--json` fields stay HONEST** (change 9bak — a review-flagged rework). `evaluateTool` runs the `--version` probe FIRST and sets `on_path`/`version_ok`/`version` from the real probe outcome for **every** branch, including the pending-migration WARN — it does NOT hardcode `on_path:true`/`version_ok:true`. So an unlinked legacy keg (observed state A, binary not on PATH) reports `on_path:false`/`version_ok:false` in the JSON even while the WARN dominates the surfaced status — CI consumers get truthful probe fields. (`TestDoctor_PendingMigrationJSONFieldsHonest` for the unlinked case; `TestDoctor_PendingMigrationLinkedJSONFieldsHonest` for a linked legacy keg where the fields are honestly true.)
+- **Exit unaffected.** Both are WARN — they never flip the exit code (the any-FAIL→exit-1 contract is untouched). All migration/trust/wiring WARNs are co-equal.
+
+Tests: `TestDoctor_PendingMigrationWarns`, `TestDoctor_PendingMigrationJSONFieldsHonest`, `TestDoctor_PendingMigrationLinkedJSONFieldsHonest`, `TestDoctor_DualRackWarns`, `TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail` (a migrated run-kit whose binary is only `rk` on PATH is OK via the legacy-name fallback, not FAIL). Full gate/action detail: [cli/update §the migration guard](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak).
 
 ## `--json` output mode
 
@@ -210,7 +226,7 @@ type doctorResult struct {
 ```
 
 - **The first object is the always-OK shll-first object** (change bb7r): `tool:"shll"`, `status:"OK"`, version from the package var, `shell_init:false`, `wired:false`, empty suggestion — see [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r). The array length is `len(Roster)+1` (`TestDoctor_JSONShapeAndExit` asserts `len(results) == len(Roster)+1` and `results[0].Tool == shllSelf.Name`). The shll object carries no distinct self-marker in the doctor schema — the doctor `doctorResult` struct is unchanged; the shll-first *position* identifies it (unlike `list --json`, which adds a `self` field — the two surfaces serve different schemas).
-- `shell_init` is `true` exactly when `len(tool.ShellInit) > 0` (so `idea`/`rk`/`fab-kit` are `false`, and `wired` is `false`/not meaningful for them; `shll` is also `false`).
+- `shell_init` is `true` exactly when `len(tool.ShellInit) > 0` (so `idea`/`run-kit`/`fab-kit` are `false`, and `wired` is `false`/not meaningful for them; `shll` is also `false`).
 - Rendered via `json.NewEncoder(stdout)` with `SetIndent("", "  ")` — **indented (two-space) output with a trailing newline**. (The intake speculated a compact array; the implementation chose indented for readability — `json.Encoder` always appends the trailing newline.)
 - **No ANSI color regardless of TTY** — machine consumers must get clean JSON. The `--json` path never touches `colorEnabled`.
 - `--json` is gated by the **same checks** and the **same any-FAIL→exit-1 contract** as text; only the rendering differs. Diagnostics that text prints inline are carried in the `suggestion` field; nothing extraneous is written to stdout.
@@ -236,7 +252,10 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - **Corrupted shll block** (rc file has an opening `# >>> shll >>>` sentinel with no matching close — `locateBlock` reports `partial`) → shell-init tools → **WARN** with `suggestCorruptBlock` (manual-cleanup hint), exit unaffected. Distinct from plain "not wired" because `shell-setup` refuses to modify a corrupted block (exit 2), so the plain "run `shll shell-setup`" hint would dead-end. (`TestDoctor_CorruptBlockWarnsWithDistinctSuggestion`.)
 - **Installed but untrusted formula** *(change 0854)* → **WARN** with `suggestNotTrustedFmt` (`run 'shll install' (or 'brew trust --formula <formula>') …`), exit unaffected. Applies to any installed roster tool (not just shell-init ones). A tap-level trust (`sahil87/tap` in the `taps` array) counts as trusting every formula → no WARN. (`TestDoctor_InstalledUntrustedWarns`, `TestDoctor_TapLevelTrustCounts`.)
 - **Trust state undeterminable** *(change 0854)* — brew absent or too old to ship `brew trust` → the trust sub-check is skipped silently; no trust WARN appears regardless of actual trust state, exit 0. (`TestDoctor_TrustUnavailableSkipsCheck`.)
-- **Binary FAIL dominates trust/wiring** → FAIL dominates; no trust or wiring WARN is shown. (`TestDoctor_BinaryFailDominatesTrust`.)
+- **Pending migration — legacy `rk` keg** *(change 9bak)* → **WARN** with `suggestPendingMigrationFmt`, exit unaffected. Precedes the binary FAIL, so even the unlinked state A (binary not on PATH) reads WARN "pending migration" not FAIL — while the `--json` `on_path`/`version_ok` fields stay honest to the real probe. (`TestDoctor_PendingMigrationWarns`, `TestDoctor_PendingMigrationJSONFieldsHonest`.)
+- **Dual-rack orphan — both kegs present** *(change 9bak)* → **WARN** with `suggestDualRackFmt` (manual-cleanup pointer), exit unaffected; shll never removes the orphan. (`TestDoctor_DualRackWarns`.)
+- **Migrated run-kit visible only under the legacy `rk` binary** *(change 9bak)* → OK (not FAIL): `probeVersion` inherits the ErrNotFound-only legacy-name fallback from `probeToolVersion`, so `rk --version` reporting a version keeps the row green. (`TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail`.)
+- **Binary FAIL dominates trust/wiring** → FAIL dominates; no trust or wiring WARN is shown. (`TestDoctor_BinaryFailDominatesTrust`.) *(But a pending-migration legacy keg is NOT a binary FAIL — see above.)*
 
 ## Test seam
 
@@ -245,7 +264,7 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - `TestDoctor_AllOKWired` — all tools installed + a wired rc → every line OK, no problem tail; shell-init tools show `wired`, others do not.
 - `TestDoctor_MissingBinaryFails` — `hop` missing → FAIL line, install suggestion (`brew install sahil87/tap/hop`), problem tail, exit `errSilent`.
 - `TestDoctor_UnreportableVersionFails` — `fab-kit` both `dvUnreportable` (proc error) and `dvEmpty` (empty normalize) → FAIL, reinstall suggestion (`fab-kit --version' failed`, `brew reinstall sahil87/tap/fab-kit`), exit `errSilent`.
-- `TestDoctor_UnwiredShellInitWarnsExitZero` — installed but unwired rc → `wt`/`tu`/`hop` WARN, `idea`/`rk`/`fab-kit` OK (no wiring check), not-wired suggestion, exit 0.
+- `TestDoctor_UnwiredShellInitWarnsExitZero` — installed but unwired rc → `wt`/`tu`/`hop` WARN, `idea`/`run-kit`/`fab-kit` OK (no wiring check), not-wired suggestion, exit 0.
 - `TestDoctor_CorruptBlockWarnsWithDistinctSuggestion` — rc file with an unclosed shll sentinel (`writeCorruptRC`) → `wt`/`tu`/`hop` WARN with `suggestCorruptBlock` (NOT the plain `suggestNotWired`), exit 0.
 - `TestDoctor_MissingDominatesWiring` — `wt` missing AND unwired → FAIL (binary failure dominates the would-be wiring WARN).
 - `TestDoctor_UnresolvableShellDegradesToWarn` — `$SHELL=/bin/sh` → `wt`/`tu`/`hop` WARN with the `$SHELL is` suggestion, binary checks still run, `idea` stays OK, exit 0.
@@ -269,6 +288,14 @@ shll-first row guards (change bb7r):
 - `TestDoctor_ShllRowNeverPerturbsExit` — the always-OK shll row does not set `anyFail`: a clean roster still exits 0 and a roster with a FAIL still exits 1 (the row cannot move the exit either way).
 - `TestDoctor_ProblemTailDenominatorExcludesShll` — one roster FAIL (`hop`) → the tail reads `1 of len(Roster)` (i.e. `1 of 6`), and the `1 of len(Roster)+1` (`1 of 7`) off-by-one is explicitly absent — the always-OK shll row is excluded from the denominator.
 
+migration WARN guards (change 9bak):
+
+- `TestDoctor_PendingMigrationWarns` — a legacy `rk` keg → run-kit's row is WARN with the pending-migration suggestion, exit 0.
+- `TestDoctor_PendingMigrationJSONFieldsHonest` — the unlinked state-A keg → WARN in `--json` with honestly `on_path:false`/`version_ok:false` (the WARN does not fabricate the probe facts).
+- `TestDoctor_PendingMigrationLinkedJSONFieldsHonest` — a linked legacy keg → WARN with honestly `on_path:true`/`version_ok:true`.
+- `TestDoctor_DualRackWarns` — both kegs present → WARN with the dual-rack cleanup suggestion, exit 0.
+- `TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail` — a migrated run-kit whose binary is only `rk` on PATH → OK (legacy-name fallback), not FAIL.
+
 `lineFor`/`lineHas` are line-scanning helpers; `resultByTool` indexes a decoded JSON result slice by tool name.
 
 ## Cross-references
@@ -277,6 +304,7 @@ shll-first row guards (change bb7r):
 - Shared version probe: [cli/version](/cli/version.md) — `doctor`'s `probeVersion` reuses `version.go`'s `proc.Run`/`versionTimeout`/`normalizeVersion`, so the two share the version-probe contract and cannot drift.
 - Shared wiring detector: [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths).
 - Shared trust-state primitives (change 0854): `brewTrustAvailable` + `brewTrustList` live in `brew.go` — see [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The trust-*mutating* sibling that establishes per-formula trust (so re-running it clears doctor's WARN): [cli/install §per-formula trust before install](/cli/install.md#per-formula-trust-before-install-change-0854).
+- Shared rk→run-kit migration gate (change 9bak): `probeRunKitMigration` lives in `update.go` and is reused read-only by doctor's `resolveMigrationFacts` for the pending-migration/dual-rack WARNs — the update-path counterpart that actually *performs* the migration (clearing doctor's WARN) is [cli/update §the migration guard](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak).
 - Registration, exit-code sentinels, and the `Roster`: [cli/commands](/cli/commands.md) — `doctor` is the sixth user-facing subcommand (the hidden `help-dump` is not counted).
 - The shared `shllSelf` descriptor + `shllSelfVersion()` (the single source of truth for the prepended shll-first row): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). The sibling surfaces that also prepend it: [cli/list](/cli/list.md#the-prepended-shll-first-row-change-bb7r) (table row + `--json` `self:true`) and [cli/install](/cli/install.md#the-prepended-shll-first-informational-line-change-bb7r) (informational line). `version`/`update` were already shll-first (the established pattern this generalizes).
 - Constitution I (Security First) → the version probe routes through `internal/proc`; rc-file access is read-only `os.ReadFile`.

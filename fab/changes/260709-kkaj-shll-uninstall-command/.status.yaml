@@ -5,17 +5,17 @@ created_by: sahil-noon
 change_type: refactor
 issues: []
 progress:
-    intake: ready
-    apply: pending
-    review: pending
-    hydrate: pending
-    ship: pending
-    review-pr: pending
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
 plan:
-    generated: false
-    task_count: 0
-    acceptance_count: 0
-    acceptance_completed: 0
+    generated: true
+    task_count: 14
+    acceptance_count: 20
+    acceptance_completed: 20
 confidence:
     certain: 2
     confident: 5
@@ -29,7 +29,28 @@ confidence:
         competence: 76.3
         disambiguation: 69.4
 stage_metrics:
-    intake: {started_at: "2026-07-09T14:43:07Z", driver: fab-new, iterations: 1}
-prs: []
+    intake: {started_at: "2026-07-09T14:43:07Z", driver: fab-new, iterations: 1, completed_at: "2026-07-09T16:29:22Z"}
+    apply: {started_at: "2026-07-09T16:49:25Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-09T16:59:37Z"}
+    review: {started_at: "2026-07-09T16:59:37Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-09T17:11:48Z"}
+    hydrate: {started_at: "2026-07-09T17:11:48Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-09T17:19:41Z"}
+    ship: {started_at: "2026-07-09T17:19:41Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-09T17:23:00Z"}
+    review-pr: {started_at: "2026-07-09T17:23:00Z", driver: git-pr, iterations: 1, completed_at: "2026-07-09T17:33:38Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/34
+true_impact:
+    added: 4116
+    deleted: 348
+    net: 3768
+    excluding:
+        added: 3108
+        deleted: 205
+        net: 2903
+    tests:
+        added: 1897
+        deleted: 92
+        net: 1805
+    computed_at: "2026-07-09T17:23:00Z"
+    computed_at_stage: ship
+summary: add shll uninstall command (reverse-roster removal, confirmation gate, run-kit dual-name sweep, self-uninstall); retarget update's dual-rack note at shll uninstall run-kit / brew uninstall rk
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-09T14:44:42Z
+last_updated: 2026-07-09T17:33:38Z
