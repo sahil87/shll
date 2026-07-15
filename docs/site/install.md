@@ -1,6 +1,6 @@
 # Install & shell wiring
 
-The deep guide to getting `shll` and the rest of the [@sahil87 toolkit](https://shll.ai) onto a machine and wired into your shell. The README quick-start is the short version; this page covers every install path and the full `shll shell-setup` rc-wiring contract.
+The deep guide to getting `shll` and the rest of the [@sahil87 toolkit](https://shll.ai) onto a machine and wired into your shell. The README's Install section is the short version; this page covers every install path and the full `shll shell-setup` rc-wiring contract.
 
 `shll` doesn't replace the per-tool CLIs — it composes them. Everything below either shells out to `brew` or invokes a sub-tool's own command; `shll` keeps no state of its own.
 

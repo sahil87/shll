@@ -6,8 +6,13 @@ One command to install, update, and shell-wire every tool in the [@sahil87 toolk
 
 ## Install
 
+From a clean machine to a fully wired toolkit:
+
 ```sh
-curl -fsSL https://shll.ai/install | sh
+curl -fsSL https://shll.ai/install | sh          # install shll + the whole roster
+shll shell-setup                                 # wire shell integration into your rc file
+run-kit agent-setup                              # optional, once per machine: agent state in run-kit's dashboard
+exec $SHELL                                      # reload so the shell integration takes effect
 ```
 
 Install a subset by naming tools after `sh -s --`:
@@ -16,7 +21,11 @@ Install a subset by naming tools after `sh -s --`:
 curl -fsSL https://shll.ai/install | sh -s -- hop wt
 ```
 
-Requires Homebrew ≥ 6.0.4 (on 6.0.0–6.0.3, run `brew update` first) — the script exits with a pointer to https://brew.sh if brew is absent (it never auto-installs Homebrew). It bootstraps `shll` itself first (recording the Homebrew 6.0 tap trust `shll` needs), then hands off to `shll install` for the rest of the roster. It's idempotent — safe to re-run, and a no-op for anything already installed.
+Requires Homebrew ≥ 6.0.4 (on 6.0.0–6.0.3, run `brew update` first) — the script exits with a pointer to https://brew.sh if brew is absent (it never auto-installs Homebrew). It bootstraps `shll` itself first (recording the Homebrew 6.0 tap trust `shll` needs), then hands off to `shll install` for the rest of the roster (which trusts each formula it installs — drop that with `--no-trust` if you manage trust yourself). It's idempotent — safe to re-run, and a no-op for anything already installed.
+
+The `run-kit agent-setup` line is optional and once per machine — it installs the agent-harness hooks that light up live agent state (**active** / **waiting** / **idle**) in [run-kit](https://github.com/sahil87/run-kit)'s dashboard. It shows the settings diff and asks before writing; skip it if you don't use the dashboard.
+
+> **Why `brew trust` first?** Homebrew 6.0 made tap-trust a **hard install requirement** (it defaults `HOMEBREW_REQUIRE_TAP_TRUST=1`). shll's tap formulae download a binary and run a sandboxed `def install` (not a bottle pour), and that sandboxed step re-checks trust against a real persisted trust record — so naming the formula on the CLI is not enough; you must trust it first. Requires **Homebrew ≥ 6.0.4** (an earlier 6.0.x Linux sandbox bug is fixed there); if you're on 6.0.0–6.0.3, run `brew update` first. See [Troubleshooting](#tap-sahil87tap-must-be-trusted-before-install) for the full explanation.
 
 ### Manual bootstrap (brew)
 
@@ -52,22 +61,6 @@ For the full guide — brew vs `all`, from-source builds, shell wiring, and the 
 - **One-command health check** — `shll doctor` verifies each tool is installed, runnable, and shell-wired, with an actionable fix on every problem line.
 
 Per-tool CLIs continue to work standalone — `shll` wraps them, it does not replace them.
-
-## Quick start
-
-From a clean machine to a fully wired toolkit:
-
-```sh
-curl -fsSL https://shll.ai/install | sh          # install shll + the whole roster
-shll shell-setup                                 # rc wiring
-exec $SHELL                                      # reload so the shell integration takes effect
-```
-
-That's it. `hop`, `wt`, and the other tools are now installed and their shell integration is live.
-
-The one-liner bootstraps `shll` itself, then hands off to `shll install` for the rest of the roster (see [Install](#install) for the subset form and the manual brew path). `shll install` owns trust for the other six tools — it runs `brew trust --formula sahil87/tap/<formula>` before each install (drop the trust step with `--no-trust` if you manage trust yourself).
-
-> **Why `brew trust` first?** Homebrew 6.0 made tap-trust a **hard install requirement** (it defaults `HOMEBREW_REQUIRE_TAP_TRUST=1`). shll's tap formulae download a binary and run a sandboxed `def install` (not a bottle pour), and that sandboxed step re-checks trust against a real persisted trust record — so naming the formula on the CLI is not enough; you must trust it first. Requires **Homebrew ≥ 6.0.4** (an earlier 6.0.x Linux sandbox bug is fixed there); if you're on 6.0.0–6.0.3, run `brew update` first. See [Troubleshooting](#tap-sahil87tap-must-be-trusted-before-install) for the full explanation.
 
 ## Commands
 
