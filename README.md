@@ -4,6 +4,44 @@
 
 One command to install, update, and shell-wire every tool in the [@sahil87 toolkit](https://shll.ai) (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
+## Install
+
+```sh
+curl -fsSL https://shll.ai/install | sh
+```
+
+Install a subset by naming tools after `sh -s --`:
+
+```sh
+curl -fsSL https://shll.ai/install | sh -s -- hop wt
+```
+
+Requires Homebrew ≥ 6.0.4 (on 6.0.0–6.0.3, run `brew update` first) — the script exits with a pointer to https://brew.sh if brew is absent (it never auto-installs Homebrew). It bootstraps `shll` itself first (recording the Homebrew 6.0 tap trust `shll` needs), then hands off to `shll install` for the rest of the roster. It's idempotent — safe to re-run, and a no-op for anything already installed.
+
+### Manual bootstrap (brew)
+
+If you'd rather bootstrap by hand, trust-then-install `shll` directly:
+
+```sh
+brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll
+```
+
+The `brew trust` is required on Homebrew 6.0+ (which defaults to requiring explicit tap trust) — shll's formula runs a sandboxed install that needs a real trust record. Requires Homebrew ≥ 6.0.4; on 6.0.0–6.0.3, `brew update` first. From there, `shll install` owns trust for the other six tools.
+
+`shll` is also installed transitively via the `all` meta-formula (`brew trust --formula sahil87/tap/all && brew install sahil87/tap/all`), which pulls in every roster tool at once.
+
+### From source
+
+```sh
+git clone https://github.com/sahil87/shll.git
+cd shll
+just install
+```
+
+Builds the binary and copies it to `~/.local/bin/shll`. Make sure that directory is on your `$PATH`.
+
+For the full guide — brew vs `all`, from-source builds, shell wiring, and the tap-trust details — see [docs/site/install.md](docs/site/install.md).
+
 ## Why shll?
 
 - **One-shot install** — `shll install` records per-formula Homebrew trust and then runs `brew install sahil87/tap/<formula>` for every roster tool you don't already have. Idempotent and safe to re-run.
@@ -20,42 +58,16 @@ Per-tool CLIs continue to work standalone — `shll` wraps them, it does not rep
 From a clean machine to a fully wired toolkit:
 
 ```sh
-brew trust --formula sahil87/tap/shll            # bootstrap: trust shll
-brew install sahil87/tap/shll                    # bootstrap: install shll itself
-shll install                                     # trusts (per-formula) + installs the other 6
+curl -fsSL https://shll.ai/install | sh          # install shll + the whole roster
 shll shell-setup                                 # rc wiring
 exec $SHELL                                      # reload so the shell integration takes effect
 ```
 
 That's it. `hop`, `wt`, and the other tools are now installed and their shell integration is live.
 
-The first line is a one-time **bootstrap**: shll can't trust its own formula before it exists, so you trust-and-install `shll` itself with brew directly. From there, `shll install` owns trust for the other six tools — it runs `brew trust --formula sahil87/tap/<formula>` before each install (drop the trust step with `--no-trust` if you manage trust yourself). Prefer it as one chained line? `brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll && shll install && shll shell-setup && exec $SHELL`.
+The one-liner bootstraps `shll` itself, then hands off to `shll install` for the rest of the roster (see [Install](#install) for the subset form and the manual brew path). `shll install` owns trust for the other six tools — it runs `brew trust --formula sahil87/tap/<formula>` before each install (drop the trust step with `--no-trust` if you manage trust yourself).
 
 > **Why `brew trust` first?** Homebrew 6.0 made tap-trust a **hard install requirement** (it defaults `HOMEBREW_REQUIRE_TAP_TRUST=1`). shll's tap formulae download a binary and run a sandboxed `def install` (not a bottle pour), and that sandboxed step re-checks trust against a real persisted trust record — so naming the formula on the CLI is not enough; you must trust it first. Requires **Homebrew ≥ 6.0.4** (an earlier 6.0.x Linux sandbox bug is fixed there); if you're on 6.0.0–6.0.3, run `brew update` first. See [Troubleshooting](#tap-sahil87tap-must-be-trusted-before-install) for the full explanation.
-
-For the deeper install guide — brew vs the `all` meta-formula, from-source builds, the full `shll shell-setup` rc-wiring, and the tap-trust details — see [docs/site/install.md](docs/site/install.md).
-
-## Install
-
-```sh
-brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll
-```
-
-The `brew trust` is required on Homebrew 6.0+ (which defaults to requiring explicit tap trust) — shll's formula runs a sandboxed install that needs a real trust record. Requires Homebrew ≥ 6.0.4; on 6.0.0–6.0.3, `brew update` first.
-
-`shll` is also installed transitively via the `all` meta-formula (`brew trust --formula sahil87/tap/all && brew install sahil87/tap/all`), which pulls in every roster tool at once.
-
-For the full guide — brew vs `all`, from-source builds, shell wiring, and the tap-trust details — see [docs/site/install.md](docs/site/install.md).
-
-### From source
-
-```sh
-git clone https://github.com/sahil87/shll.git
-cd shll
-just install
-```
-
-Builds the binary and copies it to `~/.local/bin/shll`. Make sure that directory is on your `$PATH`.
 
 ## Commands
 

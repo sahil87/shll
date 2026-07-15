@@ -1,12 +1,26 @@
 ---
 type: memory
-description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run; a legacy-keg run-kit is routed through the shared brew-direct migration action (trust-then-migrate) instead of a blind install."
+description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run; a legacy-keg run-kit is routed through the shared brew-direct migration action (trust-then-migrate) instead of a blind install. Also the `exec` target of the `curl … | sh` bootstrap (`scripts/install.sh`), whose arg pass-through is part of this command's public surface."
 ---
 # cli/install
 
 `shll install` — installs every roster tool that isn't already installed via Homebrew. Idempotent; safe to re-run.
 
 Source: `src/cmd/shll/install.go`, with shared brew helpers in `src/cmd/shll/brew.go`.
+
+## The `curl | sh` upstream entry point (change m1zt)
+
+`shll install` is also the delegation target of the copy-paste install one-liner. The bootstrap script `scripts/install.sh` (served at `shll.ai/install`) requires Homebrew, trust-then-installs `shll` itself only if it is missing, then ends with `exec shll install "$@"` — forwarding every arg verbatim as the install subset:
+
+```sh
+curl -fsSL https://shll.ai/install | sh                # → exec shll install        (whole roster)
+curl -fsSL https://shll.ai/install | sh -s -- hop wt   # → exec shll install hop wt  (subset)
+```
+
+Two implications for `shll install`'s contract:
+
+- **The arg pass-through is now part of `shll install`'s public surface.** The [positional tool-name subset args](#positional-tool-name-args--subset-targeting-change-b2vg) are what a piped `sh -s -- <tools…>` reaches. The bootstrap adds no filtering of its own — it hands the args straight to `runInstall`, which validates them (`resolveTargets`, `allowShll=false`; unknown/`shll` targets still hard-error, the alias `rk` still resolves to `run-kit`).
+- **The script owns only the shll-self bootstrap; `shll install` owns everything else.** Roster knowledge, subset filtering, per-formula trust for the other six tools, and graceful skips all live here, not in the script (Constitution III). The script's sole job is the circularity `shll install` cannot solve — trusting/installing `shll`'s own formula before that binary exists. See [ci/install-bootstrap](/ci/install-bootstrap.md) for the script contract, the shll.ai raw-fetch URL / merge-order constraint, and the dev-script rename to `scripts/install-local.sh`.
 
 ## Behavior contract
 
@@ -205,4 +219,5 @@ Per-tool header/tail behavior (change y630) plus the change-6vuo `[N/M]` counter
 - **Counterpart lifecycle command: [cli/uninstall](/cli/uninstall.md)** (change kkaj) — the install/uninstall pairing. `shll uninstall` is the clean-slate repair path that removes what `shll install` bootstraps: it mirrors install's per-tool `ui.go` framing and dry-run preview but in **reverse-roster** order (dependents before leaves), gates a destructive removal behind a `Proceed? [y/N]` confirmation, and reuses the shared brew helpers (`brew.go`) and `resolveTargets` (with `allowShll=true`, unlike install's `allowShll=false`, so `shll uninstall shll` is a legal explicit target).
 - Trust helpers `brewTrustFormula`/`brewTrustAvailable` live in `brew.go`: [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The read-only sibling check that surfaces an installed-but-untrusted tool: [cli/doctor §the trust sub-check](/cli/doctor.md#the-trust-sub-check-change-0854).
 - Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll).
+- **The upstream bootstrap that execs into this command: [ci/install-bootstrap](/ci/install-bootstrap.md)** (change m1zt) — the `curl … | sh` script (`scripts/install.sh`, served at shll.ai/install), its shll.ai raw-fetch URL + merge-order contract, and the dev-script rename to `scripts/install-local.sh`.
 - Constitution I (Security First — the trust ceremony routes through `internal/proc`), III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation — trust degrades, not aborts, when `brew trust` is absent or fails), VII (Minimal Surface Area — `--no-trust` is a flag on existing `install`, no new command).

@@ -8,7 +8,21 @@ The deep guide to getting `shll` and the rest of the [@sahil87 toolkit](https://
 
 ## Bootstrap via Homebrew
 
-The bootstrap is trust-then-install for `shll` itself:
+The recommended path is the one-liner — it bootstraps `shll` itself, then hands off to `shll install` for the rest of the roster:
+
+```sh
+curl -fsSL https://shll.ai/install | sh
+```
+
+Install a subset by naming tools after `sh -s --`:
+
+```sh
+curl -fsSL https://shll.ai/install | sh -s -- hop wt
+```
+
+It requires Homebrew (it exits with a pointer to https://brew.sh if `brew` is absent, and never auto-installs it) and is idempotent — safe to re-run.
+
+If you'd rather bootstrap by hand, the manual equivalent is trust-then-install for `shll` itself:
 
 ```sh
 brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll
