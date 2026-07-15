@@ -4,7 +4,7 @@
 
 `shll` is a meta-CLI for the sahil87 open-source toolkit. It composes operations that span all the per-tool CLIs (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so users have one entry point for cross-toolkit concerns.
 
-The name comes from the project's landing domain: [`ai.shll.in`](https://ai.shll.in).
+The name comes from the project's landing domain: [`shll.ai`](https://shll.ai). The website's repo lives at `hop shll.ai where` → `/home/sahil/code/sahil87/shll.ai`.
 
 ## Tech stack
 
@@ -26,7 +26,7 @@ shll/
 │   ├── cmd/shll/         # cobra entry + subcommand files (main.go, update.go, shell_init.go, version.go)
 │   └── internal/
 │       └── proc/         # subprocess wrapper (Run, RunForeground, ErrNotFound)
-├── scripts/              # build.sh, install.sh, release.sh
+├── scripts/              # build.sh, install-local.sh (dev build+copy), release.sh; install.sh = curl|sh bootstrap served at shll.ai/install
 ├── justfile              # one-line recipes delegating to scripts/
 ├── README.md
 ├── LICENSE

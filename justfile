@@ -8,7 +8,7 @@ build:
 
 # Build and install to ~/.local/bin/shll (ensure that dir is on your $PATH).
 install:
-    ./scripts/install.sh
+    ./scripts/install-local.sh
 
 # Run the Go test suite under src/.
 test:
