@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-16T05:11:34Z"}
+{"args":"Post-install Next steps nudge in shll install: shell-setup nudge gated on rc wiring state, run-kit agent-setup line gated on run-kit presence, no nudges on --dry-run, short-circuit path included","cmd":"fab-new","event":"command","ts":"2026-07-16T05:11:34Z"}
+{"delta":"+0.0","event":"confidence","score":4.1,"trigger":"calc-score","ts":"2026-07-16T05:13:59Z"}
+{"cmd":"fab-proceed:_intake","event":"command","ts":"2026-07-16T05:14:07Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-07-16T05:15:10Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-16T05:17:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-16T05:17:24Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-16T05:25:42Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-16T05:32:49Z"}
+{"event":"review","result":"passed","ts":"2026-07-16T05:32:49Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-16T05:33:24Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-16T05:37:16Z"}
