@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 6
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-07-16T05:17:24Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-16T05:25:42Z"}
     review: {started_at: "2026-07-16T05:25:42Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-16T05:32:49Z"}
     hydrate: {started_at: "2026-07-16T05:32:49Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-16T05:37:16Z"}
-    ship: {started_at: "2026-07-16T05:37:16Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-07-16T05:37:16Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-16T05:39:01Z"}
+    review-pr: {started_at: "2026-07-16T05:39:01Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/39
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 880
+    deleted: 52
+    net: 828
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 383
+        deleted: 45
+        net: 338
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-07-16T05:37:16Z"
-    computed_at_stage: hydrate
+        added: 281
+        deleted: 41
+        net: 240
+    computed_at: "2026-07-16T05:39:01Z"
+    computed_at_stage: ship
 summary: shll install now ends with a state-gated post-install 'Next steps' nudge (shell-setup via doctor's read-only resolveWiringFact; run-kit agent-setup via post-run toolInstalled), dry-run-excluded, printed on both the loop-tail and short-circuit paths
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-16T05:37:16Z
+last_updated: 2026-07-16T05:39:01Z
