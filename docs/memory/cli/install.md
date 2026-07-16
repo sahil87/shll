@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run; a legacy-keg run-kit is routed through the shared brew-direct migration action (trust-then-migrate) instead of a blind install. Also the `exec` target of the `curl … | sh` bootstrap (`scripts/install.sh`), whose arg pass-through is part of this command's public surface."
+description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run; a legacy-keg run-kit is routed through the shared brew-direct migration action (trust-then-migrate) instead of a blind install. Ends with a state-gated post-install “Next steps” nudge (shell-setup + run-kit agent-setup). Also the `exec` target of the `curl … | sh` bootstrap (`scripts/install.sh`), whose arg pass-through is part of this command's public surface."
 ---
 # cli/install
 
@@ -32,13 +32,13 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 2. **Partition the roster into a `[]installTarget`.** Iterate the roster in order. For a tool with **no `LegacyFormula`**, call `isInstalled(ctx, t.Formula)` and collect the missing entries as `installTarget{tool: t}` (a plain `brew install`). For a **`LegacyFormula`-bearing tool (run-kit)**, classify via the SHARED migration gate `probeRunKitMigration` (the same detection `shll update`/`shll doctor` use): a legacy keg → `installTarget{tool, migrate: true}` (brew-direct migration, not a blind install); a fully-absent run-kit → `installTarget{tool}` (normal install); a migrated/present run-kit → skipped (idempotent). See [Legacy-keg routing to migration](#legacy-keg-routing-to-migration-change-9bak).
 
-3. **Nothing missing → short-circuit.** If `len(missing) == 0`, write `All sahil87 tools already installed.` to stdout and return nil. Exit code: 0. No `brew update` is invoked — there's nothing to install.
+3. **Nothing missing → short-circuit.** If `len(missing) == 0`, write `All sahil87 tools already installed.` to stdout, then (unless `--dry-run`) emit the [post-install "Next steps" nudge](#the-post-install-next-steps-nudge-change-93r2) via `printNextSteps(ctx, env, stdout, colorEnabled(stdout))`, and return nil. Exit code: 0. No `brew update` is invoked — there's nothing to install. (A re-runner who never wired their shell still gets nudged from this path — decision 3.)
 
 4. **No `brew update --quiet`.** Unlike `shll update`, `shll install` does NOT refresh brew metadata first. `brew install sahil87/tap/<formula>` resolves the formula via the tap directly, and the spec freezes this distinction (Design Decision: install ≠ update). `TestInstall_NoBrewUpdateInvoked` pins the contract.
 
 5. **Sequential per-tool install — trust then install/migrate (change 0854; migration routing change 9bak).** For each `installTarget` in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — when trust is enabled — record per-formula trust via `brewTrustFormula(ctx, t.Formula)` *immediately before* the action. For a plain target the action is `proc.RunForeground(ctx, brewBinary, "install", t.Formula)`; for a **`migrate` target** it is the brew-direct `migrateRunKit(ctx, stdout, stderr, t)` (reused verbatim from `shll update`), NOT a blind `brew install`. The trust step is interleaved in the per-tool loop (not a separate up-front pass), so trust stays adjacent to the action it unblocks — and it trusts the **new** formula (`sahil87/tap/run-kit`) even on the migration route (installed ≠ trusted). Best-effort across the roster: on per-tool *install/migrate* failure (transport error or non-zero exit), set `anyFailed = true` and `continue`. See [Per-formula trust before install](#per-formula-trust-before-install-change-0854) and [Legacy-keg routing to migration](#legacy-keg-routing-to-migration-change-9bak).
 
-6. **Summary tail.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
+6. **Summary tail, then the "Next steps" nudge.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation-change-y630)), then emit the [post-install "Next steps" nudge](#the-post-install-next-steps-nudge-change-93r2) via `printNextSteps(ctx, env, stdout, color)` (change 93r2) — reusing the loop's single `color` decision, and printed **regardless of `anyFailed`** (it is informational and orthogonal to install outcome). Then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
 
 ## The prepended shll-first informational line (change bb7r)
 
@@ -110,6 +110,67 @@ A blind `brew install sahil87/tap/run-kit` on a machine still holding the legacy
 
 Tests (`install_test.go`): `TestInstall_LegacyKegRoutesThroughMigration` (legacy keg → `brew upgrade sahil87/tap/rk`, NOT `brew install`), `TestInstall_MigrationTrustsRunKitFormulaFirst` (trust of `sahil87/tap/run-kit` precedes the migration), `TestInstall_MigrationNoTrustSkipsTrustStep` (`--no-trust` → no trust call on the migration route), `TestInstall_AbsentRunKitStillBrewInstalls` (fully-absent run-kit → plain `brew install sahil87/tap/run-kit`), `TestInstall_LegacyAliasResolvesWithNotice` (`shll install rk` → alias notice + canonical resolution).
 
+## The post-install "Next steps" nudge (change 93r2)
+
+`shll install` ends with a state-gated "Next steps" block on **stdout** — up to two independently-gated lines nudging the two follow-on steps a fresh install still needs. It exists because `shll install` is the delegation target of the `curl … | sh` bootstrap (`scripts/install.sh` ends with `exec shll install "$@"` — see [The `curl | sh` upstream entry point](#the-curl--sh-upstream-entry-point-change-m1zt)): the homepage copy-paster's *entire* first-run experience terminates in this command's output, so before change 93r2 they were never told to wire their shell (`shll shell-setup`) or run `run-kit agent-setup`, and silently missed shell integration. The only prior CLI nudge lived in `shll doctor`'s `suggestNotWired` WARN — which a fresh user has no reason to run. This is the state-aware CLI-side fix that reaches everyone (the shll.ai site-side copy, PR #90, is separate and out of scope here).
+
+The block is produced by `printNextSteps(ctx, env, stdout, color)` (`src/cmd/shll/install.go`), which computes the two gates and prints nothing when neither fires (no empty `Next steps:` header). Illustrative shape:
+
+```
+Done — 3 of 3 tools succeeded in 42s.
+
+Next steps:
+  → shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL
+  → run-kit agent-setup # optional, once per machine — agent state in run-kit's dashboard
+```
+
+### Emission points — loop tail + short-circuit (both non-preview outcome paths)
+
+`printNextSteps` is called on exactly the two paths that report an *outcome*, after the outcome line:
+
+- **Install-loop path** — after `printSummaryTail(...)` (`runInstall`, reusing the loop's single `color`). Prints regardless of `anyFailed` — the block is informational, and the tail already conveys per-tool failures.
+- **Short-circuit path** — after the `allInstalledMsg` line (`"All sahil87 tools already installed."`), gated on `!dryRun`. This path computes its own `colorEnabled(stdout)` (the loop's single decision is never reached here), so a re-runner who never wired their shell is still nudged (decision 3).
+
+It is **never** reached on the [`--dry-run`](#--dry-run-change-6vuo) path (a command preview, not an outcome — decision 5), nor on the brew-missing / unknown-target early returns (they `return` before any outcome). The short-circuit call is explicitly `!dryRun`-guarded because that short-circuit *precedes* the dry-run branch; the loop-tail call is naturally after the dry-run branch's early return.
+
+### The two gates
+
+**shell-setup nudge — rc wiring, read-only reuse of doctor's `resolveWiringFact`.** The line prints only when `shellSetup := w.shellResolved && !w.corrupt && !w.wired` for `w := resolveWiringFact(env)`. `resolveWiringFact` is doctor's established read-only composition of shell-setup's own primitives (`resolveShell` → `resolveRcFile` → `os.ReadFile` → `locateBlock` → `blockMatch.hasEval`, covering both the new `# >>> shll >>>` and legacy `# >>> shll shell-init >>>` sentinels) — **reused in place from `doctor.go`** (same `main` package, no move; one detection path, Constitution III). The reuse is strictly **read-only**: `resolveWiringFact` only `os.ReadFile`s the rc file — `shll install` never writes, creates, or migrates it (it calls **none** of shell-setup's write paths). The gate is quiet on the two edge states, mirroring doctor's own `suggestNotWired` vs. `suggestCorruptBlock` separation:
+
+- **Unresolvable `$SHELL`** (`!shellResolved`, e.g. `fish`) — nudging toward `shll shell-setup` would itself exit 2, so the line is omitted.
+- **Corrupt block** (`corrupt` — an open sentinel with no matching close) — `shell-setup` refuses to modify it, so the nudge would dead-end; `doctor` owns that diagnostic.
+
+See [cli/doctor §the wiring fact](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse) for the `wiringFact` shape and [cli/shell-setup §block location and parsing](/cli/shell-setup.md#block-location-and-parsing) for the underlying primitives.
+
+**run-kit agent-setup nudge — run-kit runnable after this run.** The line prints only when `runKit := toolInstalled(ctx, t)` for the run-kit `Tool` resolved from the live `Roster` via `rosterTool(runKitToolName)` (`runKitToolName = "run-kit"`; the roster is the source of truth, Constitution III — no second hardcoded descriptor). It is a **stateless post-run re-probe** (Constitution II — re-derive, don't track what this run did), so it fires uniformly whether run-kit was just installed, pre-installed (incl. the short-circuit path), migrated (rk→run-kit), or present on the machine during a subset run where run-kit wasn't in the install set. Note `toolInstalled` is the **PATH-runnable** probe (`<tool> --version`, inheriting the ErrNotFound-only rk→run-kit legacy-name fallback — see [cli/version §the legacy-name path probe fallback](/cli/version.md#the-legacy-name-path-probe-fallback-change-9bak)), **not** the brew `isInstalled` probe the missing-partition uses.
+
+The line is **informational** and marked **"optional, once per machine"** because shll cannot cheaply know whether `agent-setup` has already run — that is run-kit-internal state, and Constitution II (no state) / III (wrap, don't reinvent) forbid shll probing or parsing it. Accepted trade-off: the line prints even for users who already ran `agent-setup`. A stricter gate ("only when this run actually installed run-kit") was recorded as a fallback, not implemented.
+
+### Framing and the named constants
+
+The block goes to **stdout** (same stream as the per-tool headers and tail), preceded by a blank line (the existing section-spacing rule), with the arrow glyph degrading via `arrow(color)` (`→` on a color TTY, `->` otherwise) — the same `ui.go` framing as the headers/tail. On the loop path it reuses the loop's single `color`; the short-circuit path computes `colorEnabled(stdout)` itself. Every user-facing string is a **named constant** in `install.go` (no magic strings, per code-quality.md — mirroring `allInstalledMsg` / `shllSelfInstallNote` and doctor's `suggestNotWired`):
+
+```go
+const (
+	nextStepsHeader     = "Next steps:"
+	shellSetupNudgeFmt  = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
+	runKitAgentSetupFmt = "  %s run-kit agent-setup # optional, once per machine — agent state in run-kit's dashboard"
+)
+const runKitToolName = "run-kit"
+```
+
+The `%s` in each nudge format is the arrow glyph. The shell-setup wording tracks doctor's `suggestNotWired` (`run 'shll shell-setup' then 'exec $SHELL'`); the run-kit wording mirrors the shll.ai install-guide phrasing.
+
+### The `env` seam on `runInstall`
+
+`runInstall` gained an `env func(string) string` parameter (change 93r2) — threaded solely into the shell-setup gate's `resolveWiringFact(env)` — mirroring `runDoctor`'s established test seam (`runDoctor(ctx, jsonOut, env, stdout, stderr)`). The cobra factory `newInstallCmd` passes `os.Getenv`; `install_test.go` passes a map-backed `envFunc` pointing at a `t.TempDir()` rc file reached via a faked `$SHELL`/`$ZDOTDIR`/`$HOME`, so the wiring probe NEVER touches the real `~/.zshrc`. `env` is used ONLY by `printNextSteps`; `runInstall` writes nothing through it.
+
+### Constitution fit
+
+I — no new subprocess path in command code (the wiring probe is file I/O via `resolveWiringFact`; the run-kit probe already routes through `internal/proc` via `toolInstalled`). II — both gates re-derived per invocation, no state. III/IV — reuses the existing detector and probe and composes `shll shell-setup` / `run-kit agent-setup` by *pointing at them*, never absorbing them. V — the block degrades silently to nothing on every edge (unresolvable shell, corrupt block, run-kit absent, or wired user). VII — no new subcommand; additive output on an existing one.
+
+Tests (`install_test.go`, change 93r2): `TestInstall_ShellSetupNudgeShownWhenUnwired` (unwired rc → shell-setup line shown), `TestInstall_ShellSetupNudgeHiddenWhenWired` (wired rc + run-kit absent → no block at all), `TestInstall_AgentSetupNudgeGatedOnRunKitPresence` (shown when run-kit runnable / hidden when absent), `TestInstall_NoNudgesOnDryRun` (loop-path dry-run → preview only, no nudge), `TestInstall_DryRunEmptyCaseNoNudge` (short-circuit under `--dry-run` → no nudge), `TestInstall_ShortCircuitPathNudgesWhenUnwired` (the nothing-to-do path still nudges an unwired re-runner). The existing golden-string tests thread a **wired** env via the shared `installWiredEnv(t)` helper to suppress the shell-setup line, and append the run-kit agent-setup line (`nextStepsRunKitOnly`) where the fake reports run-kit runnable.
+
 ## `--dry-run` (change 6vuo)
 
 `shll install --dry-run` previews the `brew install` commands the run **would** execute, then exits 0 **without any write**. It mirrors `shll update --dry-run` (see [cli/update](/cli/update.md#dry-run-change-6vuo) for the shared contract); the flag, usage string, and the `dryRun bool` parameter on `runInstall` are the same `dryRunFlag`/`dryRunFlagUsage` constants (defined in `update.go`, shared across both commands).
@@ -130,7 +191,7 @@ Would install 4 tools:
 
 **Graceful degradation (Constitution V).** Only the missing subset is listed; already-installed tools are omitted (they are filtered out into `missing` before the preview builds).
 
-**Empty case.** When every roster tool is already installed, the dry-run path never reaches the preview builder — the shared all-already-installed short-circuit (step 3) fires first, so stdout is the shll-first informational line then `All sahil87 tools already installed.\n` (i.e. `shllSelfInstallNote + "\n" + allInstalledMsg + "\n"`, change bb7r), exit 0, no preview table, no install (`TestInstall_DryRunEmptyCase`).
+**Empty case.** When every roster tool is already installed, the dry-run path never reaches the preview builder — the shared all-already-installed short-circuit (step 3) fires first, so stdout is the shll-first informational line then `All sahil87 tools already installed.\n` (i.e. `shllSelfInstallNote + "\n" + allInstalledMsg + "\n"`, change bb7r), exit 0, no preview table, no install (`TestInstall_DryRunEmptyCase`). Under `--dry-run` the short-circuit's `printNextSteps` call is `!dryRun`-gated, so **no nudge** prints even here (`TestInstall_DryRunEmptyCaseNoNudge`, change 93r2) — see [The post-install "Next steps" nudge §emission points](#emission-points--loop-tail--short-circuit-both-non-preview-outcome-paths).
 
 **Brew-missing precondition unchanged.** A missing brew still writes `installBrewMissingHint` to stderr and exits 1 (the `hasBrew` check precedes the dry-run branch).
 
@@ -218,6 +279,7 @@ Per-tool header/tail behavior (change y630) plus the change-6vuo `[N/M]` counter
 - Sibling lifecycle command: [cli/update](/cli/update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](/cli/update.md#per-tool-output-separation-change-y630) is documented there and shared via `ui.go`. `update` deliberately does NOT mutate trust (change 0854) — it relies on `install` having trusted the tools. The rk→run-kit migration gate + `migrateRunKit` action `install` reuses (change 9bak) live in [cli/update §the migration guard](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak).
 - **Counterpart lifecycle command: [cli/uninstall](/cli/uninstall.md)** (change kkaj) — the install/uninstall pairing. `shll uninstall` is the clean-slate repair path that removes what `shll install` bootstraps: it mirrors install's per-tool `ui.go` framing and dry-run preview but in **reverse-roster** order (dependents before leaves), gates a destructive removal behind a `Proceed? [y/N]` confirmation, and reuses the shared brew helpers (`brew.go`) and `resolveTargets` (with `allowShll=true`, unlike install's `allowShll=false`, so `shll uninstall shll` is a legal explicit target).
 - Trust helpers `brewTrustFormula`/`brewTrustAvailable` live in `brew.go`: [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The read-only sibling check that surfaces an installed-but-untrusted tool: [cli/doctor §the trust sub-check](/cli/doctor.md#the-trust-sub-check-change-0854).
+- **The read-only wiring detector the [post-install nudge](#the-post-install-next-steps-nudge-change-93r2) reuses (change 93r2)**: `resolveWiringFact` lives in `doctor.go` and is shared strictly read-only — [cli/doctor §the wiring fact](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse), built on [cli/shell-setup §block location and parsing](/cli/shell-setup.md#block-location-and-parsing). The nudge's run-kit gate uses the PATH-runnable `toolInstalled` probe: [cli/version §the shared install probe](/cli/version.md#the-shared-install-probe-change-lst7).
 - Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll).
 - **The upstream bootstrap that execs into this command: [ci/install-bootstrap](/ci/install-bootstrap.md)** (change m1zt) — the `curl … | sh` script (`scripts/install.sh`, served at shll.ai/install), its shll.ai raw-fetch URL + merge-order contract, and the dev-script rename to `scripts/install-local.sh`.
 - Constitution I (Security First — the trust ceremony routes through `internal/proc`), III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation — trust degrades, not aborts, when `brew trust` is absent or fails), VII (Minimal Surface Area — `--no-trust` is a flag on existing `install`, no new command).

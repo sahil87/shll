@@ -267,12 +267,22 @@ func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelecte
 // rosterHas reports whether name is a Roster tool name. Source of truth is the live
 // Roster, so the valid-name list never drifts from the roster itself.
 func rosterHas(name string) bool {
+	_, ok := rosterTool(name)
+	return ok
+}
+
+// rosterTool returns the Roster Tool with the given name and true, or the zero Tool
+// and false when name is not a roster tool. Source of truth is the live Roster
+// (Constitution III), so callers never hardcode a second Tool descriptor — e.g. the
+// `shll install` nudge resolves the run-kit Tool this way for its post-run install
+// probe, rather than open-coding a formula/name pair.
+func rosterTool(name string) (Tool, bool) {
 	for _, t := range Roster {
 		if t.Name == name {
-			return true
+			return t, true
 		}
 	}
-	return false
+	return Tool{}, false
 }
 
 // validTargets returns the comma-separated list of valid target names for an error

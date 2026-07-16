@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -45,7 +46,7 @@ for that.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool(dryRunFlag)
 			noTrust, _ := cmd.Flags().GetBool(noTrustFlag)
-			return runInstall(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, noTrust, args)
+			return runInstall(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, noTrust, args)
 		},
 	}
 	cmd.Flags().Bool(dryRunFlag, false, dryRunFlagUsage)
@@ -106,7 +107,13 @@ const noTrustFlagUsage = "skip recording per-formula Homebrew trust before insta
 // orchestrator cannot be brew-installed). An unknown name is a hard error reported
 // before any work; a named tool that is already installed is filtered out of the
 // install set (the idempotent skip, same as the whole-roster behavior).
-func runInstall(ctx context.Context, stdout, stderr io.Writer, dryRun, noTrust bool, args []string) error {
+//
+// env is the environment lookup threaded into the post-install "Next steps" nudge
+// block's shell-setup gate (via resolveWiringFact) — production passes os.Getenv;
+// tests pass a map-backed func pointing at a t.TempDir() rc file, mirroring
+// runDoctor's established seam. It is used ONLY by the nudge block (printNextSteps),
+// which reads the rc file read-only; runInstall never writes to it.
+func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun, noTrust bool, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -181,6 +188,15 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer, dryRun, noTrust b
 
 	if len(missing) == 0 {
 		fmt.Fprintln(stdout, allInstalledMsg)
+		// Short-circuit path (decision 3): a re-runner who never wired their shell
+		// still gets nudged. colorEnabled is computed here (the install-loop path
+		// computes it once below for its own framing; this early-return path never
+		// reaches that, so it needs its own decision). Suppressed under --dry-run:
+		// decision 5 keeps `--dry-run` nudge-free, and this short-circuit precedes
+		// the dry-run branch, so gate on !dryRun here too.
+		if !dryRun {
+			printNextSteps(ctx, env, stdout, colorEnabled(stdout))
+		}
 		return nil
 	}
 
@@ -305,6 +321,13 @@ func runInstall(ctx context.Context, stdout, stderr io.Writer, dryRun, noTrust b
 	fmt.Fprintln(stdout)
 	printSummaryTail(stdout, succeeded, total, nowFunc().Sub(start), color)
 
+	// Post-install "Next steps" nudge block (decisions 1–4). Printed after the
+	// summary tail, on stdout, reusing the loop's single `color` decision. It is
+	// informational and orthogonal to install outcome, so it prints regardless of
+	// anyFailed (the tail already conveys per-tool failures). Never reached by the
+	// dry-run / brew-missing / unknown-target early returns above.
+	printNextSteps(ctx, env, stdout, color)
+
 	if anyFailed {
 		return errSilent
 	}
@@ -321,3 +344,68 @@ const allInstalledMsg = "All sahil87 tools already installed."
 // running orchestrator), so the line is informational — NOT a brew install action.
 // Named per code-quality.md (no magic strings).
 const shllSelfInstallNote = "shll — already present / self-managed"
+
+// Post-install "Next steps" nudge strings (change 93r2). Each is a named constant
+// per code-quality.md — the wording is part of the user contract, so it lives in one
+// place (mirroring allInstalledMsg / shllSelfInstallNote and doctor's suggestNotWired).
+//
+//   - nextStepsHeader labels the block.
+//   - shellSetupNudgeFmt is the shell-setup line; the single %s is the arrow glyph
+//     (arrow(color) → `→` on a color TTY, `->` otherwise). Its wording tracks doctor's
+//     suggestNotWired ("run 'shll shell-setup' then 'exec $SHELL'").
+//   - runKitAgentSetupFmt is the run-kit line; the single %s is the arrow glyph. It is
+//     informational and marked "optional, once per machine" — shll cannot know whether
+//     agent-setup already ran (run-kit-internal state; Constitution II/III), so the line
+//     may print even for users who already ran it (the accepted trade-off, decision 4).
+const (
+	nextStepsHeader     = "Next steps:"
+	shellSetupNudgeFmt  = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
+	runKitAgentSetupFmt = "  %s run-kit agent-setup # optional, once per machine — agent state in run-kit's dashboard"
+)
+
+// runKitToolName is the roster name of the run-kit tool, used to resolve its Tool
+// descriptor from the live Roster for the post-run install probe (Constitution III —
+// the roster is the source of truth; no second hardcoded descriptor). Named per
+// code-quality.md (no magic strings).
+const runKitToolName = "run-kit"
+
+// printNextSteps writes the post-install "Next steps" nudge block to stdout, with up
+// to two independently-gated lines (change 93r2, intake decisions 1–4):
+//
+//   - shell-setup nudge: printed only when shll's sentinel block is NOT wired in the
+//     user's rc file. The gate reuses doctor's read-only resolveWiringFact(env)
+//     detector (Constitution III — one detection path) and fires on
+//     `shellResolved && !corrupt && !wired`: quiet on an unresolvable $SHELL (nudging
+//     toward `shll shell-setup` would exit 2) and on a corrupt open-without-close block
+//     (shell-setup refuses it — doctor owns that diagnostic). Strictly read-only:
+//     resolveWiringFact only os.ReadFile's the rc file; `shll install` never writes it.
+//   - run-kit agent-setup line: printed only when run-kit is installed AFTER this run,
+//     re-derived by the shared install probe toolInstalled(ctx, run-kit) (a stateless
+//     re-probe, Constitution II) — uniform across the loop, short-circuit, migration,
+//     and subset paths. Informational, marked "optional, once per machine".
+//
+// When neither gate fires, nothing is printed — no empty "Next steps:" header. The
+// header and lines go to stdout with the same color/TTY framing as the headers/tail
+// (the arrow glyph degrades via arrow(color)). A blank line precedes the block (the
+// existing section-spacing rule). Never called on the dry-run / brew-missing /
+// unknown-target paths (they return before the outcome).
+func printNextSteps(ctx context.Context, env func(string) string, stdout io.Writer, color bool) {
+	w := resolveWiringFact(env)
+	shellSetup := w.shellResolved && !w.corrupt && !w.wired
+	runKit := false
+	if t, ok := rosterTool(runKitToolName); ok {
+		runKit = toolInstalled(ctx, t)
+	}
+	if !shellSetup && !runKit {
+		return
+	}
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, nextStepsHeader)
+	glyph := arrow(color)
+	if shellSetup {
+		fmt.Fprintf(stdout, shellSetupNudgeFmt+"\n", glyph)
+	}
+	if runKit {
+		fmt.Fprintf(stdout, runKitAgentSetupFmt+"\n", glyph)
+	}
+}
