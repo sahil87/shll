@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run; a legacy-keg run-kit is routed through the shared brew-direct migration action (trust-then-migrate) instead of a blind install. Ends with a state-gated post-install \"Next steps\" nudge (shell-setup + run-kit agent-setup). Also the `exec` target of the `curl … | sh` bootstrap (`scripts/install.sh`), whose arg pass-through is part of this command's public surface."
+description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run; a legacy-keg run-kit is routed through the shared brew-direct migration action (trust-then-migrate) instead of a blind install. Ends with a state-gated post-install “Next steps” nudge (shell-setup + run-kit agent-setup). Also the `exec` target of the `curl … | sh` bootstrap (`scripts/install.sh`), whose arg pass-through is part of this command's public surface."
 ---
 # cli/install
 
