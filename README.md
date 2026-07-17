@@ -275,7 +275,7 @@ shll install                                                             # trust
 - [docs/site/help-dump.md](docs/site/help-dump.md) — producer standard for the machine-readable help contract (`help-dump` JSON every tool must emit)
 - [docs/site/readme-extraction.md](docs/site/readme-extraction.md) — producer standard for README & `docs/site/` structure (what shll.ai pulls and renders per tool)
 - `shll --help` — full subcommand listing
-- **Command reference at [shll.ai/tools/shll/commands](https://shll.ai/tools/shll/commands/)** — a browsable, always-current command tree. On every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to [shll.ai](https://shll.ai), which renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
+- **Command reference at [shll.ai/shll/commands](https://shll.ai/shll/commands/)** — a browsable, always-current command tree. On every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to [shll.ai](https://shll.ai), which renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:
   [fab-kit](https://github.com/sahil87/fab-kit) ·
   [run-kit](https://github.com/sahil87/run-kit) ·
