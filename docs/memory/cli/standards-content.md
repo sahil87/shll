@@ -88,6 +88,7 @@ Rollout is per-repo, like help-dump's was — **no tool ships `skill` today**, i
 
 ## Cross-references
 
+- shll's audited conformance against these standards documents (per-standard PASS/gap disposition, incl. the `skill` deferral this file's [Adoption section](#adoption-is-phased-this-change-authored-the-standard-only) explains): [cli/standards-conformance](/cli/standards-conformance.md).
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
 - Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill).
