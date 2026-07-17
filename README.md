@@ -257,6 +257,9 @@ shll install                                                             # trust
 
 - [docs/site/install.md](docs/site/install.md) — install & shell-wiring guide (brew vs `all`, from-source, `shll shell-setup`, tap-trust)
 - [docs/site/workflows.md](docs/site/workflows.md) — task-oriented walkthroughs (clean-machine bootstrap, day-to-day `shll update`, version dumps, the composition model)
+- [docs/site/principles.md](docs/site/principles.md) — the ten CLI principles every toolkit tool is built against (agent-native contracts: obligations, failure modes, enforcement receipts)
+- [docs/site/help-dump.md](docs/site/help-dump.md) — producer standard for the machine-readable help contract (`help-dump` JSON every tool must emit)
+- [docs/site/readme-extraction.md](docs/site/readme-extraction.md) — producer standard for README & `docs/site/` structure (what shll.ai pulls and renders per tool)
 - `shll --help` — full subcommand listing
 - **Command reference at [shll.ai/tools/shll/commands](https://shll.ai/tools/shll/commands/)** — a browsable, always-current command tree. On every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to [shll.ai](https://shll.ai), which renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:
