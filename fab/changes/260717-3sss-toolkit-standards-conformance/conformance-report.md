@@ -18,8 +18,9 @@ Runtime enumeration (`shll standards`):
 | `readme-extraction` | repo | Standard's own "Verifying conformance" checklist, executed verbatim |
 | `skill` | binary+repo | Deferred, not yet adopted (per directive + the standard's Adoption section) |
 
-Fixes in this change are cited by the file/test that proves them; the commit sha is
-added at ship (this report is carried into the PR body verbatim by `/git-pr`).
+Fixes in this change are cited by the file/test that proves them; the fixing commit is
+`b36f8e404d025260d435238aa2d522447a22dad0` (this report is carried into the PR body
+verbatim by `/git-pr`).
 
 ---
 
