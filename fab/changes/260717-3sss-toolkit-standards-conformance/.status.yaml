@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 10
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-07-17T20:32:00Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:39:59Z"}
     hydrate: {started_at: "2026-07-17T20:39:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:44:31Z"}
     ship: {started_at: "2026-07-17T20:44:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:49:09Z"}
-    review-pr: {started_at: "2026-07-17T20:49:09Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-07-17T20:49:09Z", driver: git-pr, iterations: 1, completed_at: "2026-07-17T21:01:06Z"}
 prs:
     - https://github.com/sahil87/shll/pull/44
 change_type_source: explicit
@@ -54,4 +54,4 @@ true_impact:
     computed_at_stage: ship
 summary: 'Toolkit-standards conformance audit (v0.0.23): usage errors now exit 2 (translateExit 0/1/2 classification + root SetFlagErrorFunc), README badge run; new cli/standards-conformance memory; skill standard deferred to [agst] (3sss)'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-17T20:49:09Z
+last_updated: 2026-07-17T21:01:06Z
