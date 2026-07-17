@@ -2,6 +2,10 @@
 default:
     @just --list
 
+# Copy the canonical docs/site standards into src/ for //go:embed (drift-guarded by a test).
+sync-standards:
+    ./scripts/sync-standards.sh
+
 # Build the shll binary into ./bin/shll, stamped with `git describe` as the version.
 build:
     ./scripts/build.sh

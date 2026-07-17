@@ -209,6 +209,19 @@ fab-kit  OK  v2.1.1
 
 A missing or non-running binary is `FAIL`; an installed-but-untrusted or installed-but-unwired tool is `WARN` (it still works when invoked directly — but an untrusted tool's next upgrade will be refused). The trust sub-check queries `brew trust --json=v1` read-only (it never reads `~/.homebrew/trust.json` directly) and is skipped silently when your Homebrew is too old to ship `brew trust`. `doctor` is strictly **read-only** — it never installs, upgrades, trusts, or edits your rc file — and it **exits non-zero if any tool is FAIL**, so it's scriptable in CI. Pass `--json` for a machine-readable array (one object per tool) under the same checks and exit contract.
 
+### `shll standards` — read the toolkit's binding standards
+
+```sh
+$ shll standards
+principles         The ten toolkit CLI principles every tool is built against
+help-dump          Machine-readable help contract every tool must emit
+readme-extraction  README + docs/site structure standard for toolkit repos
+
+$ shll standards principles   # print the full document (raw markdown, stdout)
+```
+
+The agent-facing reader for the toolkit's standards ([docs/site/principles.md](docs/site/principles.md) and companions). The bare form is a self-describing glossary — an agent that has only been told "run `shll standards`" can pick the right document from the list alone; `shll standards <name>` prints that document byte-identical to its canonical `docs/site/` source. Content is embedded at build time, so it's offline and versioned with the release (a drift-guard test keeps the embedded copies byte-matched to `docs/site/`). Pass `--json` on the bare form for a `{name, description, source_path}` array; an unknown name errors on stderr naming the valid names and exits non-zero.
+
 ## How composition works
 
 shll has no state, no database, and no special knowledge of the tools it wraps. Every subcommand is a thin coordinator over the per-tool CLIs:
@@ -222,6 +235,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 | `shll version` | invokes `<tool> --version` per tool, formats as a table |
 | `shll list` | probes each tool's install status, renders the roster (name, description, repo) |
 | `shll doctor` | probes `<tool> --version` + reads your rc file, reports install + wiring health |
+| `shll standards` | prints build-time-embedded copies of the canonical `docs/site/` standards (no subprocess, no network) |
 
 Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt shell-init`, etc. continue to work standalone. shll's only job is to fan-out, collect output, and degrade gracefully when a tool is missing.
 
