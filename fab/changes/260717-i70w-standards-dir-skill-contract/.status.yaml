@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 10
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-07-17T19:08:38Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T19:15:53Z"}
     hydrate: {started_at: "2026-07-17T19:15:53Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T19:20:51Z"}
     ship: {started_at: "2026-07-17T19:20:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T19:22:42Z"}
-    review-pr: {started_at: "2026-07-17T19:22:42Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-07-17T19:22:42Z", driver: git-pr, iterations: 1, completed_at: "2026-07-17T19:33:05Z"}
 prs:
     - https://github.com/sahil87/shll/pull/42
 true_impact:
@@ -53,4 +53,4 @@ true_impact:
     computed_at_stage: ship
 summary: Restructured toolkit standards into docs/site/standards/, authored the skill standard (static-only agent bundle contract), and grew shll standards to a 4-entry roster with a scope column/JSON field
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-17T19:22:42Z
+last_updated: 2026-07-17T19:33:05Z
