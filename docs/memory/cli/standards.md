@@ -96,7 +96,7 @@ Adding a standard is a roster row **plus** its canonical `docs/site/standards/` 
 - **`repo`** — an obligation the repo's file structure satisfies (readme-extraction: README + docs/site layout).
 - **`binary+repo`** — spans both (skill: the `skill` subcommand ships in the binary; the canonical bundle lives in the repo).
 
-The column reuses the existing tabwriter writer and roster loop — no parallel renderer — and the JSON `scope` reuses the existing encoder path (change i70w Acceptance A-016). The four-column list output and the `{name, description, scope, source_path}` JSON are the CLI-surface shape; the two forms above show both.
+The column reuses the existing tabwriter writer and roster loop — no parallel renderer — and the JSON `scope` reuses the existing encoder path (change i70w Acceptance A-016). The three-column list output (name · scope · description) and the `{name, description, scope, source_path}` JSON are the CLI-surface shape; the two forms above show both.
 
 Two named constants keep the embed path and flag free of magic strings (code-quality.md): `standardsEmbedDir = "standards"` (matches the `//go:embed standards/*.md` pattern) and `standardsJSONFlag`/`standardsJSONFlagUsage`.
 

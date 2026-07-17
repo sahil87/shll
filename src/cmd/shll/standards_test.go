@@ -38,19 +38,21 @@ func TestStandards_ListTable(t *testing.T) {
 	for i, s := range standardsRoster {
 		line := lines[i]
 		fields := strings.Fields(line)
-		if len(fields) == 0 || fields[0] != s.Name {
+		// Column order is name · scope · description. Name and scope are each a
+		// single token, so assert them positionally (precise — catches scope not
+		// being a distinct column, which a substring search would miss).
+		if len(fields) < 2 {
+			t.Fatalf("line %d = %q, want at least name and scope fields", i, line)
+		}
+		if fields[0] != s.Name {
 			t.Errorf("line %d = %q, want name %q as the first field", i, line, s.Name)
 		}
-		if !strings.Contains(line, s.Scope) {
-			t.Errorf("line %d = %q, want to contain scope %q", i, line, s.Scope)
+		if fields[1] != s.Scope {
+			t.Errorf("line %d = %q, want scope %q as the second field, got %q", i, line, s.Scope, fields[1])
 		}
+		// Description is multi-token, so verify it appears after the scope column.
 		if !strings.Contains(line, s.Description) {
 			t.Errorf("line %d = %q, want to contain description %q", i, line, s.Description)
-		}
-		// Column order is name · scope · description: the scope substring must
-		// appear before the description substring on the row.
-		if strings.Index(line, s.Scope) >= strings.Index(line, s.Description) {
-			t.Errorf("line %d = %q, want scope %q before description %q", i, line, s.Scope, s.Description)
 		}
 	}
 }
@@ -214,6 +216,15 @@ func TestStandardsRosterIntegrity(t *testing.T) {
 	if len(standardsRoster) == 0 {
 		t.Fatal("standardsRoster must not be empty")
 	}
+	// Scope is a small fixed vocabulary and part of the CLI/JSON contract; a typo
+	// would silently change the table column and JSON `scope` value. Pin it to the
+	// known set (single-sourced from the principles "The contracts" table).
+	validScopes := map[string]bool{
+		"foundation":  true,
+		"binary":      true,
+		"repo":        true,
+		"binary+repo": true,
+	}
 	seen := make(map[string]bool, len(standardsRoster))
 	for _, s := range standardsRoster {
 		if strings.TrimSpace(s.Name) == "" {
@@ -228,6 +239,8 @@ func TestStandardsRosterIntegrity(t *testing.T) {
 		}
 		if strings.TrimSpace(s.Scope) == "" {
 			t.Errorf("standard %q has an empty Scope", s.Name)
+		} else if !validScopes[s.Scope] {
+			t.Errorf("standard %q Scope = %q, want one of foundation/binary/repo/binary+repo", s.Name, s.Scope)
 		}
 		if !strings.HasPrefix(s.SourcePath, "docs/site/standards/") {
 			t.Errorf("standard %q SourcePath = %q, want a docs/site/standards/ path", s.Name, s.SourcePath)

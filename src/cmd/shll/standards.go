@@ -127,14 +127,15 @@ func newStandardsCmd() *cobra.Command {
 		Short: "read the sahil87 toolkit's binding standards (offline, embedded)",
 		Long: `Read the sahil87 toolkit's binding, producer-facing standards.
 
-Bare ` + "`shll standards`" + ` lists every available standard with a one-line description
-of what it governs and when it applies — self-describing so an agent told only to
-"run shll standards" can pick the right document. Pass --json for a machine-readable
-array of {name, description, scope, source_path} objects (` + "`shll standards --json | jq`" + `).
+Bare ` + "`shll standards`" + ` lists every available standard with its scope and a
+one-line description of what it governs and when it applies (name, scope, description) —
+self-describing so an agent told only to "run shll standards" can pick the right document.
+Pass --json for a machine-readable array of {name, description, scope, source_path} objects
+(` + "`shll standards --json | jq`" + `).
 
 ` + "`shll standards <name>`" + ` prints the full markdown document to stdout, byte-identical
-to its canonical docs/site source. Raw markdown, no rendering, no pager — agents consume
-it directly. An unknown name is an actionable error on stderr (exit non-zero).
+to its canonical docs/site/standards source. Raw markdown, no rendering, no pager — agents
+consume it directly. An unknown name is an actionable error on stderr (exit non-zero).
 
 The content is embedded into the binary at build time, so it is offline and versioned
 with the release — when a canonical doc changes, the next shll release picks it up.`,
