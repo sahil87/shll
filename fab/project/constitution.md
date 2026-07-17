@@ -36,6 +36,10 @@ Platform-specific code MUST be isolated behind a small abstraction. The binary S
 ### Tool Roster Source of Truth
 The list of sub-tools shll knows about is hardcoded in shll's source. Adding a new tool to the sahil87 toolkit requires a shll release. shll SHALL NOT discover tools dynamically from `brew tap` or any other runtime source — the explicit, versioned list is the contract.
 
+### Toolkit Standards
+
+This repo publishes and MUST itself conform to the sahil87 toolkit's binding, producer-facing standards — CLI design principles plus mechanical contracts (machine-readable help output, README/docs-site structure, and others over time), canonically authored in this repo's own `docs/site/standards/` tree and rendered on https://shll.ai. Before changing the CLI surface, help output, `README.md`, or `docs/site/`, the change MUST be checked against the standards governing that surface by reading the relevant file(s) directly under `docs/site/standards/`. Standards added or revised there bind this repo without further amendment to this constitution.
+
 ## Governance
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-09 | **Last Amended**: 2026-05-09
+**Version**: 1.1.0 | **Ratified**: 2026-05-09 | **Last Amended**: 2026-07-18
