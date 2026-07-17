@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -64,8 +65,10 @@ func TestRootCmd_FlagErrorIsUsageExit(t *testing.T) {
 	// Silence cobra's own writers so the test output stays clean; the root
 	// already sets SilenceUsage/SilenceErrors, but SetArgs-driven runs still
 	// print via the command's out/err — redirect them to a discard sink.
-	root.SetOut(nil)
-	root.SetErr(nil)
+	// (SetOut/SetErr with nil would reset to cobra's defaults, os.Stdout/
+	// os.Stderr, so pass io.Discard to actually suppress the output.)
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
 
 	err := root.Execute()
 	if err == nil {
