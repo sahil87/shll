@@ -213,14 +213,15 @@ A missing or non-running binary is `FAIL`; an installed-but-untrusted or install
 
 ```sh
 $ shll standards
-principles         The ten toolkit CLI principles every tool is built against
-help-dump          Machine-readable help contract every tool must emit
-readme-extraction  README + docs/site structure standard for toolkit repos
+principles         foundation   The ten toolkit CLI principles every tool is built against
+help-dump          binary       Machine-readable help contract every tool must emit
+readme-extraction  repo         README + docs/site structure standard for toolkit repos
+skill              binary+repo  Agent skill bundle standard: docs/site/skill.md served by `<tool> skill`
 
 $ shll standards principles   # print the full document (raw markdown, stdout)
 ```
 
-The agent-facing reader for the toolkit's standards ([docs/site/principles.md](docs/site/principles.md) and companions). The bare form is a self-describing glossary — an agent that has only been told "run `shll standards`" can pick the right document from the list alone; `shll standards <name>` prints that document byte-identical to its canonical `docs/site/` source. Content is embedded at build time, so it's offline and versioned with the release (a drift-guard test keeps the embedded copies byte-matched to `docs/site/`). Pass `--json` on the bare form for a `{name, description, source_path}` array; an unknown name errors on stderr naming the valid names and exits non-zero.
+The agent-facing reader for the toolkit's standards ([docs/site/standards/principles.md](docs/site/standards/principles.md) and companions). The bare form is a self-describing glossary — an agent that has only been told "run `shll standards`" can pick the right document from the list alone, with a **scope** column (foundation / binary / repo / binary+repo) naming where each standard's obligations live; `shll standards <name>` prints that document byte-identical to its canonical `docs/site/standards/` source. Content is embedded at build time, so it's offline and versioned with the release (a drift-guard test keeps the embedded copies byte-matched to `docs/site/standards/`). Pass `--json` on the bare form for a `{name, description, scope, source_path}` array (`source_path` is `docs/site/standards/<name>.md`); an unknown name errors on stderr naming the valid names and exits non-zero.
 
 ## How composition works
 
@@ -271,9 +272,10 @@ shll install                                                             # trust
 
 - [docs/site/install.md](docs/site/install.md) — install & shell-wiring guide (brew vs `all`, from-source, `shll shell-setup`, tap-trust)
 - [docs/site/workflows.md](docs/site/workflows.md) — task-oriented walkthroughs (clean-machine bootstrap, day-to-day `shll update`, version dumps, the composition model)
-- [docs/site/principles.md](docs/site/principles.md) — the ten CLI principles every toolkit tool is built against (agent-native contracts: obligations, failure modes, enforcement receipts)
-- [docs/site/help-dump.md](docs/site/help-dump.md) — producer standard for the machine-readable help contract (`help-dump` JSON every tool must emit)
-- [docs/site/readme-extraction.md](docs/site/readme-extraction.md) — producer standard for README & `docs/site/` structure (what shll.ai pulls and renders per tool)
+- [docs/site/standards/principles.md](docs/site/standards/principles.md) — the ten CLI principles every toolkit tool is built against (agent-native contracts: obligations, failure modes, enforcement receipts)
+- [docs/site/standards/help-dump.md](docs/site/standards/help-dump.md) — producer standard for the machine-readable help contract (`help-dump` JSON every tool must emit)
+- [docs/site/standards/readme-extraction.md](docs/site/standards/readme-extraction.md) — producer standard for README & `docs/site/` structure (what shll.ai pulls and renders per tool)
+- [docs/site/standards/skill.md](docs/site/standards/skill.md) — producer standard for the offline, embedded `<tool> skill` agent bundle (one-page usage briefing, versioned with the binary)
 - `shll --help` — full subcommand listing
 - **Command reference at [shll.ai/shll/commands](https://shll.ai/shll/commands/)** — a browsable, always-current command tree. On every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to [shll.ai](https://shll.ai), which renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:

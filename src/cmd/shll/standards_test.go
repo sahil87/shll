@@ -34,15 +34,23 @@ func TestStandards_ListTable(t *testing.T) {
 		t.Fatalf("line count = %d, want %d (one row per standard). output:\n%s",
 			len(lines), len(standardsRoster), stdout.String())
 	}
-	// Rows follow roster order; each row is name + description.
+	// Rows follow roster order; each row is name + scope + description.
 	for i, s := range standardsRoster {
 		line := lines[i]
 		fields := strings.Fields(line)
 		if len(fields) == 0 || fields[0] != s.Name {
 			t.Errorf("line %d = %q, want name %q as the first field", i, line, s.Name)
 		}
+		if !strings.Contains(line, s.Scope) {
+			t.Errorf("line %d = %q, want to contain scope %q", i, line, s.Scope)
+		}
 		if !strings.Contains(line, s.Description) {
 			t.Errorf("line %d = %q, want to contain description %q", i, line, s.Description)
+		}
+		// Column order is name · scope · description: the scope substring must
+		// appear before the description substring on the row.
+		if strings.Index(line, s.Scope) >= strings.Index(line, s.Description) {
+			t.Errorf("line %d = %q, want scope %q before description %q", i, line, s.Scope, s.Description)
 		}
 	}
 }
@@ -82,6 +90,9 @@ func TestStandards_ListJSON(t *testing.T) {
 		if got.Description != s.Description {
 			t.Errorf("item %d description = %q, want %q", i, got.Description, s.Description)
 		}
+		if got.Scope != s.Scope {
+			t.Errorf("item %d scope = %q, want %q", i, got.Scope, s.Scope)
+		}
 		if got.SourcePath != s.SourcePath {
 			t.Errorf("item %d source_path = %q, want %q", i, got.SourcePath, s.SourcePath)
 		}
@@ -95,7 +106,7 @@ func TestStandards_ListJSONFieldNames(t *testing.T) {
 		t.Fatalf("runStandards(list json) err = %v", err)
 	}
 	out := stdout.String()
-	for _, key := range []string{`"name"`, `"description"`, `"source_path"`} {
+	for _, key := range []string{`"name"`, `"description"`, `"scope"`, `"source_path"`} {
 		if !strings.Contains(out, key) {
 			t.Errorf("JSON must carry the %s field, got:\n%s", key, out)
 		}
@@ -215,8 +226,11 @@ func TestStandardsRosterIntegrity(t *testing.T) {
 		if strings.TrimSpace(s.Description) == "" {
 			t.Errorf("standard %q has an empty Description", s.Name)
 		}
-		if !strings.HasPrefix(s.SourcePath, "docs/site/") {
-			t.Errorf("standard %q SourcePath = %q, want a docs/site/ path", s.Name, s.SourcePath)
+		if strings.TrimSpace(s.Scope) == "" {
+			t.Errorf("standard %q has an empty Scope", s.Name)
+		}
+		if !strings.HasPrefix(s.SourcePath, "docs/site/standards/") {
+			t.Errorf("standard %q SourcePath = %q, want a docs/site/standards/ path", s.Name, s.SourcePath)
 		}
 		if strings.TrimSpace(s.EmbedName) == "" {
 			t.Errorf("standard %q has an empty EmbedName", s.Name)

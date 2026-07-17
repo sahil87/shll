@@ -51,8 +51,15 @@ type standard struct {
 	// agent told only "run `shll standards`" must be able to pick the right
 	// document from this line alone.
 	Description string
+	// Scope names where the standard's obligations live: `foundation` (the
+	// principles every tool is built against), `binary` (satisfied by the
+	// compiled tool at runtime), `repo` (satisfied by the repo's file
+	// structure), or `binary+repo` (spans both). Printed as the middle column of
+	// the bare list form and emitted as the `scope` field in --json. Named
+	// vocabulary from the principles "The contracts" table, single-sourced here.
+	Scope string
 	// SourcePath is the repo-relative canonical path of the document (e.g.
-	// `docs/site/principles.md`), emitted as the `source_path` field in --json.
+	// `docs/site/standards/principles.md`), emitted as the `source_path` field in --json.
 	// It is also the source the drift-guard test compares embedded bytes against.
 	SourcePath string
 	// EmbedName is the base filename of the embedded copy under standardsEmbedDir
@@ -68,30 +75,44 @@ var standardsRoster = []standard{
 	{
 		Name:        "principles",
 		Description: "The ten toolkit CLI principles every tool is built against",
-		SourcePath:  "docs/site/principles.md",
+		Scope:       "foundation",
+		SourcePath:  "docs/site/standards/principles.md",
 		EmbedName:   "principles.md",
 	},
 	{
 		Name:        "help-dump",
 		Description: "Machine-readable help contract every tool must emit",
-		SourcePath:  "docs/site/help-dump.md",
+		Scope:       "binary",
+		SourcePath:  "docs/site/standards/help-dump.md",
 		EmbedName:   "help-dump.md",
 	},
 	{
 		Name:        "readme-extraction",
 		Description: "README + docs/site structure standard for toolkit repos",
-		SourcePath:  "docs/site/readme-extraction.md",
+		Scope:       "repo",
+		SourcePath:  "docs/site/standards/readme-extraction.md",
 		EmbedName:   "readme-extraction.md",
+	},
+	{
+		Name:        "skill",
+		Description: "Agent skill bundle standard: docs/site/skill.md served by `<tool> skill`",
+		Scope:       "binary+repo",
+		SourcePath:  "docs/site/standards/skill.md",
+		EmbedName:   "skill.md",
 	},
 }
 
 // standardJSONItem is one roster row as emitted by `shll standards --json`. Field
 // names are a lightweight, stable contract mirroring `shll list --json`: name,
-// description, and source_path (the repo-relative canonical path, so a consumer
-// can locate the doc in the shll repo without re-deriving it).
+// description, scope, and source_path (the repo-relative canonical path, so a
+// consumer can locate the doc in the shll repo without re-deriving it). The
+// `scope` field is additive — new optional fields are allowed by the toolkit's
+// format-stability rule (principle №2), so a consumer keyed on the older
+// {name, description, source_path} shape never breaks on it.
 type standardJSONItem struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Scope       string `json:"scope"`
 	SourcePath  string `json:"source_path"`
 }
 
@@ -109,7 +130,7 @@ func newStandardsCmd() *cobra.Command {
 Bare ` + "`shll standards`" + ` lists every available standard with a one-line description
 of what it governs and when it applies — self-describing so an agent told only to
 "run shll standards" can pick the right document. Pass --json for a machine-readable
-array of {name, description, source_path} objects (` + "`shll standards --json | jq`" + `).
+array of {name, description, scope, source_path} objects (` + "`shll standards --json | jq`" + `).
 
 ` + "`shll standards <name>`" + ` prints the full markdown document to stdout, byte-identical
 to its canonical docs/site source. Raw markdown, no rendering, no pager — agents consume
@@ -142,8 +163,8 @@ func runStandards(stdout, stderr io.Writer, args []string, jsonOut bool) error {
 	return writeStandardDoc(stdout, stderr, args[0])
 }
 
-// writeStandardsTable renders the roster as an aligned two-column table (name ·
-// description) in roster order, using the same text/tabwriter config as
+// writeStandardsTable renders the roster as an aligned three-column table (name ·
+// scope · description) in roster order, using the same text/tabwriter config as
 // `shll list` / `shll version` (minwidth 0, tabwidth 0, padding 2, padchar
 // space). No color glyphs and no status column — the standards list is a static
 // glossary, not an install-status view — so the output is escape-free on every
@@ -151,13 +172,13 @@ func runStandards(stdout, stderr io.Writer, args []string, jsonOut bool) error {
 func writeStandardsTable(w io.Writer) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, s := range standardsRoster {
-		fmt.Fprintf(tw, "%s\t%s\n", s.Name, s.Description)
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", s.Name, s.Scope, s.Description)
 	}
 	return tw.Flush()
 }
 
 // writeStandardsJSON emits the roster as a bare JSON array — one
-// {name, description, source_path} object per standard in roster order,
+// {name, description, scope, source_path} object per standard in roster order,
 // 2-space-indented with a single trailing newline (the Encoder appends it), so it
 // diffs cleanly and pipes into jq. HTML escaping is disabled (SetEscapeHTML(false))
 // so descriptions containing `&`/`<`/`>` serialize as the literal character,
@@ -168,6 +189,7 @@ func writeStandardsJSON(w io.Writer) error {
 		items = append(items, standardJSONItem{
 			Name:        s.Name,
 			Description: s.Description,
+			Scope:       s.Scope,
 			SourcePath:  s.SourcePath,
 		})
 	}
