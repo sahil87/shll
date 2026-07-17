@@ -1,0 +1,13 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-17T18:57:47Z"}
+{"args":"Move toolkit standards into docs/site/standards/, author the fourth standard skill.md (\u003ctool\u003e skill contract), update shll standards command (4th roster entry + scope column/JSON field, sync script + drift guard to new paths), principles.md contracts section, README updates","cmd":"fab-new","event":"command","ts":"2026-07-17T18:57:47Z"}
+{"delta":"+4.6","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-07-17T18:59:46Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-07-17T19:00:39Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-17T19:01:08Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-17T19:01:08Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-17T19:01:45Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-17T19:08:38Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-17T19:15:53Z"}
+{"event":"review","result":"passed","ts":"2026-07-17T19:15:53Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-17T19:20:51Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-17T19:22:42Z"}
+{"event":"review","result":"passed","ts":"2026-07-17T19:33:05Z"}

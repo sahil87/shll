@@ -6,7 +6,7 @@ Each principle is a testable contract: an **obligation** (MUST/SHOULD, in the [R
 
 The set builds on [anc.dev](https://anc.dev)'s eight principles for agent-native CLIs, adapted where the toolkit's experience disagreed — most notably the confirmation/automation reconciliation in №1 and №5, and idempotency in №6.
 
-Two companion standards make principles №3 and №10 concrete for every tool repo: [help-dump](help-dump.md) (the machine-readable help contract) and [readme-extraction](readme-extraction.md) (README and `docs/site/` structure).
+Three companion standards make principles №3 and №10 concrete for every tool repo: [help-dump](help-dump.md) (the machine-readable help contract), [readme-extraction](readme-extraction.md) (README and `docs/site/` structure), and [skill](skill.md) (the offline, embedded `<tool> skill` agent bundle).
 
 | # | Principle | Obligation |
 |---|-----------|------------|
@@ -20,6 +20,18 @@ Two companion standards make principles №3 and №10 concrete for every tool r
 | 8 | Graceful degradation | MUST |
 | 9 | Bounded, high-signal output | MUST |
 | 10 | Agent-discoverable documentation | SHOULD |
+
+## The contracts
+
+The set is two-tiered. This page is the **foundation** — the principles every tool is built against. Below it sit the **mechanical contracts**: narrow, testable standards that make a specific principle concrete for every repo, each pinned by a shipped enforcement mechanism.
+
+| Contract | Implements | Scope | What it standardizes |
+|----------|-----------|-------|----------------------|
+| [help-dump](help-dump.md) | №3 | binary | The JSON command tree every tool emits from `help-dump` |
+| [readme-extraction](readme-extraction.md) | №10 | repo | README + `docs/site/` structure shll.ai pulls and renders |
+| [skill](skill.md) | №3, №10 | binary + repo | The offline, embedded `<tool> skill` agent usage bundle |
+
+**Scope** names where a contract lives: **binary** obligations are satisfied by the compiled tool at runtime; **repo** obligations are satisfied by the repo's file structure; **binary + repo** spans both (the `skill` bundle ships in the binary *and* is canonically a repo file). A tool conforms to a contract when both its scope halves are met.
 
 ## 1. Non-interactive by default
 
@@ -45,7 +57,7 @@ Two companion standards make principles №3 and №10 concrete for every tool r
 
 **Failure mode.** Hand-maintained docs drift from the real CLI; agents learn commands that no longer exist.
 
-**Enforced by.** `help-dump` conformance is pinned by tests in each tool repo (byte-for-byte fidelity against real `-h` output in shll), and shll.ai validates every pulled dump against a Zod schema before rendering.
+**Enforced by.** `help-dump` conformance is pinned by tests in each tool repo (byte-for-byte fidelity against real `-h` output in shll), and shll.ai validates every pulled dump against a Zod schema before rendering. Beyond the machine tree, the [skill standard](skill.md) defines a one-page `<tool> skill` bundle — the agent-facing *usage* contract, embedded in the binary and versioned with it — as the human-readable companion to `help-dump`'s structure.
 
 ## 4. Fail fast with actionable errors
 
@@ -97,7 +109,7 @@ Two companion standards make principles №3 and №10 concrete for every tool r
 
 ## 10. Agent-discoverable documentation
 
-**Obligation (SHOULD).** A fresh agent in a tool's repo — or using its binary — should not have to rediscover the toolkit's idioms from `--help` round-trips. Each repo publishes its documentation through filesystem convention: a README structured for mechanical extraction and a `docs/site/` tree of depth pages, per the [readme-extraction standard](readme-extraction.md), both pulled and rendered on shll.ai without hand-copying. Agent entry files (`CLAUDE.md`/`AGENTS.md`) point at these standards rather than restating them.
+**Obligation (SHOULD).** A fresh agent in a tool's repo — or using its binary — should not have to rediscover the toolkit's idioms from `--help` round-trips. Each repo publishes its documentation through filesystem convention: a README structured for mechanical extraction and a `docs/site/` tree of depth pages, per the [readme-extraction standard](readme-extraction.md), both pulled and rendered on shll.ai without hand-copying. Agent entry files (`CLAUDE.md`/`AGENTS.md`) point at these standards rather than restating them. And an agent *using* an installed tool — from any repo, offline — SHOULD be able to read a one-page usage bundle via `<tool> skill`, per the [skill standard](skill.md) (SHOULD, phased per-repo — no tool ships it yet).
 
 **Failure mode.** Every agent session starts from zero: pull `--help`, infer, try, parse the error, try again — a loop paid on every invocation, forever.
 
@@ -105,4 +117,4 @@ Two companion standards make principles №3 and №10 concrete for every tool r
 
 ## Consuming these standards
 
-This page and its two companion standards ([help-dump](help-dump.md), [readme-extraction](readme-extraction.md)) are canonical here, in the [shll repo](https://github.com/sahil87/shll)'s `docs/site/` tree, and render on [shll.ai](https://shll.ai). The implementation-anchored consumer contracts (schemas, extraction code, pull workflows) live in the [shll.ai repo's specs](https://github.com/sahil87/shll.ai/tree/main/docs/specs) and link back here.
+This page and its three companion standards ([help-dump](help-dump.md), [readme-extraction](readme-extraction.md), [skill](skill.md)) are canonical here, in the [shll repo](https://github.com/sahil87/shll)'s `docs/site/standards/` tree, and render on [shll.ai](https://shll.ai) at `/shll/standards/…`. The implementation-anchored consumer contracts (schemas, extraction code, pull workflows) live in the [shll.ai repo's specs](https://github.com/sahil87/shll.ai/tree/main/docs/specs) and link back here.

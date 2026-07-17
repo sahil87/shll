@@ -34,13 +34,23 @@ func TestStandards_ListTable(t *testing.T) {
 		t.Fatalf("line count = %d, want %d (one row per standard). output:\n%s",
 			len(lines), len(standardsRoster), stdout.String())
 	}
-	// Rows follow roster order; each row is name + description.
+	// Rows follow roster order; each row is name + scope + description.
 	for i, s := range standardsRoster {
 		line := lines[i]
 		fields := strings.Fields(line)
-		if len(fields) == 0 || fields[0] != s.Name {
+		// Column order is name · scope · description. Name and scope are each a
+		// single token, so assert them positionally (precise — catches scope not
+		// being a distinct column, which a substring search would miss).
+		if len(fields) < 2 {
+			t.Fatalf("line %d = %q, want at least name and scope fields", i, line)
+		}
+		if fields[0] != s.Name {
 			t.Errorf("line %d = %q, want name %q as the first field", i, line, s.Name)
 		}
+		if fields[1] != s.Scope {
+			t.Errorf("line %d = %q, want scope %q as the second field, got %q", i, line, s.Scope, fields[1])
+		}
+		// Description is multi-token, so verify it appears after the scope column.
 		if !strings.Contains(line, s.Description) {
 			t.Errorf("line %d = %q, want to contain description %q", i, line, s.Description)
 		}
@@ -82,6 +92,9 @@ func TestStandards_ListJSON(t *testing.T) {
 		if got.Description != s.Description {
 			t.Errorf("item %d description = %q, want %q", i, got.Description, s.Description)
 		}
+		if got.Scope != s.Scope {
+			t.Errorf("item %d scope = %q, want %q", i, got.Scope, s.Scope)
+		}
 		if got.SourcePath != s.SourcePath {
 			t.Errorf("item %d source_path = %q, want %q", i, got.SourcePath, s.SourcePath)
 		}
@@ -95,7 +108,7 @@ func TestStandards_ListJSONFieldNames(t *testing.T) {
 		t.Fatalf("runStandards(list json) err = %v", err)
 	}
 	out := stdout.String()
-	for _, key := range []string{`"name"`, `"description"`, `"source_path"`} {
+	for _, key := range []string{`"name"`, `"description"`, `"scope"`, `"source_path"`} {
 		if !strings.Contains(out, key) {
 			t.Errorf("JSON must carry the %s field, got:\n%s", key, out)
 		}
@@ -203,6 +216,15 @@ func TestStandardsRosterIntegrity(t *testing.T) {
 	if len(standardsRoster) == 0 {
 		t.Fatal("standardsRoster must not be empty")
 	}
+	// Scope is a small fixed vocabulary and part of the CLI/JSON contract; a typo
+	// would silently change the table column and JSON `scope` value. Pin it to the
+	// known set (single-sourced from the principles "The contracts" table).
+	validScopes := map[string]bool{
+		"foundation":  true,
+		"binary":      true,
+		"repo":        true,
+		"binary+repo": true,
+	}
 	seen := make(map[string]bool, len(standardsRoster))
 	for _, s := range standardsRoster {
 		if strings.TrimSpace(s.Name) == "" {
@@ -215,8 +237,13 @@ func TestStandardsRosterIntegrity(t *testing.T) {
 		if strings.TrimSpace(s.Description) == "" {
 			t.Errorf("standard %q has an empty Description", s.Name)
 		}
-		if !strings.HasPrefix(s.SourcePath, "docs/site/") {
-			t.Errorf("standard %q SourcePath = %q, want a docs/site/ path", s.Name, s.SourcePath)
+		if strings.TrimSpace(s.Scope) == "" {
+			t.Errorf("standard %q has an empty Scope", s.Name)
+		} else if !validScopes[s.Scope] {
+			t.Errorf("standard %q Scope = %q, want one of foundation/binary/repo/binary+repo", s.Name, s.Scope)
+		}
+		if !strings.HasPrefix(s.SourcePath, "docs/site/standards/") {
+			t.Errorf("standard %q SourcePath = %q, want a docs/site/standards/ path", s.Name, s.SourcePath)
 		}
 		if strings.TrimSpace(s.EmbedName) == "" {
 			t.Errorf("standard %q has an empty EmbedName", s.Name)

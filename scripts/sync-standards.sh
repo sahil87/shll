@@ -10,9 +10,9 @@ set -euo pipefail
 # Run from the repo root regardless of caller CWD.
 cd "$(dirname "$0")/.."
 
-SRC_DIR="docs/site"
+SRC_DIR="docs/site/standards"
 DEST_DIR="src/cmd/shll/standards"
-STANDARDS=(principles help-dump readme-extraction)
+STANDARDS=(principles help-dump readme-extraction skill)
 
 mkdir -p "$DEST_DIR"
 for name in "${STANDARDS[@]}"; do
