@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // version is the binary version, overridden via -ldflags "-X main.version=..." at
@@ -26,15 +27,26 @@ func main() {
 	}
 }
 
-// translateExit maps RunE errors to process exit codes. Cobra prints its own
-// usage errors when SilenceUsage is true, so this layer only surfaces our own
-// sentinels.
+// translateExit maps RunE (and cobra-internal) errors to process exit codes,
+// honoring the toolkit convention documented in the principles standard:
 //
-// Sentinels:
-//   - errSilent       → 1 (caller already wrote the diagnostic to stderr)
-//   - errExitCode{...} → custom code (used by shell-init for exit 2 on bad shell)
+//	0 — success
+//	1 — operational failure (a command ran but the operation failed)
+//	2 — usage error (bad invocation: unknown command/flag, wrong arg count)
 //
-// Default: print the error to stderr and exit 1.
+// Sentinels and classification, in order:
+//   - errExitCode{...}  → its explicit code. Flag-parse errors are wrapped in
+//     errExitCode{code: 2} by the root SetFlagErrorFunc (root.go), and
+//     shell-init wraps its own bad-shell usage error as code 2. So the exit-2
+//     usage cases that flow through a hook or a RunE arrive already typed here.
+//   - errSilent         → 1 (caller already wrote its own diagnostic to stderr).
+//   - a cobra usage error → 2. Cobra v1.10.2 exposes no typed sentinel for the
+//     arg/command usage errors it raises OUTSIDE flag parsing (unknown command,
+//     invalid argument, wrong arg count); they are plain fmt.Errorf values, so
+//     they are classified here by their stable message prefixes (isUsageError).
+//     Cobra still prints these itself only when SilenceUsage is false — the root
+//     silences usage, so we print the diagnostic here to keep stderr populated.
+//   - anything else     → 1 (operational failure); print it to stderr.
 func translateExit(err error) int {
 	if err == nil {
 		return 0
@@ -49,8 +61,48 @@ func translateExit(err error) int {
 	if errors.Is(err, errSilent) {
 		return 1
 	}
+	if isUsageError(err) {
+		fmt.Fprintln(os.Stderr, err)
+		return usageExitCode
+	}
 	fmt.Fprintln(os.Stderr, err)
 	return 1
+}
+
+// usageExitCode is the toolkit-convention exit code for a usage error (bad
+// invocation). Named constant so main.go and root.go's SetFlagErrorFunc share
+// one source of truth (code-quality.md: no magic numbers).
+const usageExitCode = 2
+
+// cobraUsageErrorPrefixes are the stable leading substrings of the arg/command
+// usage errors cobra v1.10.2 raises outside flag parsing (see the upstream
+// args.go / command.go error strings). Cobra exposes no typed sentinel for
+// these, so translateExit classifies them by prefix. Flag-parse errors do NOT
+// need to appear here — they are wrapped into errExitCode{code: 2} by the root
+// SetFlagErrorFunc before Execute returns — but the flag-error prefixes are
+// included as defense-in-depth in case a flag error ever reaches this seam
+// unwrapped (e.g. a subcommand that overrode FlagErrorFunc).
+var cobraUsageErrorPrefixes = []string{
+	"unknown command ",
+	"unknown flag: ",
+	"unknown shorthand flag: ",
+	"invalid argument ",
+	"accepts ",  // e.g. "accepts 1 arg(s), received 2"
+	"requires ", // e.g. "requires at least 1 arg(s), only received 0"
+}
+
+// isUsageError reports whether err is a cobra usage error (bad invocation),
+// classified by its stable message prefix. Anchored to the message shape cobra
+// produces, not a loose substring search, so an operational error whose message
+// merely contains one of these words elsewhere is not misclassified.
+func isUsageError(err error) bool {
+	msg := err.Error()
+	for _, p := range cobraUsageErrorPrefixes {
+		if strings.HasPrefix(msg, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // errSilent is returned by subcommands that have already written their own

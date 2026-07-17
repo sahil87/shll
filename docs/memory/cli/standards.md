@@ -168,6 +168,7 @@ Helpers: `standardByName(name) (standard, bool)` and `validStandards() string` b
 
 ## Cross-references
 
+- shll's own audited conformance to the standards this command serves (the constitution-mandated receipt, audited on HEAD against v0.0.23): [cli/standards-conformance](/cli/standards-conformance.md) — the manual precursor to the future `shll audit` noted in [Out of scope](#out-of-scope).
 - Subcommand wiring, the `errSilent` exit-code sentinel, and the hardcoded-roster pattern this mirrors: [cli/commands](/cli/commands.md#subcommand-factory-pattern) and [§hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
 - The sibling read-only listing command whose `tabwriter` + `json.Encoder(SetEscapeHTML(false))` idioms this reuses: [cli/list](/cli/list.md#output-shapes).
 - `help-dump` picks up the new subcommand mechanically (no producer change): [cli/help-dump-contract](/cli/help-dump-contract.md).

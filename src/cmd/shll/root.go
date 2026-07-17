@@ -31,6 +31,16 @@ func newRootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	// Route flag-parse errors (unknown flag, bad flag value) to the toolkit
+	// usage-error exit code (2) by wrapping them in the errExitCode sentinel
+	// translateExit already understands. Set on the root so every subcommand
+	// inherits it (cobra's FlagErrorFunc walks up to the root when a command
+	// sets none — see cobra command.go FlagErrorFunc). This is the clean hook
+	// for flag errors; the arg/command usage errors cobra raises outside flag
+	// parsing carry no such hook and are classified by prefix in translateExit.
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &errExitCode{code: usageExitCode, msg: err.Error()}
+	})
 	cmd.AddCommand(
 		newDoctorCmd(),
 		newInstallCmd(),

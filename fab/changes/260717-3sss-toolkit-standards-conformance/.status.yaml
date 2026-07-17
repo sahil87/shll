@@ -1,0 +1,55 @@
+id: 3sss
+name: 260717-3sss-toolkit-standards-conformance
+created: 2026-07-17T20:15:54Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 10
+    acceptance_count: 16
+    acceptance_completed: 16
+confidence:
+    certain: 4
+    confident: 4
+    tentative: 0
+    unresolved: 0
+    score: 4.7
+    fuzzy: true
+    dimensions:
+        signal: 80.0
+        reversibility: 81.9
+        competence: 86.9
+        disambiguation: 82.5
+stage_metrics:
+    intake: {started_at: "2026-07-17T20:15:54Z", driver: fab-new, iterations: 1, completed_at: "2026-07-17T20:21:57Z"}
+    apply: {started_at: "2026-07-17T20:21:57Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:32:00Z"}
+    review: {started_at: "2026-07-17T20:32:00Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:39:59Z"}
+    hydrate: {started_at: "2026-07-17T20:39:59Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-17T20:44:31Z"}
+    ship: {started_at: "2026-07-17T20:44:31Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-17T20:44:31Z"
+    computed_at_stage: hydrate
+summary: 'Toolkit-standards conformance audit (v0.0.23): usage errors now exit 2 (translateExit 0/1/2 classification + root SetFlagErrorFunc), README badge run; new cli/standards-conformance memory; skill standard deferred to [agst] (3sss)'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-17T20:44:31Z
