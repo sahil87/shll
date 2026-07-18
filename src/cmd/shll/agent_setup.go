@@ -61,7 +61,8 @@ This machine has the sahil87 toolkit installed. Before driving one of its tools:
 
 1. ` + "`shll skill`" + ` — the installed tools, one line each
 2. ` + "`shll skill <tool>`" + ` — that tool's full agent skill bundle (when to use it,
-   composition patterns, output and exit-code contracts, gotchas)
+   composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
+   core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `

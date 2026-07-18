@@ -28,8 +28,11 @@ func RunForeground(ctx context.Context, name string, args ...string) (int, error
 // RunCaptured captures BOTH stdout and stderr into separate buffers and reports
 // the child's exit code, passing NEITHER stream through to the parent. (change agst)
 // ErrNotFound (code -1) when the binary is missing; (err == nil, code) when the
-// child ran to completion (non-zero code surfaced, NOT an error); (err, -1) on a
-// pre-start I/O failure.
+// child ran to completion (a non-zero code > 0 surfaced, NOT an error); (err, -1)
+// on a pre-start I/O failure. A ctx deadline/signal kill also surfaces as code -1
+// with a nil err (Go's *exec.ExitError.ExitCode() sentinel) — NOT a mirrorable child
+// exit status; a caller that must distinguish it treats a negative code as "no
+// usable exit status".
 func RunCaptured(ctx context.Context, name string, args ...string) (stdout, stderr []byte, code int, err error)
 ```
 
@@ -121,15 +124,15 @@ These properties are tested at the source level (acceptance A-029, A-044, A-049,
 
 - `cmd.Stdout = &stdout`, `cmd.Stderr = &stderr` — **both** captured into `Result.Stdout` / `Result.Stderr`; **neither** passed through to the parent (unlike `TransportCapture`, which passes stderr through).
 - On `exec.ErrNotFound` → `Result{ExitCode: -1, Err: ErrNotFound}`.
-- On `*exec.ExitError` (child ran and exited non-zero) → `Result{Stdout, Stderr, ExitCode: <code>}` with **`Err == nil`** — the caller branches on the non-zero code, not on an error (same contract as `TransportForeground`, but with the captured output attached).
-- On any other error (I/O failure pre-spawn) → `Result{Stdout, Stderr, ExitCode: -1, Err: err}`.
+- On `*exec.ExitError` → `Result{Stdout, Stderr, ExitCode: <code>}` with **`Err == nil`** — the caller branches on the code, not on an error (same contract as `TransportForeground`, but with the captured output attached). This one `*exec.ExitError` branch covers **two** cases the caller must distinguish by sign: a **clean non-zero exit** (the child ran to completion; `ExitCode()` is its own status, `> 0`) **and a signal kill** — including the `ctx` deadline/cancel, which SIGKILLs the child so `ExitCode()` is **`-1`**. A caller that must tell a real failure from a deadline kill treats a **negative code (nil err)** as "no usable exit status", not a mirrorable child code.
+- On any other (non-`ExitError`) error (I/O failure pre-spawn) → `Result{Stdout, Stderr, ExitCode: -1, Err: err}`. The process never started, so there is no child exit status at all.
 - On success → `Result{Stdout, Stderr, ExitCode: 0}`.
 
-**Why a third transport, not `TransportCapture` + a stderr tweak.** The two existing transports both leak the child's stderr to the parent (Capture passes it through; Foreground inherits it). `shll skill <tool>` needs the opposite: it must stream the child's stdout **byte-identical on success** AND **suppress the child's own stderr on failure** so it can emit its own clean one-line notice (a tool that predates `skill` prints an unknown-command error to stderr that the user should never see). Capturing both streams and passing neither through is the only combination that lets the caller fully own presentation. `RunCaptured` is the sole consumer today (see [cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured)).
+**Why a third transport, not `TransportCapture` + a stderr tweak.** The two existing transports both leak the child's stderr to the parent (Capture passes it through; Foreground inherits it). `shll skill` needs the opposite: it must stream the child's stdout **byte-identical on success** while capturing the child's stderr so the caller can **decide per-invocation** what to do with it on failure. Capturing both streams and passing neither through is the only combination that lets the caller fully own presentation. The two `shll skill` forms then diverge on that captured stderr: the one-arg bundle form **suppresses** it in favor of one clean notice (a tool that predates `skill` prints an unknown-command error the user should never see), while the two-arg topic form **propagates** it verbatim (the `skill` standard's unknown-topic contract must survive the composer). `RunCaptured` is the sole consumer today (see [cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured) and [§a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)).
 
 ### `RunCaptured` / `TransportCaptureAll` (change agst)
 
-`RunCaptured(ctx, name, args...) (stdout, stderr []byte, code int, err error)` is the public helper over `TransportCaptureAll`. It returns four values (not `([]byte, error)` like `Run`, nor `(int, error)` like `RunForeground`) because its callers need all of: the captured stdout to stream on success, the (suppressed) stderr, the exit code to classify a non-zero-but-completed child, and the error to distinguish `ErrNotFound`. The `Result.Stderr` field was added to the struct specifically for this transport — it is `nil` for `Run`/`RunForeground`. The `_` discard in `shll skill`'s call (`out, _, code, err := proc.RunCaptured(...)`) is deliberate: skill suppresses the child's stderr rather than reading it.
+`RunCaptured(ctx, name, args...) (stdout, stderr []byte, code int, err error)` is the public helper over `TransportCaptureAll`. It returns four values (not `([]byte, error)` like `Run`, nor `(int, error)` like `RunForeground`) because its callers need all of: the captured stdout to stream on success, the captured stderr (to suppress *or* propagate per caller), the exit code to classify a completed child (and to detect the `< 0` deadline-kill sentinel), and the error to distinguish `ErrNotFound`. The `Result.Stderr` field was added to the struct specifically for this transport — it is `nil` for `Run`/`RunForeground`. The two `shll skill` callers use the captured stderr differently: the one-arg bundle form **discards** it (`out, _, code, err := proc.RunCaptured(...)` — it suppresses the child's stderr in favor of its own notice), while the two-arg topic form **binds** it (`out, childErr, code, err := ...`) so it can write the child's bytes through verbatim on a `code > 0` failure.
 
 ## No per-request environment override
 
@@ -172,6 +175,6 @@ The 38a6 env tests (`TestRunForegroundEnv_RecordsEnvAndTransport`, `TestRunForeg
 ## Cross-references
 
 - All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md).
-- The sole `RunCaptured`/`TransportCaptureAll` consumer (byte-identical stdout passthrough + suppressed stderr): [cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured). The `run-kit agent-setup` delegation uses `RunForeground`: [cli/agent-setup §run-kit delegation](/cli/agent-setup.md#run-kit-delegation).
+- The sole `RunCaptured`/`TransportCaptureAll` consumer, `shll skill` — byte-identical stdout passthrough, with the one-arg form suppressing the child's stderr ([cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured)) and the two-arg topic form propagating it + mirroring the child's exit code ([cli/skill §a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)). The `run-kit agent-setup` delegation uses `RunForeground`: [cli/agent-setup §run-kit delegation](/cli/agent-setup.md#run-kit-delegation).
 - Constitution I (Security First) — the principle this package enforces.
 - spec.md Design Decision #7 — package-level `Runner` is the chosen test seam.
