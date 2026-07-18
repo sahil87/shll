@@ -4,7 +4,7 @@ description: "shll's audited conformance state against the 4 toolkit standards (
 ---
 # cli/standards-conformance
 
-shll's own conformance to the sahil87 toolkit's binding, producer-facing standards — the constitution-mandated work that verifies the publisher of the standards itself obeys them. This file records **which standards shll meets on HEAD**, the per-standard audit method, the two gaps this change fixed, the determinations that are conformant by design, and where the one deferred standard is tracked.
+shll's own conformance to the shll toolkit's binding, producer-facing standards — the constitution-mandated work that verifies the publisher of the standards itself obeys them. This file records **which standards shll meets on HEAD**, the per-standard audit method, the two gaps this change fixed, the determinations that are conformant by design, and where the one deferred standard is tracked.
 
 > The standards **command** that serves the documents (`shll standards`) is [cli/standards](/cli/standards.md); the standards **documents** themselves (the `docs/site/standards/` restructure + the `skill` contract) are [cli/standards-content](/cli/standards-content.md). This file is the **conformance receipt** — how shll measures up against those documents.
 

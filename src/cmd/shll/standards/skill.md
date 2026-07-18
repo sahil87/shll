@@ -1,6 +1,6 @@
 # Standard: skill
 
-The agent skill-bundle contract for every CLI in the [@sahil87 toolkit](https://shll.ai). Each tool exposes a `<tool> skill` subcommand that prints a stable, one-page markdown **skill bundle** for the agent *using* the tool — embedded in the binary, versioned with it, byte-identical to the tool repo's canonical `docs/site/skill.md`. It closes a real gap: nothing else serves an agent operating an installed tool from any repo, offline.
+The agent skill-bundle contract for every CLI in the [shll toolkit](https://shll.ai). Each tool exposes a `<tool> skill` subcommand that prints a stable, one-page markdown **skill bundle** for the agent *using* the tool — embedded in the binary, versioned with it, byte-identical to the tool repo's canonical `docs/site/skill.md`. It closes a real gap: nothing else serves an agent operating an installed tool from any repo, offline.
 
 This page is the **producer-facing standard**: what your tool's `skill` bundle must be and how the subcommand must behave. It is a sibling of the [help-dump standard](help-dump.md) — where help-dump serves the *structure* of the command tree, `skill` serves the *usage knowledge* an agent needs to wield the tool well. Together with [readme-extraction](readme-extraction.md) they implement principles №3 and №10 of the [toolkit CLI principles](principles.md). Scope: **binary + repo** (the subcommand ships in the binary; the canonical bundle lives in the repo).
 

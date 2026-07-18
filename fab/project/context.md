@@ -2,7 +2,7 @@
 
 ## Overview
 
-`shll` is a meta-CLI for the sahil87 open-source toolkit. It composes operations that span all the per-tool CLIs (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so users have one entry point for cross-toolkit concerns.
+`shll` is a meta-CLI for the shll toolkit. It composes operations that span all the per-tool CLIs (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so users have one entry point for cross-toolkit concerns.
 
 The name comes from the project's landing domain: [`shll.ai`](https://shll.ai). The website's repo lives at `hop shll.ai where` → `/home/sahil/code/sahil87/shll.ai`.
 
@@ -39,8 +39,8 @@ shll/
 | Command | Purpose |
 |---------|---------|
 | `shll update` | Run `brew update` once, self-upgrade shll, then delegate to each installed tool's own `update` (with `--skip-brew-update` when supported) — falling back to `brew upgrade sahil87/tap/<formula>` only for a tool with no `update` subcommand |
-| `shll shell-init <shell>` | Concatenate the shell-init output of all sahil87 tools that expose one (today: `tu shell-init`, `hop shell-init`, `wt shell-init`) |
-| `shll version` | Print versions of `shll` itself and every installed sahil87 tool |
+| `shll shell-init <shell>` | Concatenate the shell-init output of all shll tools that expose one (today: `tu shell-init`, `hop shell-init`, `wt shell-init`) |
+| `shll version` | Print versions of `shll` itself and every installed shll tool |
 
 ## Tool roster (hardcoded, see Constitution III)
 

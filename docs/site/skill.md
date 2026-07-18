@@ -1,6 +1,6 @@
 # shll skill
 
-The agent skill bundle for **shll** — the meta-CLI that installs, updates, wires, and inspects the [@sahil87 toolkit](https://shll.ai) (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). shll is stateless and composes each tool's own CLI; it never replaces them.
+The agent skill bundle for **shll** — the meta-CLI that installs, updates, wires, and inspects the [shll toolkit](https://shll.ai) (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). shll is stateless and composes each tool's own CLI; it never replaces them.
 
 ## When to use shll
 

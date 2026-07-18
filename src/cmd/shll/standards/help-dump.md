@@ -1,6 +1,6 @@
 # Standard: help-dump
 
-The machine-readable help contract for every CLI in the [@sahil87 toolkit](https://shll.ai). Each tool exposes a hidden `help-dump` subcommand that emits its full command tree as JSON; [shll.ai](https://shll.ai) pulls that output on a schedule and renders it as the tool's command reference. Help text is a release artifact, fresh by construction — nothing is hand-copied, and the tool pushes nothing.
+The machine-readable help contract for every CLI in the [shll toolkit](https://shll.ai). Each tool exposes a hidden `help-dump` subcommand that emits its full command tree as JSON; [shll.ai](https://shll.ai) pulls that output on a schedule and renders it as the tool's command reference. Help text is a release artifact, fresh by construction — nothing is hand-copied, and the tool pushes nothing.
 
 This page is the **producer-facing standard**: what your tool must emit. The consumer side — capture, `captured_at` stamping, Zod validation, rendering — is shll.ai's job, specified with its machine-checkable schema anchor in the [shll.ai help-dump contract](https://github.com/sahil87/shll.ai/blob/main/docs/specs/help-dump-contract.md). A tool author's entire obligation is keeping `help-dump` conformant to this page.
 

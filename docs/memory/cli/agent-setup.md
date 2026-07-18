@@ -48,7 +48,7 @@ Both writes are **unconditional** — agent-setup is an explicit "wire this mach
 `agentSkillDescription()` builds the single-line frontmatter description from the Roster in one pass:
 
 ```
-Use when driving any sahil87 toolkit CLI or shll itself — {clause, …}. {ProactiveHint, …} Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it.
+Use when driving any shll toolkit CLI or shll itself — {clause, …}. {ProactiveHint, …} Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it.
 ```
 
 - Each Roster tool contributes `"<SkillHint> (<name>)"` (name = `Name`, or `Name/LegacyName` when a `LegacyName` exists).

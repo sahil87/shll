@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// rosterEdge is one dependency edge in the sahil87 toolkit, oriented
+// rosterEdge is one dependency edge in the shll toolkit, oriented
 // dependent -> dep. The leaves-first Roster invariant is that every dependent
 // appears AFTER all of its deps (a strictly greater index).
 type rosterEdge struct {

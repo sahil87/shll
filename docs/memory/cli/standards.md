@@ -4,7 +4,7 @@ description: "`shll standards` — agent-facing reader for the toolkit's binding
 ---
 # cli/standards
 
-`shll standards` — the agent-facing reader for the sahil87 toolkit's binding, producer-facing standards. Bare form lists every available standard with its **scope** and a one-line "what it governs and when it applies" description (a self-describing glossary); `shll standards <name>` prints the full markdown document to stdout, byte-identical to its canonical `docs/site/standards/` source. Content is embedded into the binary at build time, so output is offline and versioned with the release.
+`shll standards` — the agent-facing reader for the shll toolkit's binding, producer-facing standards. Bare form lists every available standard with its **scope** and a one-line "what it governs and when it applies" description (a self-describing glossary); `shll standards <name>` prints the full markdown document to stdout, byte-identical to its canonical `docs/site/standards/` source. Content is embedded into the binary at build time, so output is offline and versioned with the release.
 
 > The standards *documents* themselves (the `docs/site/standards/` restructure rationale and the `skill` standard's contract) are documented in [cli/standards-content](/cli/standards-content.md). This file is the **command** — the reader surface, roster, embed mechanism, and drift guard.
 

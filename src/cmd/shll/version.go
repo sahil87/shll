@@ -37,7 +37,7 @@ var versionPrefixRE = regexp.MustCompile(`^\S+\s+(?i:version)\s+(.+)$`)
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "print versions of shll and every installed sahil87 tool",
+		Short: "print versions of shll and every installed shll tool",
 		Long: `Print a column-aligned plain-text table showing the version of shll itself
 plus every roster tool. Uninstalled tools show "not installed". Output is
 plain text — no colors, no JSON — so it pastes cleanly into bug reports.`,

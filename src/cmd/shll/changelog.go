@@ -41,8 +41,8 @@ type changelogSpec struct {
 func newChangelogCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "changelog [tool[@old..new]]...",
-		Short: "show release notes for sahil87 tools (what an update would bring)",
-		Long: `Show GitHub release notes for sahil87 tools.
+		Short: "show release notes for shll tools (what an update would bring)",
+		Long: `Show GitHub release notes for shll tools.
 
 With no arguments, shll changelog shows the pending releases for every installed
 tool (its installed version → the latest release) — "what would an update bring?".

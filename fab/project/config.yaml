@@ -1,7 +1,7 @@
 # Full reference of all available options: fab config reference
 project:
   name: "shll"
-  description: "Meta-CLI for the sahil87 toolkit — update, shell-init, and version across all sahil87 tools."
+  description: "Meta-CLI for the shll toolkit — update, shell-init, and version across all shll tools."
 
 # Directories containing implementation code (relative to repo root).
 source_paths:

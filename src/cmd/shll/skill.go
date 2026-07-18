@@ -74,8 +74,8 @@ const skillTopicTimeoutFmt = "shll skill: %s skill %s timed out or was killed �
 func newSkillCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "skill [tool] [topic]",
-		Short: "read the agent skill bundle for a sahil87 tool (or list installed tools)",
-		Long: `Read the offline agent skill bundle for a sahil87 tool — the one-page usage
+		Short: "read the agent skill bundle for a shll tool (or list installed tools)",
+		Long: `Read the offline agent skill bundle for a shll tool — the one-page usage
 briefing an agent loads before driving the tool (per the toolkit's ` + "`skill`" + ` standard).
 
 Bare ` + "`shll skill`" + ` prints a one-line glossary of the installed tools (shll first,

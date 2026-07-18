@@ -4,7 +4,7 @@ description: "`shll list` — toolkit roster with install status, descriptions, 
 ---
 # cli/list
 
-`shll list` — prints the roster of sahil87 tools shll manages: one row per tool with an install-status indicator, a one-line description, and its GitHub repo URL. Default output is a column-aligned table; `--json` emits a plain JSON array for scripting.
+`shll list` — prints the roster of shll tools shll manages: one row per tool with an install-status indicator, a one-line description, and its GitHub repo URL. Default output is a column-aligned table; `--json` emits a plain JSON array for scripting.
 
 Source: `src/cmd/shll/list.go` (+ `list_test.go`). Reuses the shared install probe in `src/cmd/shll/version.go` (`toolInstalled`/`probeToolVersion`), the `Roster` and `githubOrgBase` from `src/cmd/shll/tools.go`, and `colorEnabled` from `src/cmd/shll/ui.go`.
 

@@ -40,7 +40,7 @@ const apiBaseDefault = "https://api.github.com"
 // boundary (this package must not depend on cmd/shll).
 const owner = "sahil87"
 
-// githubOrgBase is the GitHub org base URL for the sahil87 toolkit, used to
+// githubOrgBase is the GitHub org base URL for the shll toolkit, used to
 // build the human-facing compare / releases-page URLs (NOT the API host —
 // that is baseURL). Derived from owner so the org prefix has one source.
 const githubOrgBase = "https://github.com/" + owner + "/"

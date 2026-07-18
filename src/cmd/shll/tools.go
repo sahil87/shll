@@ -17,7 +17,7 @@ const formulaPrefix = "sahil87/tap/"
 // constant per code-quality.md (no magic strings).
 const tapName = "sahil87/tap"
 
-// Tool describes one entry in the hardcoded sahil87 toolkit roster. The list is
+// Tool describes one entry in the hardcoded shll toolkit roster. The list is
 // the source of truth for `shll update`, `shll shell-init`, and `shll version`
 // (Constitution III — Tool Roster Source of Truth). Adding a new tool requires
 // a shll release; no runtime discovery.
@@ -89,7 +89,7 @@ type Tool struct {
 	LegacyFormula string
 }
 
-// githubOrgBase is the GitHub organization base URL for the sahil87 toolkit.
+// githubOrgBase is the GitHub organization base URL for the shll toolkit.
 // A tool's source-repo URL is githubOrgBase + tool.Repo. Named constant per
 // code-quality.md (no magic strings) so `shll list` never open-codes the URL.
 const githubOrgBase = "https://github.com/sahil87/"
@@ -135,7 +135,7 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 	}
 }
 
-// Roster is the hardcoded sahil87 toolkit list. Order matters and is declared
+// Roster is the hardcoded shll toolkit list. Order matters and is declared
 // leaves-first: every tool appears after all of its dependencies, so dependents
 // are processed only once their dependencies are done.
 //

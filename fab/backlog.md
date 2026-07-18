@@ -12,16 +12,16 @@ Operator brief: Repos: `hop`, `wt`, `tu`, `idea`, `run-kit`, `fab-kit` (optional
 
 ### Directive 1 — Constitution amendment: toolkit standards conformance (paste per repo)
 
-**Task: Amend this repo's fab constitution to bind it to the sahil87 toolkit standards.**
+**Task: Amend this repo's fab constitution to bind it to the shll toolkit standards.**
 
-This repo is part of the sahil87 toolkit. The toolkit publishes binding, producer-facing standards — CLI design principles plus mechanical contracts (machine-readable help output, README/docs-site structure, and others over time). They are canonically authored in the `sahil87/shll` repository's `docs/site/` tree, rendered on https://shll.ai, and readable offline via the `shll standards` command. This change adds a constitution article so every future pipeline run in this repo loads and enforces the obligation.
+This repo is part of the shll toolkit. The toolkit publishes binding, producer-facing standards — CLI design principles plus mechanical contracts (machine-readable help output, README/docs-site structure, and others over time). They are canonically authored in the `sahil87/shll` repository's `docs/site/` tree, rendered on https://shll.ai, and readable offline via the `shll standards` command. This change adds a constitution article so every future pipeline run in this repo loads and enforces the obligation.
 
 Make this change:
 
 1. In `fab/project/constitution.md`, add a new article under **Additional Constraints** (create the section if this constitution lacks it, matching the file's existing structure):
 
    > ### Toolkit Standards
-   > This tool is part of the sahil87 toolkit and MUST conform to the toolkit's published standards. The standards are enumerated by running `shll standards` — each entry names what it governs; read one with `shll standards <name>`. Before changing the CLI surface, help output, `README.md`, or `docs/site/`, the change MUST be checked against the standards governing that surface. If `shll` is unavailable, the canonical sources are the `sahil87/shll` repository's `docs/site/` tree (rendered on https://shll.ai). Standards added or revised there bind this repo without further amendment to this constitution.
+   > This tool is part of the shll toolkit and MUST conform to the toolkit's published standards. The standards are enumerated by running `shll standards` — each entry names what it governs; read one with `shll standards <name>`. Before changing the CLI surface, help output, `README.md`, or `docs/site/`, the change MUST be checked against the standards governing that surface. If `shll` is unavailable, the canonical sources are the `sahil87/shll` repository's `docs/site/` tree (rendered on https://shll.ai). Standards added or revised there bind this repo without further amendment to this constitution.
 
 2. Bump the constitution's `Last Amended` date (and version, per this file's own governance line).
 3. Deliberate constraint: do NOT copy standard names, counts, or per-standard URLs into the constitution — `shll standards` is the enumeration, and the article must stay correct as standards evolve.
@@ -30,7 +30,7 @@ Ship per this repo's normal flow (docs-type fab change → PR). Nothing else is 
 
 ### Directive 2 — Conformance change (paste per repo, only after that repo's Directive-1 PR is merged)
 
-**Task: Bring this repo and its tool into conformance with the sahil87 toolkit standards.**
+**Task: Bring this repo and its tool into conformance with the shll toolkit standards.**
 
 Precondition: `shll standards` runs on this machine (if the subcommand is missing, run `shll update`; if it still fails, stop and report — do not proceed from memory or the website). This repo's constitution carries the Toolkit Standards article; this task is the conformance work it mandates.
 

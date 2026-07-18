@@ -18,10 +18,10 @@ var supportedShells = []string{"zsh", "bash"}
 func newShellInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:           "shell-init <shell>",
-		Short:         "emit composed shell-init for all installed sahil87 tools",
+		Short:         "emit composed shell-init for all installed shll tools",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Long: `Emit a single concatenated shell-init blob for every installed sahil87 tool
+		Long: `Emit a single concatenated shell-init blob for every installed shll tool
 that exposes shell integration.
 
 Today, tu, hop, and wt are the roster tools with shell integration. The output
