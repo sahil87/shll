@@ -19,13 +19,13 @@ Source: `src/cmd/shll/list.go` (+ `list_test.go`). Reuses the shared install pro
 A shll-first row, then one row per roster tool in `Roster` order (leaves-first: `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). Columns: **status indicator · name · description · repo URL**. Column-aligned via `text/tabwriter` (`src/cmd/shll/list.go`) with the **same writer config as `version`**: minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 
 ```
-ok  shll      the manager for the shll toolkit                                         https://github.com/sahil87/shll
-ok  wt        Git worktree management — create, list, open, delete worktrees           https://github.com/sahil87/wt
-ok  idea      Backlog idea management from the terminal                                https://github.com/sahil87/idea
-ok  tu        Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)   https://github.com/sahil87/tu
---  run-kit   Run-kit — tmux session manager with a web UI (rk stays as an alias)      https://github.com/sahil87/run-kit
-ok  hop       Fast directory/project jumping across worktrees                          https://github.com/sahil87/hop
-ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)                 https://github.com/sahil87/fab-kit
+ok  shll      the manager for the shll toolkit                                                                                                 https://github.com/sahil87/shll
+ok  wt        Git worktree management — create, list, open, delete worktrees                                                                   https://github.com/sahil87/wt
+ok  idea      Backlog idea management from the terminal                                                                                        https://github.com/sahil87/idea
+ok  tu        Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)                                                           https://github.com/sahil87/tu
+--  run-kit   Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)  https://github.com/sahil87/run-kit
+ok  hop       Fast directory/project jumping across worktrees                                                                                  https://github.com/sahil87/hop
+ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)                                                                         https://github.com/sahil87/fab-kit
 ```
 
 (The example shows the non-TTY ASCII status markers and `run-kit` missing; on a color-enabled terminal the status cells are the green `✓` / red `✗` glyphs. A pre-rename install whose binary is still `rk` on PATH is shown *installed* via the [legacy-name probe fallback](/cli/version.md#the-legacy-name-path-probe-fallback-change-9bak), still under the display name `run-kit`.)
@@ -54,7 +54,7 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
   },
   {
     "name": "run-kit",
-    "description": "Run-kit — tmux session manager with a web UI (rk stays as an alias)",
+    "description": "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)",
     "repo": "https://github.com/sahil87/run-kit",
     "installed": false
   }

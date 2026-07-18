@@ -179,13 +179,13 @@ One row for `shll` itself plus each roster tool, in roster order. Uninstalled to
 
 ```sh
 $ shll list
-ok  shll     the manager for the shll toolkit                                        https://github.com/sahil87/shll
-ok  wt       Git worktree management — create, list, open, delete worktrees          https://github.com/sahil87/wt
-ok  idea     Backlog idea management from the terminal                               https://github.com/sahil87/idea
-ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)  https://github.com/sahil87/tu
-ok  run-kit  Run-kit — tmux session manager with a web UI                            https://github.com/sahil87/run-kit
-ok  hop      Fast directory/project jumping across worktrees                         https://github.com/sahil87/hop
-ok  fab-kit  Spec-driven workspace & workflow toolkit (the `fab` CLI)                https://github.com/sahil87/fab-kit
+ok  shll     the manager for the shll toolkit                                                                                                    https://github.com/sahil87/shll
+ok  wt       Git worktree management — create, list, open, delete worktrees                                                                      https://github.com/sahil87/wt
+ok  idea     Backlog idea management from the terminal                                                                                           https://github.com/sahil87/idea
+ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)                                                              https://github.com/sahil87/tu
+ok  run-kit  Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)  https://github.com/sahil87/run-kit
+ok  hop      Fast directory/project jumping across worktrees                                                                                     https://github.com/sahil87/hop
+ok  fab-kit  Spec-driven workspace & workflow toolkit (the `fab` CLI)                                                                            https://github.com/sahil87/fab-kit
 ```
 
 `shll` leads, then one row per managed tool in roster order: an install-status marker (`ok` / `--`, or a green `✓` / red `✗` on a terminal), the name, a one-line description, and the source-repo URL. The leading `shll` row is the manager itself — it's surfaced so the toolkit reads as one family with `shll` as its manager-member (the same shll-first ordering `shll version` and `shll update` already use). Install status reuses the same PATH probe as `shll version` (it's install-mechanism agnostic, not a Homebrew check); a missing tool is shown as missing, never an error, so `shll list` always exits 0.
@@ -254,7 +254,7 @@ shll agent-setup --uninstall  # remove both placed skill directories
 
 Mechanically places one thin `shll-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/shll-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/`) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates run-kit's dashboard-hook wiring to `run-kit agent-setup` (skipped silently when run-kit isn't installed; `--print`/`--uninstall` don't delegate a placement). This graduates the toolkit's harness wiring from `run-kit agent-setup`, where it was mis-homed on a leaf tool, up to the manager.
 
-Once placed, the skill maintains itself: [`shll update`](#shll-update--upgrade-everything) ends each run by re-running `agent-setup` (so the placed content tracks the upgraded binaries), and [`shll doctor`](#shll-doctor--verify-install--wiring) flags a stale placement with a `WARN`. The skill's frontmatter description is generated from the tool roster — each tool contributes its name and a task-domain phrase ("git worktrees", "backlog ideas") so agents match on the task, not just the tool name.
+Once placed, the skill maintains itself: [`shll update`](#shll-update--upgrade-everything) ends each run by re-running `agent-setup` (so the placed content tracks the upgraded binaries), and [`shll doctor`](#shll-doctor--verify-install--wiring) flags a stale placement with a `WARN`. The skill's frontmatter description is generated from the tool roster — each tool contributes its name and a task-domain phrase ("git worktrees", "backlog ideas") so agents match on the task, not just the tool name, and run-kit additionally contributes an agent-proactive sentence (show visual content in a browser window, push notifications) so agents reach for those capabilities unprompted.
 
 ## How composition works
 

@@ -392,6 +392,46 @@ func TestRosterSkillHints(t *testing.T) {
 	}
 }
 
+// TestRosterProactiveHint pins the ProactiveHint contract, which — unlike SkillHint —
+// is optional-by-design: it is populated ONLY on run-kit (the sprawl guard) and rendered
+// as an additional sentence AFTER the tool clauses and BEFORE the two-step pointer. It
+// gets its own test rather than extending TestRosterSkillHints (which enforces an
+// every-tool required field).
+func TestRosterProactiveHint(t *testing.T) {
+	// Exactly run-kit carries a ProactiveHint; every other tool leaves it empty
+	// (the sprawl guard — only agent-proactive capabilities earn description space).
+	var withHint []string
+	for _, tool := range Roster {
+		if tool.ProactiveHint != "" {
+			withHint = append(withHint, tool.Name)
+		}
+	}
+	if len(withHint) != 1 || withHint[0] != "run-kit" {
+		t.Fatalf("exactly run-kit must declare a ProactiveHint, got %v", withHint)
+	}
+
+	rk, ok := rosterTool("run-kit")
+	if !ok {
+		t.Fatal("run-kit must be in the roster")
+	}
+	desc := agentSkillDescription()
+
+	// The run-kit ProactiveHint sentence appears verbatim in the rendered description …
+	if !strings.Contains(desc, rk.ProactiveHint) {
+		t.Errorf("description must contain run-kit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
+	}
+	// … positioned AFTER the tool clauses and BEFORE the two-step pointer.
+	hintIdx := strings.Index(desc, rk.ProactiveHint)
+	pointerIdx := strings.Index(desc, "Run `shll skill`")
+	clausesIdx := strings.Index(desc, "Use when driving")
+	if clausesIdx < 0 || pointerIdx < 0 || hintIdx < 0 {
+		t.Fatalf("description missing an expected segment (clauses=%d hint=%d pointer=%d): %s", clausesIdx, hintIdx, pointerIdx, desc)
+	}
+	if !(clausesIdx < hintIdx && hintIdx < pointerIdx) {
+		t.Errorf("ProactiveHint must fall after the tool clauses and before the two-step pointer (clauses=%d hint=%d pointer=%d): %s", clausesIdx, hintIdx, pointerIdx, desc)
+	}
+}
+
 // TestAgentSetup_FlagsWiredThroughCobra drives the REAL cobra command so it catches a
 // flag-binding regression: --print must reach runAgentSetup and print (not write). It
 // runs against a t.TempDir() HOME via $HOME (os.Getenv in the factory).
