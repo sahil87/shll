@@ -284,6 +284,252 @@ func TestSkill_ShllSelf_ByteIdenticalToEmbed(t *testing.T) {
 	}
 }
 
+// --- Topic passthrough (two-arg form: R1, R3, R4, R5, R6) --------------------
+
+func TestSkillTopic_Passthrough_ByteIdentical(t *testing.T) {
+	page := "# rk skill: display\n\nHow to drive the dashboard …\n"
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
+			return proc.Result{Stdout: []byte(page), ExitCode: 0}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "display"}); err != nil {
+		t.Fatalf("runSkill(run-kit display) err = %v", err)
+	}
+	if stdout.String() != page {
+		t.Errorf("stdout = %q, want byte-identical %q", stdout.String(), page)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must be empty on success, got %q", stderr.String())
+	}
+	// The invocation must be `run-kit skill display`, via the capture-all transport.
+	var found bool
+	for _, c := range f.recordedCalls() {
+		if c.Name == "run-kit" && len(c.Args) == 2 && c.Args[0] == skillSubcommand && c.Args[1] == "display" {
+			found = true
+			if c.Transport != proc.TransportCaptureAll {
+				t.Errorf("topic passthrough transport = %v, want TransportCaptureAll", c.Transport)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected a `run-kit skill display` invocation, calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestSkillTopic_RkAliasResolvesToRunKit(t *testing.T) {
+	page := "# run-kit skill: display\n"
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
+			return proc.Result{Stdout: []byte(page), ExitCode: 0}
+		}
+		// The alias must NOT invoke a literal `rk skill display`.
+		if req.Name == "rk" {
+			t.Errorf("rk alias must resolve to run-kit, not invoke `rk`: %+v", req)
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runSkill(context.Background(), &stdout, &stderr, []string{"rk", "display"}); err != nil {
+		t.Fatalf("runSkill(rk display) err = %v", err)
+	}
+	if stdout.String() != page {
+		t.Errorf("stdout = %q, want run-kit's topic page %q", stdout.String(), page)
+	}
+}
+
+func TestSkillTopic_UnknownTopic_PropagatesChildStderrAndExitCode(t *testing.T) {
+	// The child (a real `<tool> skill <topic>`) rejects an unknown topic: it exits
+	// non-zero and names the valid topics on stderr. shll must forward BOTH verbatim —
+	// the child's stderr bytes and the child's own exit code (NOT flattened to 1).
+	childErr := "unknown topic \"nope\" (valid: display, windows)\n"
+	const childCode = 2
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "nope" {
+			return proc.Result{Stderr: []byte(childErr), ExitCode: childCode}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "nope"})
+	var ec *errExitCode
+	if !errors.As(err, &ec) {
+		t.Fatalf("unknown-topic err = %v, want *errExitCode carrying the child's code", err)
+	}
+	if ec.code != childCode {
+		t.Errorf("exit code = %d, want the child's own code %d (mirrored, not flattened)", ec.code, childCode)
+	}
+	// The empty msg means translateExit writes nothing extra — the child's stderr is
+	// the whole diagnostic. Assert the errExitCode carries no message.
+	if ec.msg != "" {
+		t.Errorf("errExitCode.msg = %q, want empty (child stderr is the only diagnostic)", ec.msg)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("a failed topic must write nothing to stdout, got %q", stdout.String())
+	}
+	// The child's stderr bytes must reach shll's stderr VERBATIM (not suppressed, not rewrapped).
+	if stderr.String() != childErr {
+		t.Errorf("stderr = %q, want the child's bytes verbatim %q", stderr.String(), childErr)
+	}
+}
+
+func TestSkillTopic_TimedOutOrKilled_CuratedNoticeExit1(t *testing.T) {
+	// A `<tool> skill <topic>` child killed by the skillProbeTimeout deadline (or any
+	// signal) surfaces from proc.RunCaptured as code -1 with nil err — Go's
+	// *exec.ExitError.ExitCode() sentinel, NOT a real child exit code. shll must NOT
+	// mirror -1 (that would wrap to process exit 255 with zero stderr); it must emit a
+	// curated one-line operational notice and exit 1, never leaking the negative code.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
+			return proc.Result{ExitCode: -1, Err: nil}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "display"})
+	// Must be errSilent (exit 1), NOT an errExitCode carrying a negative code.
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("timed-out/killed child err = %v, want errSilent (exit 1)", err)
+	}
+	var ec *errExitCode
+	if errors.As(err, &ec) {
+		t.Fatalf("timed-out/killed child must NOT return an errExitCode (would leak code %d), got %+v", ec.code, ec)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("a killed topic child must write nothing to stdout, got %q", stdout.String())
+	}
+	diag := stderr.String()
+	// The curated notice names the tool and the topic and does not leak "-1".
+	if !strings.Contains(diag, "run-kit") || !strings.Contains(diag, "display") {
+		t.Errorf("stderr should be the curated timeout notice naming tool+topic, got %q", diag)
+	}
+	if !strings.Contains(diag, "timed out") {
+		t.Errorf("stderr should state the child timed out or was killed, got %q", diag)
+	}
+	if strings.Contains(diag, "-1") {
+		t.Errorf("the negative sentinel code must not leak into the notice, got %q", diag)
+	}
+	if strings.Count(strings.TrimRight(diag, "\n"), "\n") != 0 {
+		t.Errorf("notice must be exactly one line, got %q", diag)
+	}
+}
+
+func TestSkillTopic_NotInstalled_OneLineNoticeExit1(t *testing.T) {
+	// Topic form + tool not on PATH → the curated not-installed notice, exit 1.
+	// Classification precedes propagation (there is no usable child exit code).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "idea" {
+			return proc.Result{ExitCode: -1, Err: proc.ErrNotFound}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"idea", "sometopic"})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("not-installed (topic form) err = %v, want errSilent (exit 1)", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("not-installed must write nothing to stdout, got %q", stdout.String())
+	}
+	diag := stderr.String()
+	if !strings.Contains(diag, "idea") || !strings.Contains(diag, "not installed") {
+		t.Errorf("stderr should be the one-line not-installed notice, got %q", diag)
+	}
+	if strings.Count(strings.TrimRight(diag, "\n"), "\n") != 0 {
+		t.Errorf("notice must be exactly one line, got %q", diag)
+	}
+}
+
+func TestSkillTopic_UnknownTool_UsageExit2NoSubprocess(t *testing.T) {
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		t.Errorf("an unknown tool name must not spawn a subprocess, got %+v", req)
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"wombat", "topic"})
+	var ec *errExitCode
+	if !errors.As(err, &ec) {
+		t.Fatalf("unknown tool (topic form) err = %v, want *errExitCode", err)
+	}
+	if ec.code != usageExitCode {
+		t.Errorf("exit code = %d, want %d (usage)", ec.code, usageExitCode)
+	}
+	if !strings.Contains(ec.msg, "wombat") {
+		t.Errorf("diagnostic must name the offending tool, got %q", ec.msg)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("unknown tool must write nothing to stdout, got %q", stdout.String())
+	}
+}
+
+func TestSkillTopic_ShllSelf_NoTopicsUsageExit2NoSubprocess(t *testing.T) {
+	// `shll skill shll <topic>` — shll ships no topics. Served in-process (a subprocess
+	// self-invocation would recurse into the composer): one stderr line, usage exit 2.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		t.Errorf("shll skill shll <topic> must NOT spawn a subprocess, got %+v", req)
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"shll", "display"})
+	var ec *errExitCode
+	if !errors.As(err, &ec) {
+		t.Fatalf("shll self topic err = %v, want *errExitCode", err)
+	}
+	if ec.code != usageExitCode {
+		t.Errorf("exit code = %d, want %d (usage)", ec.code, usageExitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("shll self topic must write nothing to stdout, got %q", stdout.String())
+	}
+	diag := stderr.String()
+	if !strings.Contains(diag, "no topic") {
+		t.Errorf("stderr should state shll ships no topic pages, got %q", diag)
+	}
+	if !strings.Contains(diag, "display") {
+		t.Errorf("stderr should name the requested topic, got %q", diag)
+	}
+	if strings.Count(strings.TrimRight(diag, "\n"), "\n") != 0 {
+		t.Errorf("notice must be exactly one line, got %q", diag)
+	}
+}
+
+// TestSkill_ArgCount_ThreeArgsUsageExit2 drives the REAL cobra command: the arg-count
+// contract shifts from >1 to >2, so `shll skill a b c` (three args) is a usage error.
+func TestSkill_ArgCount_ThreeArgsUsageExit2(t *testing.T) {
+	installFakeRunner(t, &fakeRunner{})
+
+	cmd := newSkillCmd()
+	var out, errb bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{"a", "b", "c"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("three args must be a usage error, got nil")
+	}
+	// cobra's MaximumNArgs(2) rejects 3 args with an "accepts at most 2 arg(s)" message —
+	// classified as a usage error (exit 2) by translateExit's isUsageError prefix match.
+	if !isUsageError(err) {
+		t.Errorf("three-arg error %q must classify as a usage error (exit 2)", err)
+	}
+}
+
 // --- Drift guard + budget (T014 / R7) ----------------------------------------
 
 // TestSkillEmbedMatchesCanonical is the drift guard: the embedded shll bundle bytes

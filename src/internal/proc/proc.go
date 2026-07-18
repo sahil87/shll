@@ -62,8 +62,10 @@ const (
 	// TransportCaptureAll buffers BOTH stdout and stderr into the Result (Stdout /
 	// Stderr) and reports the child's exit code, without passing either stream
 	// through to the parent. Used by callers that must stream a child's stdout
-	// byte-identical on success AND suppress the child's own stderr on failure so
-	// they can emit their own clean diagnostic (e.g. `shll skill <tool>`).
+	// byte-identical on success and then decide, per caller, what to do with the
+	// captured stderr on failure: `shll skill <tool>` suppresses it in favor of one
+	// clean diagnostic, while `shll skill <tool> <topic>` propagates it verbatim
+	// (the `skill` standard's unknown-topic contract must survive the composer).
 	TransportCaptureAll
 )
 
@@ -107,11 +109,15 @@ func RunForeground(ctx context.Context, name string, args ...string) (int, error
 // RunCaptured invokes name+args capturing BOTH stdout and stderr into separate
 // buffers (TransportCaptureAll) and returning the child's exit code. Neither stream
 // is passed through to the parent, so the caller fully owns presentation: it can
-// stream the captured stdout byte-identical on success and suppress the captured
-// stderr on failure in favor of its own diagnostic. When the binary is not on PATH,
-// err is ErrNotFound and code is -1. When the child runs to completion, err is nil
-// and code is its exit status (non-zero for a failed child); stdout/stderr hold
-// whatever it wrote. Other pre-start I/O errors return a non-nil err with code -1.
+// stream the captured stdout byte-identical on success and decide per-caller what to
+// do with the captured stderr on failure. When the binary is not on PATH, err is
+// ErrNotFound and code is -1. A pre-start I/O error returns a non-nil err with code
+// -1. Otherwise err is nil and code is what the process yielded: its own exit status
+// (0 on success, > 0 on a clean failure) when it ran to completion, or -1 when it was
+// signal-killed — notably by the ctx deadline/cancel, which reports code -1 with nil
+// err (Go's *exec.ExitError.ExitCode() sentinel). A caller that must distinguish a
+// real non-zero exit from a deadline kill therefore treats a negative code (nil err)
+// as "no usable exit status", not as a mirrorable child code.
 func RunCaptured(ctx context.Context, name string, args ...string) (stdout, stderr []byte, code int, err error) {
 	res := Runner(ctx, Request{Name: name, Args: args, Transport: TransportCaptureAll})
 	return res.Stdout, res.Stderr, res.ExitCode, res.Err
@@ -162,13 +168,17 @@ func defaultRunner(ctx context.Context, req Request) Result {
 				return Result{ExitCode: -1, Err: ErrNotFound}
 			}
 			if code, ok := exitCode(err); ok {
-				// Child ran to completion with a non-zero exit: surface the code and
-				// the captured output; err stays nil so callers branch on ExitCode.
+				// The process started and cmd.Run returned an *exec.ExitError. This
+				// covers BOTH a clean non-zero exit (ExitCode() is the child's own
+				// status, > 0) AND a signal kill — including the ctx deadline/cancel,
+				// which SIGKILLs the child so ExitCode() is -1. err stays nil so callers
+				// branch on ExitCode; a caller that must distinguish a real failure from
+				// a deadline kill treats a negative code as "no usable exit status".
 				return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: code}
 			}
-			// No usable exit code: either a pre-start I/O failure (dir missing, etc.)
-			// or a context cancellation/deadline hit after the process started — both
-			// surface as a non-ExitError err rather than a child exit status.
+			// A non-ExitError err: the process never started (pre-start I/O failure —
+			// binary not found handled above, dir missing, etc.), so there is no child
+			// exit status at all.
 			return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: -1, Err: err}
 		}
 		return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: 0}

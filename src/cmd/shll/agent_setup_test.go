@@ -341,6 +341,9 @@ func TestAgentSetup_BodyTeachesTwoStepAndStandards(t *testing.T) {
 	if !strings.Contains(agentSkillContent, "shll skill <tool>") {
 		t.Errorf("SKILL.md body must teach the per-tool `shll skill <tool>` step")
 	}
+	if !strings.Contains(agentSkillContent, "shll skill <tool> <topic>") {
+		t.Errorf("SKILL.md body must teach the topic form `shll skill <tool> <topic>`")
+	}
 	if !strings.Contains(agentSkillContent, "shll standards") {
 		t.Errorf("SKILL.md body must carry the `shll standards` pointer")
 	}

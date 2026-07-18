@@ -36,8 +36,8 @@ Both writes are **unconditional** — agent-setup is an explicit "wire this mach
 `agentSkillContent` is a Go string constant in `agent_setup.go` — **not** a docs-site file. The bootstrap skill is an agent-setup artifact, neither a published standard nor a `<tool> skill` bundle, so the docs-site sync/embed/drift-guard ceremony (which `docs/site/skill.md` uses — see [cli/skill](/cli/skill.md#the-bundle-authored-embedded-drift-guarded-budget-bounded)) does **not** apply here.
 
 - **Portable frontmatter — `name` + `description` ONLY** (the OpenCode-recognized common subset, valid on all four harnesses). `name: shll-toolkit` equals `skillDirName` (the same constant is spliced into both the frontmatter and the directory name, so they cannot drift) and satisfies the shared `^[a-z0-9]+(-[a-z0-9]+)*$` / match-directory-name rule.
-- **The `description` front-loads trigger words** (the tool names: `wt, idea, tu, run-kit (rk), hop, fab-kit, or shll itself`) so the skill activates implicitly when an agent is about to drive a toolkit tool.
-- **The body teaches the runtime two-step** (`shll skill` → `shll skill <tool>`) plus one `shll standards` pointer for toolkit-repo development. It only *points at* the runtime two-step, so bundles are always fetched from the installed binaries — the placed file stays version-locked in spirit and is refreshed by the installed shll on any re-run.
+- **The `description` front-loads trigger words** (the tool names plus each tool's task-domain phrase) so the skill activates implicitly when an agent is about to drive a toolkit tool. Its trailer names the runtime two-step (`Run 'shll skill' to list … 'shll skill <tool>' for that tool's full usage bundle`). **The description trailer is deliberately NOT extended to the topic form** — it is single-line activation-trigger vocabulary (one YAML line, asserted by `TestAgentSetup_DescriptionSingleLine`), not a teaching surface; the topic form belongs in the body's step 2.
+- **The body teaches the runtime discovery steps** (`shll skill` → `shll skill <tool>` → `shll skill <tool> <topic>`) plus one `shll standards` pointer for toolkit-repo development. Step 2 notes that a large-scope tool's core bundle lists its topic pages and `shll skill <tool> <topic>` serves one on demand (extended by change tp2s). It only *points at* the runtime steps, so bundles are always fetched from the installed binaries — the placed file stays version-locked in spirit and is refreshed by the installed shll on any re-run (the change-#50 refresh machinery propagates the new body on the next `shll update`).
 
 ## Modes and the run seam
 
@@ -88,7 +88,7 @@ I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; sk
 
 ## Cross-references
 
-- The runtime two-step the placed skill teaches (`shll skill` glossary → `shll skill <tool>` bundle): [cli/skill](/cli/skill.md).
+- The runtime steps the placed skill teaches (`shll skill` glossary → `shll skill <tool>` bundle → `shll skill <tool> <topic>` topic page): [cli/skill](/cli/skill.md).
 - The nudge graduation and the shared `runKitToolName` constant (now consumed only by this file's delegation): [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge-change-93r2).
 - The subprocess wrapper the delegation uses: [internal/proc](/internal/proc.md).
 - Root wiring (`newAgentSetupCmd`), the exit-code sentinels (`errExitCode`/`usageExitCode`/`errSilent`): [cli/commands](/cli/commands.md).

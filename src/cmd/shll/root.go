@@ -20,7 +20,7 @@ Subcommands:
   shll version                print versions of shll and every installed sahil87 tool
   shll list                   list the managed sahil87 tools with install status and repo links
   shll standards [name]       read the toolkit's binding standards (list them, or print one)
-  shll skill [tool]           read a tool's agent skill bundle (or list installed tools)
+  shll skill [tool] [topic]   read a tool's agent skill bundle or one of its topic pages (or list installed tools)
   shll agent-setup            place the sahil87 toolkit skill for agent harnesses
 
 Per-tool CLIs continue to work standalone — shll wraps them, it does not replace them.`

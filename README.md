@@ -235,9 +235,10 @@ shll     the manager for the shll toolkit
 wt       Git worktree management — create, list, open, delete worktrees
 hop      Fast directory/project jumping across worktrees
 
-Run 'shll skill <tool>' for that tool's full agent skill bundle.
+Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> <topic>' for a topic page).
 
 $ shll skill hop              # print hop's full agent skill bundle (raw markdown)
+$ shll skill run-kit display  # print one of a tool's topic pages (passed through to `run-kit skill display`)
 $ shll skill shll             # shll's own bundle (served from the embedded copy)
 ```
 
