@@ -30,11 +30,14 @@ var ErrNotFound = errors.New("binary not found on PATH")
 
 // Result is the structured outcome of a single subprocess invocation. Stdout carries
 // captured bytes when the transport was Run; for RunForeground stdout/stderr stream
-// directly to the parent and Stdout is nil. ExitCode is the subprocess's exit status
-// when it ran to completion; for RunForeground transports, callers consume ExitCode
-// to mirror the child's status. Run callers usually inspect Err and ignore ExitCode.
+// directly to the parent and Stdout is nil. Stderr carries captured stderr bytes only
+// for TransportCaptureAll (nil otherwise — Run passes stderr through, Foreground
+// inherits it). ExitCode is the subprocess's exit status when it ran to completion;
+// for RunForeground / RunCaptured transports, callers consume ExitCode to mirror the
+// child's status. Run callers usually inspect Err and ignore ExitCode.
 type Result struct {
 	Stdout   []byte
+	Stderr   []byte
 	ExitCode int
 	Err      error
 }
@@ -56,6 +59,12 @@ const (
 	// TransportForeground inherits stdin/stdout/stderr from the parent. Used for
 	// commands whose output the user should see directly (brew update, brew upgrade).
 	TransportForeground
+	// TransportCaptureAll buffers BOTH stdout and stderr into the Result (Stdout /
+	// Stderr) and reports the child's exit code, without passing either stream
+	// through to the parent. Used by callers that must stream a child's stdout
+	// byte-identical on success AND suppress the child's own stderr on failure so
+	// they can emit their own clean diagnostic (e.g. `shll skill <tool>`).
+	TransportCaptureAll
 )
 
 // Request describes a subprocess invocation. The binary path and explicit []string
@@ -95,6 +104,19 @@ func RunForeground(ctx context.Context, name string, args ...string) (int, error
 	return res.ExitCode, nil
 }
 
+// RunCaptured invokes name+args capturing BOTH stdout and stderr into separate
+// buffers (TransportCaptureAll) and returning the child's exit code. Neither stream
+// is passed through to the parent, so the caller fully owns presentation: it can
+// stream the captured stdout byte-identical on success and suppress the captured
+// stderr on failure in favor of its own diagnostic. When the binary is not on PATH,
+// err is ErrNotFound and code is -1. When the child runs to completion, err is nil
+// and code is its exit status (non-zero for a failed child); stdout/stderr hold
+// whatever it wrote. Other pre-start I/O errors return a non-nil err with code -1.
+func RunCaptured(ctx context.Context, name string, args ...string) (stdout, stderr []byte, code int, err error) {
+	res := Runner(ctx, Request{Name: name, Args: args, Transport: TransportCaptureAll})
+	return res.Stdout, res.Stderr, res.ExitCode, res.Err
+}
+
 // defaultRunner is the production implementation of RunnerFunc. It spawns a real
 // subprocess via exec.CommandContext (always — no exec.Command without ctx).
 func defaultRunner(ctx context.Context, req Request) Result {
@@ -130,6 +152,26 @@ func defaultRunner(ctx context.Context, req Request) Result {
 			return Result{ExitCode: -1, Err: err}
 		}
 		return Result{ExitCode: 0}
+	case TransportCaptureAll:
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		if err != nil {
+			if errors.Is(err, exec.ErrNotFound) {
+				return Result{ExitCode: -1, Err: ErrNotFound}
+			}
+			if code, ok := exitCode(err); ok {
+				// Child ran to completion with a non-zero exit: surface the code and
+				// the captured output; err stays nil so callers branch on ExitCode.
+				return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: code}
+			}
+			// No usable exit code: either a pre-start I/O failure (dir missing, etc.)
+			// or a context cancellation/deadline hit after the process started — both
+			// surface as a non-ExitError err rather than a child exit status.
+			return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: -1, Err: err}
+		}
+		return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: 0}
 	default:
 		return Result{ExitCode: -1, Err: errors.New("proc: unknown transport")}
 	}

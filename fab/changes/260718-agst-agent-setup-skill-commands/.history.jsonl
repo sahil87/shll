@@ -1,0 +1,18 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-18T05:10:03Z"}
+{"args":"agst: Add shll agent-setup + shll skill — graduate machine-level agent wiring from run-kit to shll","cmd":"fab-new","event":"command","ts":"2026-07-18T05:10:03Z"}
+{"delta":"+3.3","event":"confidence","score":3.3,"trigger":"calc-score","ts":"2026-07-18T05:15:26Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-18T05:17:01Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-18T05:17:26Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-18T05:40:35Z"}
+{"delta":"+0.4","event":"confidence","score":3.7,"trigger":"calc-score","ts":"2026-07-18T05:51:59Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-18T05:53:42Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-18T05:56:21Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T05:57:39Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-18T06:08:42Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T06:09:36Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-18T06:20:16Z"}
+{"event":"review","result":"passed","ts":"2026-07-18T06:20:16Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T06:20:55Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-18T06:31:29Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-18T06:34:16Z"}
+{"event":"review","result":"passed","ts":"2026-07-18T06:44:04Z"}

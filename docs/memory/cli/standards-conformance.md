@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "shll's audited conformance state against the 4 toolkit standards (principles, help-dump, readme-extraction, skill), audited on HEAD against shll v0.0.23: per-standard audit method, the two fixes (usage-error exit 2, README badge run), the by-design non-gaps (version-without-`--json`, README footer-heading absence), where deferred gaps live ([agst] for skill), and the conformance-report-in-PR-body convention."
+description: "shll's audited conformance state against the 4 toolkit standards (principles, help-dump, readme-extraction, skill), audited on HEAD against shll v0.0.23: per-standard audit method, the two fixes (usage-error exit 2, README badge run), the by-design non-gaps (version-without-`--json`, README footer-heading absence), and the conformance-report-in-PR-body convention. The `skill` standard was DEFERRED at audit time ([agst]) and is now ADOPTED by change agst — `shll skill shll` serves the drift-guarded `docs/site/skill.md` bundle."
 ---
 # cli/standards-conformance
 
@@ -26,7 +26,7 @@ The audit is **runtime-enumerated, not assumed**: `shll standards` lists the sta
 | `principles` | foundation | Each of the 10 principles assessed against actual subcommand behavior across the whole surface (`update`, `install`, `list`, `doctor`, `version`, `changelog`, `shell-init`, `shell-setup`, `standards`, `uninstall`) | 9 PASS, 1 gap (№4 usage-exit) — **fixed here** |
 | `help-dump` | binary | The standard's own "Verifying conformance" checklist, executed verbatim | PASS |
 | `readme-extraction` | repo | The standard's own "Verifying conformance" checklist, executed verbatim | 1 gap (badge run) — **fixed here** |
-| `skill` | binary+repo | Deferred, not yet adopted (phased per-repo rollout) — tracked in `[agst]` | deferred |
+| `skill` | binary+repo | Deferred at audit time (tracked in `[agst]`); **ADOPTED by change agst** — `shll skill shll` serves the drift-guarded `docs/site/skill.md` bundle | deferred → **adopted (agst)** |
 
 ## The two fixes
 
@@ -53,13 +53,21 @@ Two audit items were determined **conformant as-is** — recorded so a future au
 - **`shll version` has no `--json`, and that is not a principle №2 gap.** `version` is deliberately frozen as human-paste-for-bug-reports output (version.go's own help states it pastes cleanly into bug reports). The **programmatic** version surface is covered by `shll doctor --json` (per-tool `version` field) and `shll list --json` — see [cli/version](/cli/version.md) and [cli/doctor §`--json`](/cli/doctor.md#--json-output-mode). This is a deliberate design boundary, not a missing feature.
 - **The README has no footer heading (`Contributing`/`Development`/`Building`/`License`/`Acknowledgements`), and that is conformant.** Footer headings are pull-*stop* markers in the readme-extraction standard (§2), not required content. The entire README is site-worthy and nothing maintainer-only leaks, so the whole file is the pulled site slice — no footer split is needed.
 
-## The one deferred standard: `skill`
+## The `skill` standard: deferred at audit, ADOPTED by change agst
 
-shll has no `shll skill` subcommand (the runtime tree lists 10 commands, none named `skill`). The `skill` standard's own Adoption section states rollout is phased per-repo and **no tool ships `skill` today** — a tool without one is "not yet in violation" (principle №10's bundle obligation is a SHOULD). So the audit reports `skill` as **"deferred, not yet adopted"**, not an in-scope fix. The full `shll skill` (+ `shll agent-setup`) design is tracked in backlog **`[agst]`**. See [cli/standards-content §the skill standard](/cli/standards-content.md#the-skill-standard) for the standard's contract and the deferral rationale.
+At audit time shll had no `shll skill` subcommand. The `skill` standard's own Adoption section states rollout is phased per-repo and **no tool shipped `skill` then** — a tool without one is "not yet in violation" (principle №10's bundle obligation is a SHOULD). So the audit reported `skill` as **"deferred, not yet adopted"**, tracked in backlog **`[agst]`**, not an in-scope fix.
+
+**Change `agst` resolved that deferral** — it is `[agst]`'s home, both for the `shll skill` composer and for shll's *own* `skill`-standard adoption:
+
+- shll now ships `shll skill` (the runtime tree lists twelve commands including `skill` and `agent-setup`).
+- shll's own bundle is authored at `docs/site/skill.md` (≤150 lines), embedded via the same sync + drift-guard mechanism `shll standards` uses (committed `src/cmd/shll/skill/skill.md` + the extended `scripts/sync-standards.sh` + `TestSkillEmbedMatchesCanonical`), and served by `shll skill shll` in-process byte-identical.
+- This satisfies principle №10's bundle obligation at scope `binary+repo` for shll. See [cli/skill](/cli/skill.md) for the composer and the self-bundle embed, and [cli/standards-content §forward design](/cli/standards-content.md#forward-design-shll-agent-setup) for the `shll agent-setup` piece that also landed.
+
+The other six tools' `<tool> skill` bundles remain the per-repo standards waves' work (out of scope for `agst`, which is shll-only).
 
 ## Where deferred gaps are tracked
 
-Larger gaps (new subsystems, breaking output-contract changes) defer to `fab/backlog.md` items with fresh 4-char IDs (this repo's deferral convention — precedent `[38a6]`/`[tkch]`/`[agst]`), referenced by ID in the report. **This audit created no new deferrals** — the only deferred standard (`skill`) was already tracked in `[agst]`, and both other gaps were additive and fixed here.
+Larger gaps (new subsystems, breaking output-contract changes) defer to `fab/backlog.md` items with fresh 4-char IDs (this repo's deferral convention — precedent `[38a6]`/`[tkch]`/`[agst]`), referenced by ID in the report. This audit created no new deferrals — the only deferred standard (`skill`) was already tracked in `[agst]`, both other gaps were additive and fixed at audit time, and `[agst]` itself has since been resolved (change agst, above).
 
 ## The conformance-report-in-PR-body convention
 
@@ -68,6 +76,7 @@ The deliverable is a single fab change whose **PR body carries a per-standard co
 ## Cross-references
 
 - The command that serves the audited standards (roster, embed, drift guard): [cli/standards](/cli/standards.md).
-- The standards *documents* and the `skill` contract that defines the deferred obligation: [cli/standards-content](/cli/standards-content.md).
+- The command that ADOPTS the `skill` standard (the composer + shll's own embedded bundle): [cli/skill](/cli/skill.md).
+- The standards *documents* and the `skill` contract that defined the (now-resolved) deferred obligation: [cli/standards-content](/cli/standards-content.md).
 - The exit-code fix's full mechanism (the `translateExit` classification, `SetFlagErrorFunc`, `usageExitCode`): [cli/commands §exit-code translation](/cli/commands.md#exit-code-translation).
 - Constitution → Toolkit Standards (the article this conformance work satisfies) and Principle IV (the standards govern all seven tools, so no single tool owns them — shll is their home).

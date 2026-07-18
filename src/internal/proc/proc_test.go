@@ -3,6 +3,7 @@ package proc
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -100,6 +101,87 @@ func TestRunner_RecordsTransportSelection(t *testing.T) {
 	}
 	if (*calls)[1].Transport != TransportForeground {
 		t.Fatalf("second transport = %v, want foreground", (*calls)[1].Transport)
+	}
+}
+
+func TestRunCaptured_HappyPath(t *testing.T) {
+	calls := withFakeRunner(t, func(req Request) Result {
+		return Result{Stdout: []byte("bundle\n"), Stderr: nil, ExitCode: 0}
+	})
+	stdout, stderr, code, err := RunCaptured(context.Background(), "wt", "skill")
+	if err != nil {
+		t.Fatalf("RunCaptured err = %v", err)
+	}
+	if string(stdout) != "bundle\n" {
+		t.Fatalf("stdout = %q, want %q", stdout, "bundle\n")
+	}
+	if len(stderr) != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr)
+	}
+	if code != 0 {
+		t.Fatalf("code = %d, want 0", code)
+	}
+	if got := (*calls)[0].Transport; got != TransportCaptureAll {
+		t.Fatalf("transport = %v, want TransportCaptureAll", got)
+	}
+}
+
+func TestRunCaptured_ErrNotFound(t *testing.T) {
+	withFakeRunner(t, func(req Request) Result {
+		return Result{ExitCode: -1, Err: ErrNotFound}
+	})
+	_, _, code, err := RunCaptured(context.Background(), "nonesuch", "skill")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if code != -1 {
+		t.Fatalf("code = %d, want -1", code)
+	}
+}
+
+func TestRunCaptured_NonZeroExitCapturesBothStreams(t *testing.T) {
+	// A child that predates `skill` exits non-zero and writes to its own stderr —
+	// RunCaptured must surface the code with err == nil AND capture (not pass
+	// through) the stderr so the caller can suppress it.
+	withFakeRunner(t, func(req Request) Result {
+		return Result{Stdout: nil, Stderr: []byte(`Error: unknown command "skill"` + "\n"), ExitCode: 1}
+	})
+	stdout, stderr, code, err := RunCaptured(context.Background(), "wt", "skill")
+	if err != nil {
+		t.Fatalf("err = %v, want nil (non-zero exit is not a proc error)", err)
+	}
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if len(stdout) != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+	if !strings.Contains(string(stderr), "unknown command") {
+		t.Fatalf("stderr = %q, want the child's captured error", stderr)
+	}
+}
+
+// TestDefaultRunner_CaptureAllRealBinary exercises the production
+// TransportCaptureAll path end-to-end: a real `sh -c` that writes to both streams
+// and exits non-zero. Both buffers must be populated and neither must reach the
+// parent's stdio.
+func TestDefaultRunner_CaptureAllRealBinary(t *testing.T) {
+	res := defaultRunner(context.Background(), Request{
+		Name:      "sh",
+		Args:      []string{"-c", "printf out; printf err 1>&2; exit 3"},
+		Transport: TransportCaptureAll,
+	})
+	if res.Err != nil {
+		t.Fatalf("err = %v, want nil", res.Err)
+	}
+	if res.ExitCode != 3 {
+		t.Fatalf("code = %d, want 3", res.ExitCode)
+	}
+	if string(res.Stdout) != "out" {
+		t.Fatalf("stdout = %q, want %q", res.Stdout, "out")
+	}
+	if string(res.Stderr) != "err" {
+		t.Fatalf("stderr = %q, want %q", res.Stderr, "err")
 	}
 }
 
