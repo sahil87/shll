@@ -24,16 +24,30 @@ func dump(t *testing.T, root *cobra.Command) ([]byte, helpDoc) {
 	return buf.Bytes(), doc
 }
 
-// syntheticRoot builds a small tree: a root with one visible leaf, one hidden
-// leaf, and stand-ins for cobra's auto-generated completion/help commands.
+// syntheticRoot builds a small tree: a root with one plain visible leaf, one
+// aliased visible leaf, one hidden leaf, and stand-ins for cobra's
+// auto-generated completion/help commands. The aliased leaf carries two aliases
+// in a fixed order so the dump's declared-order emission is observable.
 func syntheticRoot() *cobra.Command {
 	root := &cobra.Command{Use: "shll", Short: "root short", Run: func(*cobra.Command, []string) {}}
 	root.Version = "v0.0.0-test"
 	root.AddCommand(&cobra.Command{Use: "visible", Short: "a visible leaf", Run: func(*cobra.Command, []string) {}})
+	root.AddCommand(&cobra.Command{Use: "aliased", Short: "a visible aliased leaf", Aliases: []string{"alias-one", "alias-two"}, Run: func(*cobra.Command, []string) {}})
 	root.AddCommand(&cobra.Command{Use: "secret", Short: "a hidden leaf", Hidden: true, Run: func(*cobra.Command, []string) {}})
 	root.AddCommand(&cobra.Command{Use: "completion", Short: "gen completions", Run: func(*cobra.Command, []string) {}})
 	root.AddCommand(&cobra.Command{Use: "help", Short: "help about any command", Run: func(*cobra.Command, []string) {}})
 	return root
+}
+
+// childByName returns the first child node of node with the given name, or a
+// zero helpNode and false when absent.
+func childByName(node helpNode, name string) (helpNode, bool) {
+	for _, c := range node.Commands {
+		if c.Name == name {
+			return c, true
+		}
+	}
+	return helpNode{}, false
 }
 
 func TestHelpDump_ContractShape(t *testing.T) {
@@ -49,16 +63,53 @@ func TestHelpDump_ContractShape(t *testing.T) {
 		t.Errorf("root.name = %q, want %q", doc.Root.Name, "shll")
 	}
 
-	// Exactly one visible child should survive filtering.
-	if len(doc.Root.Commands) != 1 {
-		t.Fatalf("root.commands len = %d, want 1 (visible only). commands: %+v", len(doc.Root.Commands), doc.Root.Commands)
+	// Exactly the two visible children should survive filtering, in cobra's
+	// (alphabetical) order: "aliased", then "visible".
+	if len(doc.Root.Commands) != 2 {
+		t.Fatalf("root.commands len = %d, want 2 (visible children only). commands: %+v", len(doc.Root.Commands), doc.Root.Commands)
 	}
-	if doc.Root.Commands[0].Name != "visible" {
-		t.Errorf("surviving child = %q, want %q", doc.Root.Commands[0].Name, "visible")
+	if got := []string{doc.Root.Commands[0].Name, doc.Root.Commands[1].Name}; got[0] != "aliased" || got[1] != "visible" {
+		t.Errorf("surviving children = %v, want [aliased visible]", got)
 	}
 	for _, excluded := range []string{"secret", "completion", "help"} {
 		if bytes.Contains(raw, []byte(`"name": "`+excluded+`"`)) {
 			t.Errorf("dump must not contain filtered child %q; output:\n%s", excluded, raw)
+		}
+	}
+
+	// Optional `aliases` field: the aliased child carries its aliases in declared
+	// order; the root and unaliased nodes carry NO `aliases` key at all (absence,
+	// not `[]`/`null`).
+	aliased, ok := childByName(doc.Root, "aliased")
+	if !ok {
+		t.Fatalf("aliased child missing from dump; commands: %+v", doc.Root.Commands)
+	}
+	if len(aliased.Aliases) != 2 || aliased.Aliases[0] != "alias-one" || aliased.Aliases[1] != "alias-two" {
+		t.Errorf("aliased.aliases = %v, want [alias-one alias-two] (declared order)", aliased.Aliases)
+	}
+	// Decode into raw objects so we can assert on KEY PRESENCE (omitempty), which
+	// a typed helpNode (always-present zero slice) cannot distinguish.
+	var rawDoc struct {
+		Root struct {
+			Aliases  json.RawMessage `json:"aliases"`
+			Commands []struct {
+				Name    string          `json:"name"`
+				Aliases json.RawMessage `json:"aliases"`
+			} `json:"commands"`
+		} `json:"root"`
+	}
+	if err := json.Unmarshal(raw, &rawDoc); err != nil {
+		t.Fatalf("raw key-presence unmarshal err = %v; output:\n%s", err, raw)
+	}
+	if rawDoc.Root.Aliases != nil {
+		t.Errorf("root must emit no `aliases` key (has no aliases); got %s", rawDoc.Root.Aliases)
+	}
+	for _, c := range rawDoc.Root.Commands {
+		if c.Name == "visible" && c.Aliases != nil {
+			t.Errorf("unaliased node %q must emit no `aliases` key; got %s", c.Name, c.Aliases)
+		}
+		if c.Name == "aliased" && c.Aliases == nil {
+			t.Errorf("aliased node %q must emit an `aliases` key", c.Name)
 		}
 	}
 
@@ -213,6 +264,24 @@ func TestHelpDump_ExcludesAutoCommandsEverywhere(t *testing.T) {
 		}
 	}
 	check(doc.Root)
+}
+
+// TestHelpDump_EmitsAliasesRealTree pins the real-tree behavior: shll's one
+// aliased command, `shell-setup` (alias `shell-install`, src/cmd/shll/shell_setup.go),
+// carries exactly ["shell-install"] in the dumped node. It drives the dump
+// through the real rootCmd.Execute() path (dumpViaExecute) per the
+// prune-before-render design decision, so the assertion reflects the shipped
+// binary's tree, not a bare walk.
+func TestHelpDump_EmitsAliasesRealTree(t *testing.T) {
+	_, doc := dumpViaExecute(t)
+
+	node, ok := childByName(doc.Root, "shell-setup")
+	if !ok {
+		t.Fatalf("shell-setup node missing from real-tree dump; commands: %+v", doc.Root.Commands)
+	}
+	if len(node.Aliases) != 1 || node.Aliases[0] != "shell-install" {
+		t.Errorf("shell-setup.aliases = %v, want [shell-install]", node.Aliases)
+	}
 }
 
 // availableCommandsBlock returns the lines of the `Available Commands:` section

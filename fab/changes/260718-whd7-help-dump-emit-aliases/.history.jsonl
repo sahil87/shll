@@ -1,0 +1,10 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-18T11:44:57Z"}
+{"args":"shll's help-dump command (src/cmd/shll/help_dump.go) only emits each cobra command's canonical Name(), never its Aliases() -- so alias subcommands like 'shell-install' (an alias for shell-setup, defined at src/cmd/shll/shell_setup.go:56) don't appear in the generated help/shll.json, causing shll.ai's README-drift checker to flag 'shll shell-install' from the README as an unknown/nonexistent command even though it works fine as a real cobra alias. Fix: extend help-dump's tree-walk to also emit registered aliases for each command node (as additional Node entries, or an aliases field alongside name -- pick whichever shape fits the existing help/*.json schema_version:1 contract used across all 7 tools without breaking it) so alias-form invocations are discoverable in the dump.","cmd":"fab-new","event":"command","ts":"2026-07-18T11:44:57Z"}
+{"delta":"+4.7","event":"confidence","score":4.7,"trigger":"calc-score","ts":"2026-07-18T11:46:13Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-18T11:51:21Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-18T11:51:38Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T11:52:51Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-18T11:56:13Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-18T12:02:01Z"}
+{"event":"review","result":"passed","ts":"2026-07-18T12:02:01Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-18T12:05:20Z"}
