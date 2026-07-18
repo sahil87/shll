@@ -64,27 +64,40 @@ This machine has the sahil87 toolkit installed. Before driving one of its tools:
    composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
    core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
+Run-kit also has agent-proactive capabilities — visual display in a browser window and push notifications; see ` + "`shll skill run-kit`" + `.
+
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `
 
 // agentSkillDescription builds the frontmatter description line from the Roster, one
 // `task-domain phrase (tool)` clause per tool, so both the tool names and the task
 // vocabulary act as activation triggers. A tool with a LegacyName renders both tokens
-// (`run-kit/rk`) — the alias is trigger vocabulary too. Single-sourced with the Roster
+// (`run-kit/rk`) — the alias is trigger vocabulary too. Each non-empty ProactiveHint
+// is then appended verbatim (Roster order) as an additional sentence AFTER the tool
+// clauses and BEFORE the closing two-step pointer — the agent-proactive trigger
+// vocabulary (today only run-kit's display + notify). Single-sourced with the Roster
 // so the description cannot drift from the managed set; the output MUST stay a single
 // line (YAML frontmatter value — asserted by TestAgentSetup_DescriptionSingleLine).
 func agentSkillDescription() string {
 	clauses := make([]string, 0, len(Roster))
+	var proactive []string
 	for _, t := range Roster {
 		name := t.Name
 		if t.LegacyName != "" {
 			name += "/" + t.LegacyName
 		}
 		clauses = append(clauses, fmt.Sprintf("%s (%s)", t.SkillHint, name))
+		if t.ProactiveHint != "" {
+			proactive = append(proactive, t.ProactiveHint)
+		}
 	}
-	return "Use when driving any sahil87 toolkit CLI or shll itself — " +
-		strings.Join(clauses, ", ") +
-		". Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it."
+	desc := "Use when driving any sahil87 toolkit CLI or shll itself — " +
+		strings.Join(clauses, ", ") + "."
+	if len(proactive) > 0 {
+		desc += " " + strings.Join(proactive, " ")
+	}
+	return desc +
+		" Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it."
 }
 
 // skillTargetRelDirs are the two global skill-DIRECTORY paths (relative to $HOME) at

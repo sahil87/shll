@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll agent-setup` — mechanically places ONE thin `shll-toolkit` Agent Skill at two unconditional global paths (`~/.agents/skills/` + `~/.claude/skills/`, the minimal covering set for all four harnesses), then delegates run-kit's dashboard hooks to `run-kit agent-setup`. Idempotent by construction (write/overwrite/delete, no merge/sentinel/prompt); `--print` (content + paths, no write, no delegate), `--uninstall` (delete both dirs + delegate uninstall), `--print --uninstall` → exit 2. Canonical SKILL.md is a Go constant; NO context-file stanza injection."
+description: "`shll agent-setup` — places ONE thin `shll-toolkit` Agent Skill at `~/.agents/skills/` + `~/.claude/skills/` (all four harnesses), then delegates run-kit's dashboard hooks to `run-kit agent-setup`. Idempotent (write/overwrite/delete, no sentinel/prompt); `--print`/`--uninstall` modes. Canonical SKILL.md is a Go constant; `agentSkillDescription()` builds the frontmatter from the Roster: per-tool `SkillHint` clauses plus each `ProactiveHint` (only run-kit's display+notify sentence — sprawl guard)."
 ---
 # cli/agent-setup
 
@@ -36,8 +36,27 @@ Both writes are **unconditional** — agent-setup is an explicit "wire this mach
 `agentSkillContent` is a Go string constant in `agent_setup.go` — **not** a docs-site file. The bootstrap skill is an agent-setup artifact, neither a published standard nor a `<tool> skill` bundle, so the docs-site sync/embed/drift-guard ceremony (which `docs/site/skill.md` uses — see [cli/skill](/cli/skill.md#the-bundle-authored-embedded-drift-guarded-budget-bounded)) does **not** apply here.
 
 - **Portable frontmatter — `name` + `description` ONLY** (the OpenCode-recognized common subset, valid on all four harnesses). `name: shll-toolkit` equals `skillDirName` (the same constant is spliced into both the frontmatter and the directory name, so they cannot drift) and satisfies the shared `^[a-z0-9]+(-[a-z0-9]+)*$` / match-directory-name rule.
-- **The `description` front-loads trigger words** (the tool names plus each tool's task-domain phrase) so the skill activates implicitly when an agent is about to drive a toolkit tool. Its trailer names the runtime two-step (`Run 'shll skill' to list … 'shll skill <tool>' for that tool's full usage bundle`). **The description trailer is deliberately NOT extended to the topic form** — it is single-line activation-trigger vocabulary (one YAML line, asserted by `TestAgentSetup_DescriptionSingleLine`), not a teaching surface; the topic form belongs in the body's step 2.
-- **The body teaches the runtime discovery steps** (`shll skill` → `shll skill <tool>` → `shll skill <tool> <topic>`) plus one `shll standards` pointer for toolkit-repo development. Step 2 notes that a large-scope tool's core bundle lists its topic pages and `shll skill <tool> <topic>` serves one on demand (extended by change tp2s). It only *points at* the runtime steps, so bundles are always fetched from the installed binaries — the placed file stays version-locked in spirit and is refreshed by the installed shll on any re-run (the change-#50 refresh machinery propagates the new body on the next `shll update`).
+- **The `description` front-loads two kinds of trigger vocabulary**, both single-sourced from the Roster by `agentSkillDescription()` so they cannot drift from the managed set:
+  - **Reactive task-domain clauses** — one `task-domain phrase (tool)` clause per tool (`git worktrees (wt)`, …, `tmux sessions (run-kit/rk)`), from each tool's `SkillHint` (with the `LegacyName` alias appended for run-kit). These match a user's own words ("create a worktree"), so every tool earns a clause.
+  - **Agent-proactive sentence(s)** — each non-empty `ProactiveHint` appended verbatim (Roster order) **after** the tool clauses and **before** the closing two-step pointer. This is the vocabulary an agent should reach for *unprompted*, so the sprawl guard applies: **only run-kit carries a `ProactiveHint` today** ("show the user visual content … in a browser window, or … push a notification to their devices"), covering run-kit's two agent-proactive capabilities — visual display + notify. Reactive tools stay clause-only; the user's words already name them.
+
+  The trailer names the runtime two-step (`Run 'shll skill' to list … 'shll skill <tool>' for that tool's full usage bundle`). **The description trailer is deliberately NOT extended to the topic form** — it is single-line activation-trigger vocabulary (one YAML line, asserted by `TestAgentSetup_DescriptionSingleLine`), not a teaching surface; the topic form belongs in the body's step 2.
+- **The body teaches the runtime discovery steps** (`shll skill` → `shll skill <tool>` → `shll skill <tool> <topic>`) plus a thin proactive-capabilities pointer line ("Run-kit also has agent-proactive capabilities — visual display … and push notifications; see `shll skill run-kit`.") and one `shll standards` pointer for toolkit-repo development. Step 2 notes that a large-scope tool's core bundle lists its topic pages and `shll skill <tool> <topic>` serves one on demand (extended by change tp2s). Body text loads only on activation, so the pointer line is activation-cost-only. It only *points at* the runtime steps, so bundles are always fetched from the installed binaries — the placed file stays version-locked in spirit and is refreshed by the installed shll on any re-run (the change-#50 refresh machinery propagates the new body on the next `shll update`).
+
+### The description builder (`agentSkillDescription`)
+
+`agentSkillDescription()` builds the single-line frontmatter description from the Roster in one pass:
+
+```
+Use when driving any sahil87 toolkit CLI or shll itself — {clause, …}. {ProactiveHint, …} Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it.
+```
+
+- Each Roster tool contributes `"<SkillHint> (<name>)"` (name = `Name`, or `Name/LegacyName` when a `LegacyName` exists).
+- Each non-empty `ProactiveHint` is collected in the same loop and joined with a single space, then spliced in between the clause list and the two-step pointer — so the proactive vocabulary always falls **after** the tool clauses and **before** `Run \`shll skill\``. With zero proactive hints the splice is skipped entirely (no stray spacing).
+- **Single-line, `: `-free invariant.** The whole description MUST be one line with no `: ` sequence (it is an unquoted YAML scalar). `TestAgentSetup_DescriptionSingleLine` pins this; run-kit's `ProactiveHint` sentence is newline- and `: `-free so it satisfies the invariant as-is.
+
+**`ProactiveHint` holds the complete sentence verbatim; the builder just appends it** — there is no builder-owned "Also use proactively" preamble composed around a stored fragment. This is the simplest faithful rendering while exactly one tool carries a hint; a composed preamble would be over-engineering. The sprawl guard (only agent-proactive capabilities earn description space) is enforced by `TestRosterProactiveHint`, which asserts **exactly run-kit** carries a `ProactiveHint`, that the sentence appears verbatim in the rendered description, and that it is positioned between the tool clauses and the two-step pointer. `SkillHint` is unaffected — run-kit's stays `"tmux sessions"` (the reactive task-domain phrase); `TestRosterSkillHints` still enforces the every-tool `SkillHint` contract.
+>>>>>>> 5616cae (feat: add ProactiveHint trigger vocabulary for run-kit's proactive capabilities)
 
 ## Modes and the run seam
 
@@ -85,6 +104,8 @@ I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; sk
 ## Test seam
 
 `agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`. Coverage grounds R6–R9: both files written with canonical content and a per-path summary; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == shll-toolkit == dir name`.
+
+Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (every tool declares a `SkillHint`, each rendered as a `hint (name)` clause), `TestRosterProactiveHint` (exactly run-kit carries a `ProactiveHint`, rendered verbatim after the clauses and before the two-step pointer — the sprawl guard), `TestAgentSetup_DescriptionSingleLine` (single-line, `: `-free), and `TestAgentSetup_BodyTeachesTwoStepAndStandards` (body teaches the two-step + `shll standards`, no stanza/sentinel wording).
 
 ## Cross-references
 
