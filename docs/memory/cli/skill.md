@@ -30,7 +30,7 @@ The bare form is deliberately **not** a dump of every bundle. Concatenating 7 ×
 It never prints a bundle H1 (`# … skill`) — the glossary and the bundles are disjoint outputs. Descriptions come from each tool's hardcoded `Description` field / `shllSelfDescription`, single-sourced on the roster (Constitution III — cannot drift from the managed set). Shape:
 
 ```
-shll     the manager for the shll toolkit
+shll     the manager for the sahil87 toolkit
 wt       Git worktree management — create, list, open, delete worktrees
 hop      Fast directory/project jumping across worktrees
 

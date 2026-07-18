@@ -19,7 +19,7 @@ Source: `src/cmd/shll/list.go` (+ `list_test.go`). Reuses the shared install pro
 A shll-first row, then one row per roster tool in `Roster` order (leaves-first: `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). Columns: **status indicator · name · description · repo URL**. Column-aligned via `text/tabwriter` (`src/cmd/shll/list.go`) with the **same writer config as `version`**: minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 
 ```
-ok  shll      the manager for the shll toolkit                                         https://github.com/sahil87/shll
+ok  shll      the manager for the sahil87 toolkit                                         https://github.com/sahil87/shll
 ok  wt        Git worktree management — create, list, open, delete worktrees           https://github.com/sahil87/wt
 ok  idea      Backlog idea management from the terminal                                https://github.com/sahil87/idea
 ok  tu        Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)   https://github.com/sahil87/tu
@@ -30,7 +30,7 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
 
 (The example shows the non-TTY ASCII status markers and `run-kit` missing; on a color-enabled terminal the status cells are the green `✓` / red `✗` glyphs. A pre-rename install whose binary is still `rk` on PATH is shown *installed* via the [legacy-name probe fallback](/cli/version.md#the-legacy-name-path-probe-fallback-change-9bak), still under the display name `run-kit`.)
 
-- **A shll-first self-row (change bb7r — reverses lst7's "no self-row").** `list` now prepends a `shll` row using the **plain installed marker** (`ok` / green `✓` — the *same* rendering as an installed tool, NOT a distinct "self" marker: maximum visual uniformity was chosen), the manager description `"the manager for the shll toolkit"`, and the repo URL `https://github.com/sahil87/shll`. shll is always present (it is the running binary), so the marker is always installed. This **reverses change lst7's earlier "No `shll` self-row" decision** — see [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r). There are now `len(Roster)+1` rows.
+- **A shll-first self-row (change bb7r — reverses lst7's "no self-row").** `list` now prepends a `shll` row using the **plain installed marker** (`ok` / green `✓` — the *same* rendering as an installed tool, NOT a distinct "self" marker: maximum visual uniformity was chosen), the manager description `"the manager for the sahil87 toolkit"`, and the repo URL `https://github.com/sahil87/shll`. shll is always present (it is the running binary), so the marker is always installed. This **reverses change lst7's earlier "No `shll` self-row" decision** — see [The prepended shll-first row](#the-prepended-shll-first-row-change-bb7r). There are now `len(Roster)+1` rows.
 - The repo column is the full `https://github.com/sahil87/<Repo>` URL, built by `repoURL(t)` (the single URL-composition point — see [The run-kit repo-slug footgun](#the-run-kit-repo-slug-footgun-retired-by-change-9bak) below). For the shll row it is `repoURL(shllSelf)` → `https://github.com/sahil87/shll`.
 
 ### `--json`: bare JSON array
@@ -41,7 +41,7 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
 [
   {
     "name": "shll",
-    "description": "the manager for the shll toolkit",
+    "description": "the manager for the sahil87 toolkit",
     "repo": "https://github.com/sahil87/shll",
     "installed": true,
     "self": true
@@ -68,7 +68,7 @@ ok  fab-kit   Spec-driven workspace & workflow toolkit (the `fab` CLI)          
 
 ## The prepended shll-first row (change bb7r)
 
-Both renderers prepend a shll-first entry before walking the roster — `writeListTable` (`src/cmd/shll/list.go:134`) writes a leading table row, and `writeListJSON` (`src/cmd/shll/list.go:173`) prepends a leading `listItem`. Both derive their fields from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`): `shllSelf.Name` (`"shll"`), `shllSelf.Description` (`"the manager for the shll toolkit"`), and `repoURL(shllSelf)` (`https://github.com/sahil87/shll`). This is the single source of truth for "shll as a displayable entry", reused by `list`/`doctor`/`install` — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r).
+Both renderers prepend a shll-first entry before walking the roster — `writeListTable` (`src/cmd/shll/list.go:134`) writes a leading table row, and `writeListJSON` (`src/cmd/shll/list.go:173`) prepends a leading `listItem`. Both derive their fields from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:131`): `shllSelf.Name` (`"shll"`), `shllSelf.Description` (`"the manager for the sahil87 toolkit"`), and `repoURL(shllSelf)` (`https://github.com/sahil87/shll`). This is the single source of truth for "shll as a displayable entry", reused by `list`/`doctor`/`install` — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r).
 
 - **Table row** uses the **plain installed marker** — `statusMarker(true, color)` — the *same* rendering as an installed tool. Maximum visual uniformity was deliberately chosen over a distinct "self" marker; shll is always present (it is the running binary), so it always shows installed.
 - **`--json` object** carries `Installed:true` and `Self:true`. The `Self` field is `omitempty`, so it is absent on the 6 managed tools and present only on shll — letting consumers filter shll out via `select(.self != true)` before driving `brew install` (you cannot brew-install the running orchestrator).

@@ -1,5 +1,5 @@
 #!/bin/sh
-# shll toolkit bootstrap — served at https://shll.ai/install
+# sahil87 toolkit bootstrap — served at https://shll.ai/install
 #
 #   curl -fsSL https://shll.ai/install | sh                # install everything
 #   curl -fsSL https://shll.ai/install | sh -s -- hop wt   # install a subset

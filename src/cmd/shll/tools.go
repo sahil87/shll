@@ -161,7 +161,7 @@ const shllTargetToken = "shll"
 // shllSelfDescription is the manager-framing one-liner printed for the shll-self
 // entry by every command that shows the toolkit. Named per code-quality.md (no
 // magic strings).
-const shllSelfDescription = "the manager for the shll toolkit"
+const shllSelfDescription = "the manager for the sahil87 toolkit"
 
 // shllSelf is the single shared descriptor representing shll ITSELF as a
 // displayable entry — the one source of truth reused by every command that shows

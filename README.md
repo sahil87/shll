@@ -177,7 +177,7 @@ One row for `shll` itself plus each roster tool, in roster order. Uninstalled to
 
 ```sh
 $ shll list
-ok  shll     the manager for the shll toolkit                                        https://github.com/sahil87/shll
+ok  shll     the manager for the sahil87 toolkit                                        https://github.com/sahil87/shll
 ok  wt       Git worktree management — create, list, open, delete worktrees          https://github.com/sahil87/wt
 ok  idea     Backlog idea management from the terminal                               https://github.com/sahil87/idea
 ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)  https://github.com/sahil87/tu
@@ -229,7 +229,7 @@ The agent-facing reader for the toolkit's standards ([docs/site/standards/princi
 
 ```sh
 $ shll skill                  # glossary: one line per installed tool (shll first)
-shll     the manager for the shll toolkit
+shll     the manager for the sahil87 toolkit
 wt       Git worktree management — create, list, open, delete worktrees
 hop      Fast directory/project jumping across worktrees
 

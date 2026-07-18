@@ -41,7 +41,7 @@ New subcommand. The bare form prints **one line per installed tool** — a conte
 Sketch:
 
 ```
-shll      the manager for the shll toolkit
+shll      the manager for the sahil87 toolkit
 wt        Git worktree management — create, list, open, delete worktrees
 idea      Backlog idea management from the terminal
 tu        Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)

@@ -70,7 +70,7 @@ inspect/manage surface.
 Introduce ONE shared descriptor representing "shll as a displayable entry":
 
 - **Name**: `shll`
-- **Description**: "the manager for the shll toolkit" (or similar manager-framing line)
+- **Description**: "the manager for the sahil87 toolkit" (or similar manager-framing line)
 
 - **Repo**: `shll` (resolves to `https://github.com/sahil87/shll` via the existing `repoURL`/`githubOrgBase` composition)
 - **Version**: sourced from the package-level `version` var in `main.go` — NOT via a self-subprocess (`shll --version`)
@@ -199,7 +199,7 @@ comment, NOT promoted to a constitutional rule.
 | 10 | Certain | The lst7 "no self-row" reversal is recorded in the intake and reconciled in `docs/memory/cli/list.md`, `list.go` comment, and `README.md` — NOT promoted to a Constitution rule | The decision lives only in those 3 non-constitutional locations; Constitution VII bar is not triggered (behavior, not a new subcommand). Verified all 3 locations exist | S:95 R:80 A:95 D:90 |
 | 11 | Confident | The shared descriptor lives in `src/cmd/shll/tools.go` (alongside `Roster`/`Tool`/`githubOrgBase`), reusing the existing `Tool` struct shape, rather than a separate new file | tools.go is where roster/repo plumbing already lives and the description names it first; a new file is offered only as a fallback. Low cost to relocate | S:75 R:80 A:75 D:70 |
 | 12 | Confident | `shll`'s Repo slug is `shll` → `https://github.com/sahil87/shll` (no rk-style override needed) | Mirrors every non-rk tool whose Repo equals Name; the rk/run-kit 404 footgun does not apply to shll. HTTP-verifiable but high-confidence | S:80 R:85 A:80 D:85 |
-| 13 | Confident | Descriptor Description string is "the manager for the shll toolkit" | Discussion supplied this concrete candidate ("or similar" = agent picks default); one obvious interpretation, trivially reversible — only final phrasing is open | S:80 R:90 A:80 D:70 |
+| 13 | Confident | Descriptor Description string is "the manager for the sahil87 toolkit" | Discussion supplied this concrete candidate ("or similar" = agent picks default); one obvious interpretation, trivially reversible — only final phrasing is open | S:80 R:90 A:80 D:70 |
 | 14 | Confident | `install` informational wording is "shll — already present / self-managed" | Discussion supplied this concrete candidate ("e.g." = agent picks default); one obvious interpretation, cosmetic and reversible | S:78 R:90 A:80 D:70 |
 
 14 assumptions (10 certain, 4 confident, 0 tentative, 0 unresolved).

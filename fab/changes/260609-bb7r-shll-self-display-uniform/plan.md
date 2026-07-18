@@ -13,7 +13,7 @@
 ### Descriptor: shared `shllSelf` source of truth
 
 #### R1: A single shared descriptor represents shll as a displayable entry
-A package-level `shllSelf` descriptor SHALL exist in `src/cmd/shll/tools.go`, reusing the existing `Tool` struct shape, with `Name = "shll"`, `Description = "the manager for the shll toolkit"`, and `Repo = "shll"`. It MUST NOT be added to the `Roster` slice. Its version SHALL be read from the package-level `version` var in `main.go`, never via a `shll --version` self-subprocess.
+A package-level `shllSelf` descriptor SHALL exist in `src/cmd/shll/tools.go`, reusing the existing `Tool` struct shape, with `Name = "shll"`, `Description = "the manager for the sahil87 toolkit"`, and `Repo = "shll"`. It MUST NOT be added to the `Roster` slice. Its version SHALL be read from the package-level `version` var in `main.go`, never via a `shll --version` self-subprocess.
 
 - **GIVEN** the binary is running
 - **WHEN** any command renders the shll-self entry
@@ -50,7 +50,7 @@ Every command that meaningfully shows the toolkit SHALL render shll FIRST, then 
 ### list
 
 #### R5: list table prepends a shll-first row with the plain installed marker
-`shll list` (table) SHALL prepend a shll-first row using the PLAIN installed marker (`ok` / green `✓` — same rendering as an installed tool), Description "the manager for the shll toolkit", repo `https://github.com/sahil87/shll`.
+`shll list` (table) SHALL prepend a shll-first row using the PLAIN installed marker (`ok` / green `✓` — same rendering as an installed tool), Description "the manager for the sahil87 toolkit", repo `https://github.com/sahil87/shll`.
 
 - **GIVEN** `shll list` (table)
 - **WHEN** the roster is rendered
@@ -97,7 +97,7 @@ Every command that meaningfully shows the toolkit SHALL render shll FIRST, then 
 
 ### Phase 1: Setup
 
-- [x] T001 Add the shared `shllSelf` descriptor to `src/cmd/shll/tools.go` (a package-level `Tool` value: `Name: shllTargetToken`, `Description: "the manager for the shll toolkit"`, `Repo: "shll"`; no `Formula`/`ShellInit`/`Update`), with a doc comment explaining it is NOT a Roster entry (Constitution III + leaves-first invariant) and which commands prepend it. Add a `shllSelfVersion()` helper (or inline read) that returns the version from the package `version` var via `normalizeVersion`. <!-- R1 -->
+- [x] T001 Add the shared `shllSelf` descriptor to `src/cmd/shll/tools.go` (a package-level `Tool` value: `Name: shllTargetToken`, `Description: "the manager for the sahil87 toolkit"`, `Repo: "shll"`; no `Formula`/`ShellInit`/`Update`), with a doc comment explaining it is NOT a Roster entry (Constitution III + leaves-first invariant) and which commands prepend it. Add a `shllSelfVersion()` helper (or inline read) that returns the version from the package `version` var via `normalizeVersion`. <!-- R1 -->
 
 ### Phase 2: Core Implementation
 
@@ -127,7 +127,7 @@ Every command that meaningfully shows the toolkit SHALL render shll FIRST, then 
 
 ### Functional Completeness
 
-- [x] A-001 R1: A `shllSelf` descriptor exists in `tools.go` with Name `shll`, Description "the manager for the shll toolkit", Repo `shll`; its version is read from the package `version` var, not a self-subprocess.
+- [x] A-001 R1: A `shllSelf` descriptor exists in `tools.go` with Name `shll`, Description "the manager for the sahil87 toolkit", Repo `shll`; its version is read from the package `version` var, not a self-subprocess.
 - [x] A-002 R2: `Roster` has exactly 6 entries and `TestRosterLeavesBeforeDependents` passes unmodified.
 - [x] A-003 R3: `list`, `doctor`, and `install` all render shll first, then leaves-first roster order.
 - [x] A-004 R4: `shll doctor` (text + `--json`) shows an OK shll-first row/object with `shell_init:false`, `wired:false`, version present.
