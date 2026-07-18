@@ -1,0 +1,12 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-18T10:29:45Z"}
+{"args":"Update the skill standard's stale 'Forward design: shll agent-setup' paragraph — rewrite as landed-design note (skills placement + runtime two-step, not context aggregation) and reprice the ≤150-line/static-only budget rationale; re-run standards sync + drift guard (backlog fw9d)","cmd":"fab-new","event":"command","ts":"2026-07-18T10:29:45Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-18T10:32:12Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-18T10:36:28Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-18T10:36:39Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T10:37:22Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-18T10:40:47Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T10:42:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-18T10:46:15Z"}
+{"event":"review","result":"passed","ts":"2026-07-18T10:46:15Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-18T10:46:58Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-18T10:50:03Z"}
