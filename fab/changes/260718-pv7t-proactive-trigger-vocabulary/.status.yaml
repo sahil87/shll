@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 7
@@ -33,22 +33,24 @@ stage_metrics:
     apply: {started_at: "2026-07-18T10:36:46Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T10:41:17Z"}
     review: {started_at: "2026-07-18T10:41:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T10:49:23Z"}
     hydrate: {started_at: "2026-07-18T10:49:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T10:55:25Z"}
-    ship: {started_at: "2026-07-18T10:55:25Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-07-18T10:55:25Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T10:57:31Z"}
+    review-pr: {started_at: "2026-07-18T10:57:31Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/54
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 441
+    deleted: 34
+    net: 407
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 77
+        deleted: 13
+        net: 64
     tests:
-        added: 0
+        added: 40
         deleted: 0
-        net: 0
-    computed_at: "2026-07-18T10:55:25Z"
-    computed_at_stage: hydrate
+        net: 40
+    computed_at: "2026-07-18T10:57:31Z"
+    computed_at_stage: ship
 summary: Add Tool.ProactiveHint (run-kit only, sprawl guard) rendering an agent-proactive display+notify sentence in the shll-toolkit skill description; enrich run-kit's Roster.Description + add the bootstrap-body proactive pointer
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-18T10:55:25Z
+last_updated: 2026-07-18T10:57:31Z
