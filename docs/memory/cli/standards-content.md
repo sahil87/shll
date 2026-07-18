@@ -86,7 +86,7 @@ Rollout is per-repo, like help-dump's was. Change i70w authored the **standard d
 
 ### Landed design: `shll agent-setup` (skills placement, not context aggregation)
 
-*(Recorded in the standard because it is why bundles must stay small and static. The standard first sketched a **context-aggregation** mechanism; the command that actually landed uses **skills placement** — the design point still holds, but via a different route. The standard document itself now carries the landed-design note: its § is retitled `## Landed design: \`shll agent-setup\`` and describes skills placement + the runtime two-step, so the historical first-sketched framing survives only here in memory.)*
+*(Recorded in the standard because it is why bundles must stay small and static. The standard first sketched a **context-aggregation** mechanism; the command that actually landed uses **skills placement** — the design point still holds, but via a different route. The standard document itself now carries the landed-design note: its § is retitled `` ## Landed design: `shll agent-setup` `` and describes skills placement + the runtime two-step, so the historical first-sketched framing survives only here in memory.)*
 
 Change `agst` built `shll skill` + `shll agent-setup`, graduating the harness wiring from `run-kit agent-setup`. Two clarifications to the original forward-design sketch:
 
