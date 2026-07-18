@@ -68,8 +68,10 @@ const skillNotInstalledFmt = "shll skill: %s is not installed — run 'shll inst
 // as code -1 with nil err (Go's *exec.ExitError.ExitCode() signal sentinel). Mirroring
 // that -1 into the exit code would wrap to process exit 255 with no diagnostic, so this
 // case is treated as operational (exit 1) with a curated notice instead. Takes the tool
-// name then the topic. Named per code-quality.md (no magic strings).
-const skillTopicTimeoutFmt = "shll skill: %s skill %s timed out or was killed — re-run, and check the tool if it persists"
+// name then the topic. The topic is rendered with %q (like skillNoTopicsFmt and the
+// unknown-tool diagnostics) so odd user-supplied topic strings stay unambiguous; the
+// tool name is a validated roster value, so it stays %s. Named per code-quality.md.
+const skillTopicTimeoutFmt = "shll skill: %s skill %q timed out or was killed — re-run, and check the tool if it persists"
 
 func newSkillCmd() *cobra.Command {
 	return &cobra.Command{
@@ -108,7 +110,10 @@ usage error (exit 2).`,
 // No args → the installed-only glossary; one arg → that tool's bundle (shll served
 // in-process, a roster tool via a byte-identical `<tool> skill` passthrough); two args
 // → that tool's topic page (a byte-identical `<tool> skill <topic>` passthrough whose
-// failures are propagated, not rewrapped — see writeSkillTopic). cobra caps args at 2.
+// failures are propagated, not rewrapped — see writeSkillTopic). The cobra factory caps
+// args at 2 via MaximumNArgs(2); this seam re-asserts that ceiling itself (a direct
+// caller — a test or future refactor — that bypasses cobra with 3+ args gets the same
+// usage error rather than silently dropping the extras).
 func runSkill(ctx context.Context, stdout, stderr io.Writer, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -118,8 +123,12 @@ func runSkill(ctx context.Context, stdout, stderr io.Writer, args []string) erro
 		return writeSkillGlossary(ctx, stdout)
 	case 1:
 		return writeSkillBundle(ctx, stdout, stderr, args[0])
-	default:
+	case 2:
 		return writeSkillTopic(ctx, stdout, stderr, args[0], args[1])
+	default:
+		// 3+ args — mirror the cobra MaximumNArgs(2) contract at the seam so a direct
+		// caller cannot silently pass (and drop) extra args. Usage error, exit 2.
+		return &errExitCode{code: usageExitCode, msg: fmt.Sprintf("shll skill: accepts at most 2 arg(s), received %d", len(args))}
 	}
 }
 
