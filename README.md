@@ -13,7 +13,7 @@ From a clean machine to a fully wired toolkit:
 ```sh
 curl -fsSL https://shll.ai/install | sh          # install shll + the whole roster
 shll shell-setup                                 # wire shell integration into your rc file
-run-kit agent-setup                              # optional, once per machine: agent state in run-kit's dashboard
+shll agent-setup                                 # optional, once per machine: agent context + run-kit dashboard hooks
 exec $SHELL                                      # reload so the shell integration takes effect
 ```
 
@@ -25,7 +25,7 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt
 
 Requires Homebrew ≥ 6.0.4 (on 6.0.0–6.0.3, run `brew update` first) — the script exits with a pointer to https://brew.sh if brew is absent (it never auto-installs Homebrew). It bootstraps `shll` itself first (recording the Homebrew 6.0 tap trust `shll` needs), then hands off to `shll install` for the rest of the roster (which trusts each formula it installs — drop that with `--no-trust` if you manage trust yourself). It's idempotent — safe to re-run, and a no-op for anything already installed.
 
-The `run-kit agent-setup` line is optional and once per machine — it installs the agent-harness hooks that light up live agent state (**active** / **waiting** / **idle**) in [run-kit](https://github.com/sahil87/run-kit)'s dashboard. It shows the settings diff and asks before writing; skip it if you don't use the dashboard.
+The `shll agent-setup` line is optional and once per machine — it wires the toolkit into your installed AI agent harnesses: it writes a small sentinel-wrapped stanza into each harness's context file (teaching agents to run `shll skill` for per-tool usage briefings), then delegates to `run-kit agent-setup` for the hooks that light up live agent state (**active** / **waiting** / **idle**) in [run-kit](https://github.com/sahil87/run-kit)'s dashboard. It shows what it will write and asks before writing; skip it if you don't use AI agents.
 
 > **Why `brew trust` first?** Homebrew 6.0 made tap-trust a **hard install requirement** (it defaults `HOMEBREW_REQUIRE_TAP_TRUST=1`). shll's tap formulae download a binary and run a sandboxed `def install` (not a bottle pour), and that sandboxed step re-checks trust against a real persisted trust record — so naming the formula on the CLI is not enough; you must trust it first. Requires **Homebrew ≥ 6.0.4** (an earlier 6.0.x Linux sandbox bug is fixed there); if you're on 6.0.0–6.0.3, run `brew update` first. See [Troubleshooting](#tap-sahil87tap-must-be-trusted-before-install) for the full explanation.
 
@@ -238,6 +238,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 | `shll version` | invokes `<tool> --version` per tool, formats as a table |
 | `shll list` | probes each tool's install status, renders the roster (name, description, repo) |
 | `shll doctor` | probes `<tool> --version` + reads your rc file, reports install + wiring health |
+| `shll agent-setup` | writes the toolkit agent-context stanza into installed agent-harness context files, then runs `run-kit agent-setup` for the dashboard hooks |
 | `shll standards` | prints build-time-embedded copies of the canonical `docs/site/` standards (no subprocess, no network) |
 
 Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt shell-init`, etc. continue to work standalone. shll's only job is to fan-out, collect output, and degrade gracefully when a tool is missing.
