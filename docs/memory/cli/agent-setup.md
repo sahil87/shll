@@ -92,5 +92,5 @@ I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; sk
 - The nudge graduation and the shared `runKitToolName` constant (now consumed only by this file's delegation): [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge-change-93r2).
 - The subprocess wrapper the delegation uses: [internal/proc](/internal/proc.md).
 - Root wiring (`newAgentSetupCmd`), the exit-code sentinels (`errExitCode`/`usageExitCode`/`errSilent`): [cli/commands](/cli/commands.md).
-- The forward-design paragraph this command realizes (which described "aggregating bundles into context" — now landed as skills placement, not context aggregation): [cli/standards-content §forward design](/cli/standards-content.md#forward-design-shll-agent-setup).
+- The standard paragraph this command realizes (which originally described "aggregating bundles into context" — now the standard's own landed-design note records skills placement, not context aggregation): [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-agent-setup-skills-placement-not-context-aggregation).
 - Constitution I (Security First — the delegation routes through `internal/proc`), III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation), VII (Minimal Surface Area).

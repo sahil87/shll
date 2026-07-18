@@ -61,7 +61,7 @@ A `<tool> skill` bundle is offline (embedded), present on every machine with the
 
 - **Command name exactly `skill`.** Prints raw markdown to stdout, byte-identical to the repo's canonical `docs/site/skill.md`; stderr empty; exit 0; no rendering, pager, or added framing.
 - **Static-only bundle.** The bytes are identical on every invocation, on every machine, for a given release — no timestamps, no environment lookups, no session state. This is the load the standard draws vs. its precedent (below).
-- **≤150-line hard budget** (principle №9). Agents load the bundle into context every session, and bundles will later be aggregated (see [Forward design](#forward-design-shll-agent-setup)) — so a bloated bundle is paid for repeatedly. Over budget means it is trying to be a README.
+- **≤150-line hard budget** (principle №9). Agents pull a bundle into a paying context at use time via `shll skill <tool>` (see [Landed design](#landed-design-shll-agent-setup-skills-placement-not-context-aggregation)), and the bare `shll skill` glossary lists one line per installed tool — so a bloated bundle taxes every conversation that pulls it. Over budget means it is trying to be a README.
 - **Genre discipline.** A usage briefing — when-to-use, capabilities map, composition patterns, output/exit-code contracts, gotchas. NOT a second README, NOT flag reference (defer to `-h` and the shll.ai commands page).
 - **Sync + drift-guard embed.** Content is embedded at build via committed copies + a sync script + a drift-guard test — the exact mechanism `shll standards` established (see [cli/standards §the build-time embed mechanism](/cli/standards.md#the-build-time-embed-mechanism)); each adopting repo reuses it.
 - **Renders on the site for free** at `/<tool>/skill` (part of the pulled `docs/site/**` tree).
@@ -84,15 +84,17 @@ Rollout is per-repo, like help-dump's was. Change i70w authored the **standard d
 
 > **Update (change agst): shll now ships `skill`.** shll was the first adopter — change `agst` built the `shll skill` composer AND shll's own `docs/site/skill.md` bundle (served by `shll skill shll`), resolving the deferral tracked in `[agst]`. The **six other tools' `<tool> skill` bundles remain the deferred per-repo waves' work.** (Contrast the `shll standards` roster's `skill` entry, which is the *reader-side* row for the standard document, shipped since i70w; the *producer-side* `shll skill` command is what `agst` added.) See [cli/skill](/cli/skill.md) and [cli/standards-conformance §the skill standard](/cli/standards-conformance.md#the-skill-standard-deferred-at-audit-adopted-by-change-agst).
 
-### Forward design: `shll agent-setup` — LANDED (change agst) as skills placement, not context aggregation
+### Landed design: `shll agent-setup` (skills placement, not context aggregation)
 
-*(Recorded in the standard because it is why bundles must stay small and static. The standard first sketched a **context-aggregation** mechanism; the command that actually landed uses **skills placement** — the design point below still holds, but via a different route.)*
+*(Recorded in the standard because it is why bundles must stay small and static. The standard first sketched a **context-aggregation** mechanism; the command that actually landed uses **skills placement** — the design point still holds, but via a different route. The standard document itself now carries the landed-design note: its § is retitled `` ## Landed design: `shll agent-setup` `` and describes skills placement + the runtime two-step, so the historical first-sketched framing survives only here in memory.)*
 
 Change `agst` built `shll skill` + `shll agent-setup`, graduating the harness wiring from `run-kit agent-setup`. Two clarifications to the original forward-design sketch:
 
 - **The mechanism landed as skills PLACEMENT, not context aggregation.** The standard originally described `agent-setup` as "aggregate every installed tool's `<tool> skill` output into the agent's context." That is **not** what shipped: `shll agent-setup` places ONE thin bootstrap Agent Skill (`shll-toolkit`) that *points at* a runtime **two-step** (`shll skill` glossary → `shll skill <tool>` bundle on demand), and the aggregation/glossary role went to the separate `shll skill` composer. Placing per-tool bundles as skill files was explicitly **rejected** (they go stale between updates and multiply listing lines); the thin bootstrap + runtime two-step keeps bundles version-locked by construction. See [cli/agent-setup](/cli/agent-setup.md) and [cli/skill](/cli/skill.md).
 - **The ≤150-line budget and static-only rule still hold, for the same reason.** Bundles are loaded into agent context every session and fetched on demand by the two-step, so a bloated bundle is still paid repeatedly. The context-economy motive survives the mechanism change — the bare `shll skill` glossary is deliberately one line per tool, never a dump of all bundles, precisely so N bundles are never concatenated at once (toolkit principle №9).
 - **run-kit hook delegation landed as designed:** `shll agent-setup` delegates run-kit's dashboard hooks to `run-kit agent-setup` (Constitution III/IV). The coordinated run-kit slim (removing run-kit's own context-injection stanza, moving that guidance into `run-kit skill`) is an **external run-kit-repo change**, not part of `agst`.
+
+*Introduced by*: change agst (`260718-agst-agent-setup-skill-commands`); the standard document's own § was resynced to this landed design by change fw9d (`260718-fw9d-skill-standard-landed-design-note`).
 
 ## Cross-references
 

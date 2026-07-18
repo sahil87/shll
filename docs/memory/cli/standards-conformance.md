@@ -61,7 +61,7 @@ At audit time shll had no `shll skill` subcommand. The `skill` standard's own Ad
 
 - shll now ships `shll skill` (the runtime tree lists twelve commands including `skill` and `agent-setup`).
 - shll's own bundle is authored at `docs/site/skill.md` (≤150 lines), embedded via the same sync + drift-guard mechanism `shll standards` uses (committed `src/cmd/shll/skill/skill.md` + the extended `scripts/sync-standards.sh` + `TestSkillEmbedMatchesCanonical`), and served by `shll skill shll` in-process byte-identical.
-- This satisfies principle №10's bundle obligation at scope `binary+repo` for shll. See [cli/skill](/cli/skill.md) for the composer and the self-bundle embed, and [cli/standards-content §forward design](/cli/standards-content.md#forward-design-shll-agent-setup) for the `shll agent-setup` piece that also landed.
+- This satisfies principle №10's bundle obligation at scope `binary+repo` for shll. See [cli/skill](/cli/skill.md) for the composer and the self-bundle embed, and [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-agent-setup-skills-placement-not-context-aggregation) for the `shll agent-setup` piece that also landed.
 
 The other six tools' `<tool> skill` bundles remain the per-repo standards waves' work (out of scope for `agst`, which is shll-only).
 
