@@ -240,6 +240,32 @@ func TestAgentSetup_RunKitAbsentSkipsSilently(t *testing.T) {
 	}
 }
 
+func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
+	env, home := agentHomeEnv(t)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == runKitToolName {
+			return proc.Result{ExitCode: 3} // child ran and failed; RunForeground → (3, nil)
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false); err != nil {
+		t.Fatalf("a failed run-kit delegation must not fail the placement, err = %v", err)
+	}
+	// Placement is the core work — both skills still land.
+	for _, p := range skillPaths(home) {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("placement must succeed despite the delegation exit: %s missing (%v)", p, err)
+		}
+	}
+	// The non-zero exit is surfaced as a warn-and-continue, not swallowed.
+	if want := "run-kit agent-setup exited 3 (continuing)"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
+	}
+}
+
 func TestAgentSetup_UninstallDelegatesUninstall(t *testing.T) {
 	env, _ := agentHomeEnv(t)
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{ExitCode: 0} }}

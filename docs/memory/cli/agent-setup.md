@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll agent-setup` — mechanically places ONE thin `sahil87-toolkit` Agent Skill at two unconditional global paths (`~/.agents/skills/` + `~/.claude/skills/`, the minimal covering set for all four harnesses), then delegates run-kit's dashboard hooks to `run-kit agent-setup`. Idempotent by construction (write/overwrite/delete, no merge/sentinel/prompt); `--print` (content + paths, no write, no delegate), `--uninstall` (delete both dirs + delegate uninstall), `--print --uninstall` → exit 2. Canonical SKILL.md is a Go constant; NO context-file stanza injection."
+description: "`shll agent-setup` — mechanically places ONE thin `shll-toolkit` Agent Skill at two unconditional global paths (`~/.agents/skills/` + `~/.claude/skills/`, the minimal covering set for all four harnesses), then delegates run-kit's dashboard hooks to `run-kit agent-setup`. Idempotent by construction (write/overwrite/delete, no merge/sentinel/prompt); `--print` (content + paths, no write, no delegate), `--uninstall` (delete both dirs + delegate uninstall), `--print --uninstall` → exit 2. Canonical SKILL.md is a Go constant; NO context-file stanza injection."
 ---
 # cli/agent-setup
 
@@ -27,15 +27,15 @@ The rejected stanza machinery must not reappear: `shell_setup.go` stays byte-ide
 | `.agents/skills` | the [agentskills.io](https://agentskills.io) open-standard path — read natively by **Codex** (USER scope), compat-read by **Cursor** and **OpenCode** |
 | `.claude/skills` | **Claude Code** (which does NOT read `~/.agents/`) |
 
-The full file is `<dir>/sahil87-toolkit/SKILL.md` (`skillDirName = "sahil87-toolkit"`, `skillFileName = "SKILL.md"` — the `<dir>/<name>/SKILL.md` shape the Agent Skills standard requires). `resolveSkillTargets(env)` joins `$HOME + rel + skillDirName + skillFileName`; an empty `$HOME` yields no targets (nothing to place).
+The full file is `<dir>/shll-toolkit/SKILL.md` (`skillDirName = "shll-toolkit"`, `skillFileName = "SKILL.md"` — the `<dir>/<name>/SKILL.md` shape the Agent Skills standard requires). `resolveSkillTargets(env)` joins `$HOME + rel + skillDirName + skillFileName`; an empty `$HOME` yields no targets (nothing to place).
 
-Both writes are **unconditional** — agent-setup is an explicit "wire this machine" command, the cost is two small files in `$HOME`, and any future harness adopting the open standard picks up `~/.agents/skills` automatically. **No harness detection, no skip logic, no skip-a-harness degradation** (user: "no degeneration"). Cursor and OpenCode will see the same-name skill from both locations; the bytes are identical, so this is cosmetic (neither documents cross-location precedence; the recorded fallback is symlinking `~/.claude/skills/sahil87-toolkit` → the `~/.agents` copy, since Claude Code follows and dedupes symlinked skill dirs).
+Both writes are **unconditional** — agent-setup is an explicit "wire this machine" command, the cost is two small files in `$HOME`, and any future harness adopting the open standard picks up `~/.agents/skills` automatically. **No harness detection, no skip logic, no skip-a-harness degradation** (user: "no degeneration"). Cursor and OpenCode will see the same-name skill from both locations; the bytes are identical, so this is cosmetic (neither documents cross-location precedence; the recorded fallback is symlinking `~/.claude/skills/shll-toolkit` → the `~/.agents` copy, since Claude Code follows and dedupes symlinked skill dirs).
 
 ## The canonical SKILL.md (a Go constant)
 
 `agentSkillContent` is a Go string constant in `agent_setup.go` — **not** a docs-site file. The bootstrap skill is an agent-setup artifact, neither a published standard nor a `<tool> skill` bundle, so the docs-site sync/embed/drift-guard ceremony (which `docs/site/skill.md` uses — see [cli/skill](/cli/skill.md#the-bundle-authored-embedded-drift-guarded-budget-bounded)) does **not** apply here.
 
-- **Portable frontmatter — `name` + `description` ONLY** (the OpenCode-recognized common subset, valid on all four harnesses). `name: sahil87-toolkit` equals `skillDirName` (the same constant is spliced into both the frontmatter and the directory name, so they cannot drift) and satisfies the shared `^[a-z0-9]+(-[a-z0-9]+)*$` / match-directory-name rule.
+- **Portable frontmatter — `name` + `description` ONLY** (the OpenCode-recognized common subset, valid on all four harnesses). `name: shll-toolkit` equals `skillDirName` (the same constant is spliced into both the frontmatter and the directory name, so they cannot drift) and satisfies the shared `^[a-z0-9]+(-[a-z0-9]+)*$` / match-directory-name rule.
 - **The `description` front-loads trigger words** (the tool names: `wt, idea, tu, run-kit (rk), hop, fab-kit, or shll itself`) so the skill activates implicitly when an agent is about to drive a toolkit tool.
 - **The body teaches the runtime two-step** (`shll skill` → `shll skill <tool>`) plus one `shll standards` pointer for toolkit-repo development. It only *points at* the runtime two-step, so bundles are always fetched from the installed binaries — the placed file stays version-locked in spirit and is refreshed by the installed shll on any re-run.
 
@@ -45,7 +45,7 @@ Both writes are **unconditional** — agent-setup is an explicit "wire this mach
 
 - **`--print --uninstall` together** → `errExitCode{code: usageExitCode}` (exit 2) — mutually exclusive, checked first.
 - **`--print`** (`runAgentPrint`) → writes `agentSkillContent` then a `Target paths:` block listing both resolved absolute paths, and **modifies nothing**. **No run-kit delegation.**
-- **`--uninstall`** (`runAgentUninstall`) → `os.RemoveAll` on each `sahil87-toolkit` **directory** (`filepath.Dir(path)`, not just the SKILL.md file); reports `removed`/`absent` per dir; then delegates `run-kit agent-setup --uninstall`.
+- **`--uninstall`** (`runAgentUninstall`) → `os.RemoveAll` on each `shll-toolkit` **directory** (`filepath.Dir(path)`, not just the SKILL.md file); reports `removed`/`absent` per dir; then delegates `run-kit agent-setup --uninstall`.
 - **default** (`runAgentInstall`) → `placeSkill` per target, then delegates `run-kit agent-setup`.
 
 ### `placeSkill` — the three-state per-path summary
@@ -84,7 +84,7 @@ I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; sk
 
 ## Test seam
 
-`agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`. Coverage grounds R6–R9: both files written with canonical content and a per-path summary; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == sahil87-toolkit == dir name`.
+`agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`. Coverage grounds R6–R9: both files written with canonical content and a per-path summary; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == shll-toolkit == dir name`.
 
 ## Cross-references
 

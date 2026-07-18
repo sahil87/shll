@@ -52,6 +52,6 @@ true_impact:
         net: 752
     computed_at: "2026-07-18T06:34:16Z"
     computed_at_stage: ship
-summary: 'Add shll skill (runtime per-tool bundle composer: installed-only glossary, byte-identical <tool> skill passthrough via proc.RunCaptured, in-process shll skill shll embed) and shll agent-setup (mechanical sahil87-toolkit Agent Skill placement at ~/.agents/skills + ~/.claude/skills, run-kit hook delegation); graduate the install nudge + README to shll agent-setup; add internal/proc RunCaptured/TransportCaptureAll; adopt the skill standard (docs/site/skill.md sync+drift-guard).'
+summary: 'Add shll skill (runtime per-tool bundle composer: installed-only glossary, byte-identical <tool> skill passthrough via proc.RunCaptured, in-process shll skill shll embed) and shll agent-setup (mechanical shll-toolkit Agent Skill placement at ~/.agents/skills + ~/.claude/skills, run-kit hook delegation); graduate the install nudge + README to shll agent-setup; add internal/proc RunCaptured/TransportCaptureAll; adopt the skill standard (docs/site/skill.md sync+drift-guard).'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
 last_updated: 2026-07-18T06:44:04Z

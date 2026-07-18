@@ -19,10 +19,11 @@ One line each, keyed to the subcommand:
 
 - `shll install [tool...]` — `brew install` every missing roster tool (trust-then-install); idempotent. `--dry-run` previews; `--no-trust` skips trust.
 - `shll update [tool...]` — `brew update` once, self-upgrade, then delegate to each installed tool's own `update`. `--dry-run` previews.
+- `shll uninstall [tool...]` — remove roster tools via brew, reverse order with shll-self last; confirm-gated (`--yes` skips, non-TTY refuses), `--dry-run` previews.
 - `shll changelog [tool[@old..new]...]` — GitHub release notes; no range = installed→latest ("what would an update bring?").
 - `shll shell-init <shell>` — emit one eval-safe shell-init blob composing every installed tool's shell-init. Stdout is meant to be `eval`'d.
 - `shll shell-setup [shell]` — append the `eval "$(shll shell-init …)"` line to your rc file (idempotent, sentinel-wrapped). `--print` / `--uninstall`.
-- `shll agent-setup` — place the `sahil87-toolkit` Agent Skill at two global skill paths (`~/.agents/skills/` for Codex/Cursor/OpenCode, `~/.claude/skills/` for Claude Code), then delegate run-kit's dashboard hooks to `run-kit agent-setup`. Idempotent (overwrite). `--print` / `--uninstall`.
+- `shll agent-setup` — place the `shll-toolkit` Agent Skill at two global skill paths (`~/.agents/skills/` for Codex/Cursor/OpenCode, `~/.claude/skills/` for Claude Code), then delegate run-kit's dashboard hooks to `run-kit agent-setup`. Idempotent (overwrite). `--print` / `--uninstall`.
 - `shll skill [tool]` — bare: one-line glossary of installed tools. `shll skill <tool>`: that tool's full agent skill bundle (this page is `shll skill shll`).
 - `shll version` — one paste-friendly version row per tool (for bug reports).
 - `shll list` — the roster with install status, descriptions, repo links (`--json`).

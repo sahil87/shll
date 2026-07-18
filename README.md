@@ -25,7 +25,7 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt
 
 Requires Homebrew ≥ 6.0.4 (on 6.0.0–6.0.3, run `brew update` first) — the script exits with a pointer to https://brew.sh if brew is absent (it never auto-installs Homebrew). It bootstraps `shll` itself first (recording the Homebrew 6.0 tap trust `shll` needs), then hands off to `shll install` for the rest of the roster (which trusts each formula it installs — drop that with `--no-trust` if you manage trust yourself). It's idempotent — safe to re-run, and a no-op for anything already installed.
 
-The `shll agent-setup` line is optional and once per machine — it places one thin `sahil87-toolkit` Agent Skill at two global skill paths (`~/.agents/skills/` for Codex, Cursor, and OpenCode; `~/.claude/skills/` for Claude Code) so an agent driving this machine knows to load `shll skill` before reaching for a tool, and it delegates run-kit's dashboard hooks (live **active** / **waiting** / **idle** state in [run-kit](https://github.com/sahil87/run-kit)'s dashboard) to `run-kit agent-setup`. It just overwrites shll-owned skill files (idempotent — no prompt); skip it if you don't drive this machine with agents.
+The `shll agent-setup` line is optional and once per machine — it places one thin `shll-toolkit` Agent Skill at two global skill paths (`~/.agents/skills/` for Codex, Cursor, and OpenCode; `~/.claude/skills/` for Claude Code) so an agent driving this machine knows to load `shll skill` before reaching for a tool, and it delegates run-kit's dashboard hooks (live **active** / **waiting** / **idle** state in [run-kit](https://github.com/sahil87/run-kit)'s dashboard) to `run-kit agent-setup`. It just overwrites shll-owned skill files (idempotent — no prompt); skip it if you don't drive this machine with agents.
 
 > **Why `brew trust` first?** Homebrew 6.0 made tap-trust a **hard install requirement** (it defaults `HOMEBREW_REQUIRE_TAP_TRUST=1`). shll's tap formulae download a binary and run a sandboxed `def install` (not a bottle pour), and that sandboxed step re-checks trust against a real persisted trust record — so naming the formula on the CLI is not enough; you must trust it first. Requires **Homebrew ≥ 6.0.4** (an earlier 6.0.x Linux sandbox bug is fixed there); if you're on 6.0.0–6.0.3, run `brew update` first. See [Troubleshooting](#tap-sahil87tap-must-be-trusted-before-install) for the full explanation.
 
@@ -244,12 +244,12 @@ The agent-facing reader for each tool's offline skill bundle — the one-page us
 ### `shll agent-setup` — wire agent harnesses
 
 ```sh
-shll agent-setup              # place the sahil87-toolkit skill at both locations (idempotent)
+shll agent-setup              # place the shll-toolkit skill at both locations (idempotent)
 shll agent-setup --print      # print the SKILL.md content and both target paths, write nothing
 shll agent-setup --uninstall  # remove both placed skill directories
 ```
 
-Mechanically places one thin `sahil87-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/sahil87-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode) and `~/.claude/skills/sahil87-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/`) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates run-kit's dashboard-hook wiring to `run-kit agent-setup` (skipped silently when run-kit isn't installed; `--print`/`--uninstall` don't delegate a placement). This graduates the toolkit's harness wiring from `run-kit agent-setup`, where it was mis-homed on a leaf tool, up to the manager.
+Mechanically places one thin `shll-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/shll-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/`) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates run-kit's dashboard-hook wiring to `run-kit agent-setup` (skipped silently when run-kit isn't installed; `--print`/`--uninstall` don't delegate a placement). This graduates the toolkit's harness wiring from `run-kit agent-setup`, where it was mis-homed on a leaf tool, up to the manager.
 
 ## How composition works
 
@@ -266,7 +266,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 | `shll doctor` | probes `<tool> --version` + reads your rc file, reports install + wiring health |
 | `shll standards` | prints build-time-embedded copies of the canonical `docs/site/` standards (no subprocess, no network) |
 | `shll skill <tool>` | passes through the tool's own `<tool> skill` output byte-for-byte (`shll skill shll` serves an embedded copy) |
-| `shll agent-setup` | places the `sahil87-toolkit` skill at the two global skill paths, then delegates `run-kit agent-setup` for run-kit's hooks |
+| `shll agent-setup` | places the `shll-toolkit` skill at the two global skill paths, then delegates `run-kit agent-setup` for run-kit's hooks |
 
 Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt shell-init`, etc. continue to work standalone. shll's only job is to fan-out, collect output, and degrade gracefully when a tool is missing.
 

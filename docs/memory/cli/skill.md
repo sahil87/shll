@@ -83,7 +83,7 @@ shll's own bundle is authored canonically at **`docs/site/skill.md`** (the [stan
 - **Sync step** — `scripts/sync-standards.sh` gained a second section (`docs/site/skill.md` → `src/cmd/shll/skill/skill.md`) alongside the standards copy loop; the `//go:generate ../../../scripts/sync-standards.sh` directive is also in `skill.go`. See [cli/standards §the build-time embed mechanism](/cli/standards.md#the-build-time-embed-mechanism).
 - **Drift guard** — `TestSkillEmbedMatchesCanonical` (`skill_test.go`) keeps the embedded copy byte-honest against `docs/site/skill.md` on every `go test`, mirroring `TestStandardsEmbedMatchesCanonical`. A budget test asserts ≤150 lines (the bundle is 53 lines today).
 
-The bundle's `shll agent-setup` capability line describes **skills placement** (place the `sahil87-toolkit` skill at the two global skill paths, then delegate run-kit hooks), NEVER stanza injection — a wording correctness requirement of the current design (the rejected stanza mechanism, see [cli/agent-setup](/cli/agent-setup.md)).
+The bundle's `shll agent-setup` capability line describes **skills placement** (place the `shll-toolkit` skill at the two global skill paths, then delegate run-kit hooks), NEVER stanza injection — a wording correctness requirement of the current design (the rejected stanza mechanism, see [cli/agent-setup](/cli/agent-setup.md)).
 
 ## Named constants (code-quality.md — no magic strings)
 

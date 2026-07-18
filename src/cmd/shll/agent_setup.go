@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -31,7 +32,7 @@ const agentSetupErrPrefix = "shll agent-setup"
 // each target. It satisfies the agentskills.io portable-name rule
 // (^[a-z0-9]+(-[a-z0-9]+)*$) and MUST equal the frontmatter `name:` — the same string
 // is used for both so they cannot drift. Named per code-quality.md (no magic strings).
-const skillDirName = "sahil87-toolkit"
+const skillDirName = "shll-toolkit"
 
 // skillFileName is the SKILL.md filename the Agent Skills open standard requires
 // inside each skill directory (<dir>/<name>/SKILL.md).
@@ -111,7 +112,7 @@ Modes:
 		},
 	}
 	cmd.Flags().BoolVar(&printMode, "print", false, "print the SKILL.md content and target paths, do not write any file")
-	cmd.Flags().BoolVar(&uninstallMode, "uninstall", false, "remove both placed sahil87-toolkit skill directories")
+	cmd.Flags().BoolVar(&uninstallMode, "uninstall", false, "remove both placed shll-toolkit skill directories")
 	return cmd
 }
 
@@ -204,7 +205,7 @@ func placeSkill(path string, content []byte, stdout, stderr io.Writer) error {
 	switch {
 	case err == nil:
 		// File exists — compare before writing so a no-op re-run is reported as such.
-		if bytesEqual(existing, content) {
+		if bytes.Equal(existing, content) {
 			fmt.Fprintf(stdout, "unchanged  %s\n", path)
 			return nil
 		}
@@ -233,13 +234,13 @@ func placeSkill(path string, content []byte, stdout, stderr io.Writer) error {
 	}
 }
 
-// runAgentUninstall removes each placed skill DIRECTORY (the sahil87-toolkit dir under
+// runAgentUninstall removes each placed skill DIRECTORY (the shll-toolkit dir under
 // each target, not just the SKILL.md file), then delegates `run-kit agent-setup
 // --uninstall`. Removing an shll-owned directory is safe and needs no confirmation.
 func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.Writer) error {
 	anyFailed := false
 	for _, path := range targets {
-		dir := filepath.Dir(path) // .../sahil87-toolkit
+		dir := filepath.Dir(path) // .../shll-toolkit
 		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
 			fmt.Fprintf(stdout, "absent     %s\n", dir)
 			continue
@@ -261,21 +262,6 @@ func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.
 	return nil
 }
 
-// bytesEqual reports whether a and b hold identical bytes. A tiny local helper so
-// placeSkill's idempotency compare reads clearly without importing bytes just for one
-// call (mirrors the file's file-I/O-only footprint).
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // delegateRunKitAgentSetup invokes `run-kit agent-setup [--uninstall]` as a foreground
 // subprocess (via internal/proc — Constitution I) for run-kit's dashboard hooks. When
 // run-kit is not on PATH (proc.ErrNotFound) the delegation is skipped silently
@@ -288,7 +274,7 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stderr io.Wri
 	if uninstall {
 		args = append(args, "--uninstall")
 	}
-	_, err := proc.RunForeground(ctx, runKitToolName, args...)
+	code, err := proc.RunForeground(ctx, runKitToolName, args...)
 	if errors.Is(err, proc.ErrNotFound) {
 		return // run-kit absent — skip silently.
 	}
@@ -297,5 +283,12 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stderr io.Wri
 		// fail the skill placement shll already did — placement is agent-setup's core
 		// work; run-kit hooks are the optional adjunct.
 		fmt.Fprintf(stderr, "%s: run-kit agent-setup: %v (continuing)\n", agentSetupErrPrefix, err)
+		return
+	}
+	if code != 0 {
+		// RunForeground returns err == nil when the child starts and exits non-zero
+		// (the code carries the outcome). Same adjunct rule: warn, never fail the
+		// placement (mirrors install's delegated-trust-step precedent).
+		fmt.Fprintf(stderr, "%s: run-kit agent-setup exited %d (continuing)\n", agentSetupErrPrefix, code)
 	}
 }

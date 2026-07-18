@@ -55,7 +55,7 @@ shll's own bundle SHALL be authored at `docs/site/skill.md` as a ≤150-line sta
 ### CLI: `shll agent-setup` (mechanical skill placement)
 
 #### R6: Two-location unconditional placement
-`shll agent-setup` (default run) SHALL mechanically place ONE thin Agent Skill named `sahil87-toolkit` at exactly TWO unconditional global locations: `~/.agents/skills/sahil87-toolkit/SKILL.md` (agentskills.io path — Codex USER scope, Cursor + OpenCode compat) and `~/.claude/skills/sahil87-toolkit/SKILL.md` (Claude Code). Install = write, re-run = overwrite (idempotent). There MUST be NO harness detection, NO sentinel machinery, NO diff-and-confirm, NO `--yes` gate, NO non-TTY refusal. Both parent directories are created as needed (shll owns these skill dirs).
+`shll agent-setup` (default run) SHALL mechanically place ONE thin Agent Skill named `shll-toolkit` at exactly TWO unconditional global locations: `~/.agents/skills/shll-toolkit/SKILL.md` (agentskills.io path — Codex USER scope, Cursor + OpenCode compat) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code). Install = write, re-run = overwrite (idempotent). There MUST be NO harness detection, NO sentinel machinery, NO diff-and-confirm, NO `--yes` gate, NO non-TTY refusal. Both parent directories are created as needed (shll owns these skill dirs).
 
 - **GIVEN** a clean `$HOME`
 - **WHEN** the user runs `shll agent-setup`
@@ -63,15 +63,15 @@ shll's own bundle SHALL be authored at `docs/site/skill.md` as a ≤150-line sta
 - **AND** re-running is idempotent (byte-identical files) and reports each path as unchanged; no confirmation prompt is shown and a non-interactive stdin does not cause a refusal
 
 #### R7: Canonical SKILL.md content (portable frontmatter + two-step body)
-The placed `SKILL.md` SHALL be a Go string constant in `agent_setup.go` with portable frontmatter containing `name` + `description` ONLY (OpenCode's recognized subset). `name` MUST be `sahil87-toolkit`, matching `^[a-z0-9]+(-[a-z0-9]+)*$` and equalling its directory name. The `description` MUST front-load trigger words (toolkit tool names) for implicit activation. The body MUST teach the two-step (`shll skill`, then `shll skill <tool>`) plus one trailing `shll standards` pointer.
+The placed `SKILL.md` SHALL be a Go string constant in `agent_setup.go` with portable frontmatter containing `name` + `description` ONLY (OpenCode's recognized subset). `name` MUST be `shll-toolkit`, matching `^[a-z0-9]+(-[a-z0-9]+)*$` and equalling its directory name. The `description` MUST front-load trigger words (toolkit tool names) for implicit activation. The body MUST teach the two-step (`shll skill`, then `shll skill <tool>`) plus one trailing `shll standards` pointer.
 
 - **GIVEN** the canonical content constant
 - **WHEN** the skill is placed or `--print` is run
-- **THEN** the frontmatter carries exactly `name: sahil87-toolkit` and a `description:`, no other keys; the body teaches `shll skill` / `shll skill <tool>` and points at `shll standards`
-- **AND** `name` equals the directory name `sahil87-toolkit` and satisfies the portable-name regex
+- **THEN** the frontmatter carries exactly `name: shll-toolkit` and a `description:`, no other keys; the body teaches `shll skill` / `shll skill <tool>` and points at `shll standards`
+- **AND** `name` equals the directory name `shll-toolkit` and satisfies the portable-name regex
 
 #### R8: `--print` and `--uninstall` modes
-`shll agent-setup --print` SHALL show the SKILL.md content and the two target paths without writing any file and without triggering run-kit delegation. `shll agent-setup --uninstall` SHALL delete both `sahil87-toolkit` skill directories and MUST NOT trigger run-kit delegation side effects beyond the equivalent run-kit uninstall pass-through. `--print` and `--uninstall` together SHALL be a usage error (exit 2).
+`shll agent-setup --print` SHALL show the SKILL.md content and the two target paths without writing any file and without triggering run-kit delegation. `shll agent-setup --uninstall` SHALL delete both `shll-toolkit` skill directories and MUST NOT trigger run-kit delegation side effects beyond the equivalent run-kit uninstall pass-through. `--print` and `--uninstall` together SHALL be a usage error (exit 2).
 
 - **GIVEN** the skill is placed
 - **WHEN** the user runs `shll agent-setup --print`
@@ -108,7 +108,7 @@ The README install flow command block and its explanation paragraph SHALL gradua
 
 - **GIVEN** the README
 - **WHEN** a reader reads the install flow and the command sections
-- **THEN** the flow uses `shll agent-setup`, the agent-setup section describes placing the `sahil87-toolkit` skill at the two global skill paths and delegating run-kit hooks, and no "context stanza"/"sentinel"/"AGENTS.md-family" stanza wording remains
+- **THEN** the flow uses `shll agent-setup`, the agent-setup section describes placing the `shll-toolkit` skill at the two global skill paths and delegating run-kit hooks, and no "context stanza"/"sentinel"/"AGENTS.md-family" stanza wording remains
 
 ### internal/proc: capture-all transport
 
@@ -154,16 +154,16 @@ All new subprocess work (`<tool> skill`, `run-kit agent-setup`) MUST route throu
 
 ### Phase 2: Core Implementation
 
-- [x] T003 Rewrite `src/cmd/shll/agent_setup.go` to the mechanical skill-placement design: canonical `SKILL.md` Go constant (`name: sahil87-toolkit` + `description` only; two-step body + `shll standards` pointer), two-location placement (`~/.agents/skills/sahil87-toolkit/SKILL.md` + `~/.claude/skills/sahil87-toolkit/SKILL.md`), install/overwrite with per-path written/updated/unchanged summary, `--print` (content + paths, no write, no delegation), `--uninstall` (delete both dirs), `--print --uninstall` → exit 2, run-kit delegation via `internal/proc` (skip silently when absent; not on `--print`). Remove all sentinel/stanza/diff-and-confirm/`--yes`/non-TTY-refusal machinery <!-- R6 --> <!-- R7 --> <!-- R8 --> <!-- R9 -->
-- [x] T004 Rewrite `src/cmd/shll/agent_setup_test.go` to the placement design: assert both files written with canonical content, idempotent re-run (unchanged summary), `--print` writes nothing and does not delegate, `--uninstall` removes both dirs and delegates uninstall, `--print --uninstall` exits 2, run-kit delegation present-when-installed / silent-when-absent, canonical content has portable frontmatter (`name` + `description` only) and `name == sahil87-toolkit == dir name`. Drop the stanza/TTY/`--yes` tests <!-- R6 --> <!-- R7 --> <!-- R8 --> <!-- R9 -->
+- [x] T003 Rewrite `src/cmd/shll/agent_setup.go` to the mechanical skill-placement design: canonical `SKILL.md` Go constant (`name: shll-toolkit` + `description` only; two-step body + `shll standards` pointer), two-location placement (`~/.agents/skills/shll-toolkit/SKILL.md` + `~/.claude/skills/shll-toolkit/SKILL.md`), install/overwrite with per-path written/updated/unchanged summary, `--print` (content + paths, no write, no delegation), `--uninstall` (delete both dirs), `--print --uninstall` → exit 2, run-kit delegation via `internal/proc` (skip silently when absent; not on `--print`). Remove all sentinel/stanza/diff-and-confirm/`--yes`/non-TTY-refusal machinery <!-- R6 --> <!-- R7 --> <!-- R8 --> <!-- R9 -->
+- [x] T004 Rewrite `src/cmd/shll/agent_setup_test.go` to the placement design: assert both files written with canonical content, idempotent re-run (unchanged summary), `--print` writes nothing and does not delegate, `--uninstall` removes both dirs and delegates uninstall, `--print --uninstall` exits 2, run-kit delegation present-when-installed / silent-when-absent, canonical content has portable frontmatter (`name` + `description` only) and `name == shll-toolkit == dir name`. Drop the stanza/TTY/`--yes` tests <!-- R6 --> <!-- R7 --> <!-- R8 --> <!-- R9 -->
 - [x] T005 [P] Verify the kept `src/cmd/shll/skill.go` composer + `src/cmd/shll/skill_test.go` against R1–R4: bare glossary (installed-only, shll-first, no brew, hint, no bundle concat), byte-identical `<tool> skill` passthrough via `RunCaptured`, `rk`→`run-kit` alias, `shll skill shll` in-process embed, not-installed/unsupported → one-line stderr + exit 1, unknown name → exit 2 <!-- R1 --> <!-- R2 --> <!-- R3 --> <!-- R4 -->
 
 ### Phase 3: Integration & Wiring
 
 - [x] T006 Verify root wiring in `src/cmd/shll/root.go`: `newSkillCmd()` + `newAgentSetupCmd()` registered and listed in the long-help subcommand block; confirm the agent-setup short/long help (in `agent_setup.go`) describes skill placement, not stanza injection <!-- R10 -->
 - [x] T007 Verify the `install.go` nudge graduation in `src/cmd/shll/install.go` + `src/cmd/shll/install_test.go` against R11: the "Next steps" block points at `shll agent-setup` (unconditional, reframed wording — toolkit skill + run-kit hooks), no run-kit presence gate on the agent line, shell-setup gate unchanged, no nudge on dry-run, no stanza wording <!-- R11 -->
-- [x] T008 Correct and verify shll's own bundle `docs/site/skill.md` against R5/R12: rewrite the `shll agent-setup` capabilities line to describe placing the `sahil87-toolkit` skill (NOT "wire … with a toolkit-context stanza"); re-run `scripts/sync-standards.sh` to refresh the embedded `src/cmd/shll/skill/skill.md`; confirm ≤150 lines <!-- R5 --> <!-- R12 -->
-- [x] T009 Rewrite the README `shll agent-setup` install-flow paragraph and the `### shll agent-setup` command section in `README.md` to the skills-placement design (place the `sahil87-toolkit` skill at the two global skill paths, `--print`/`--uninstall`, delegate run-kit hooks); remove all stanza/sentinel/AGENTS.md-family stanza wording; verify the `### shll skill` section and the "How composition works" table rows match the current design <!-- R12 --> <!-- R10 -->
+- [x] T008 Correct and verify shll's own bundle `docs/site/skill.md` against R5/R12: rewrite the `shll agent-setup` capabilities line to describe placing the `shll-toolkit` skill (NOT "wire … with a toolkit-context stanza"); re-run `scripts/sync-standards.sh` to refresh the embedded `src/cmd/shll/skill/skill.md`; confirm ≤150 lines <!-- R5 --> <!-- R12 -->
+- [x] T009 Rewrite the README `shll agent-setup` install-flow paragraph and the `### shll agent-setup` command section in `README.md` to the skills-placement design (place the `shll-toolkit` skill at the two global skill paths, `--print`/`--uninstall`, delegate run-kit hooks); remove all stanza/sentinel/AGENTS.md-family stanza wording; verify the `### shll skill` section and the "How composition works" table rows match the current design <!-- R12 --> <!-- R10 -->
 - [x] T010 Verify `scripts/sync-standards.sh` extension syncs `docs/site/skill.md` → `src/cmd/shll/skill/skill.md` and that the drift-guard + budget tests in `skill_test.go` pass <!-- R5 -->
 
 ### Phase 4: Validation
@@ -187,8 +187,8 @@ All new subprocess work (`<tool> skill`, `run-kit agent-setup`) MUST route throu
 - [x] A-003 R3: `shll skill shll` serves the embedded bundle in-process, byte-identical, with no subprocess
 - [x] A-004 R4: `shll skill` miss behavior is correct — not-installed/unsupported → one-line stderr + exit 1 (child stderr suppressed); unknown name → usage diagnostic + exit 2, no subprocess
 - [x] A-005 R5: `docs/site/skill.md` exists (≤150 lines), is embedded + drift-guarded, and describes `shll agent-setup` as skill placement (not a stanza)
-- [x] A-006 R6: `shll agent-setup` writes both `sahil87-toolkit/SKILL.md` files with identical canonical content and prints a per-path written/updated/unchanged summary; re-run is idempotent; no confirmation prompt and no non-TTY refusal exist
-- [x] A-007 R7: the canonical SKILL.md constant has portable frontmatter (`name` + `description` only), `name == sahil87-toolkit == directory name` matching the portable regex, and a body teaching the two-step + `shll standards`
+- [x] A-006 R6: `shll agent-setup` writes both `shll-toolkit/SKILL.md` files with identical canonical content and prints a per-path written/updated/unchanged summary; re-run is idempotent; no confirmation prompt and no non-TTY refusal exist
+- [x] A-007 R7: the canonical SKILL.md constant has portable frontmatter (`name` + `description` only), `name == shll-toolkit == directory name` matching the portable regex, and a body teaching the two-step + `shll standards`
 - [x] A-008 R8: `--print` shows content + both paths without writing and without delegating; `--uninstall` removes both dirs; `--print --uninstall` exits 2
 - [x] A-009 R9: default run delegates `run-kit agent-setup` via `internal/proc` (silent skip when absent); `--print` does not delegate; `--uninstall` delegates the uninstall pass-through
 - [x] A-010 R10: `shll skill` and `shll agent-setup` are registered on root, listed in long-help, and present in `help-dump`; the agent-setup help describes skill placement
@@ -242,8 +242,8 @@ All new subprocess work (`<tool> skill`, `run-kit agent-setup`) MUST route throu
 | # | Grade | Decision | Rationale | Scores |
 |---|-------|----------|-----------|--------|
 | 1 | Certain | agent-setup = mechanical two-location skill placement; no stanza/sentinel/merge, no `--yes`/non-TTY refusal, no harness detection | Intake §4 + assumption 8/10 decide this verbatim (user chose "no merge operation, just mechanical placement") | S:95 R:80 A:90 D:95 |
-| 2 | Certain | Placement paths `~/.agents/skills/sahil87-toolkit/SKILL.md` + `~/.claude/skills/sahil87-toolkit/SKILL.md`, both unconditional, dirs created as needed | Intake §4 + assumption 9/10; verified coverage matrix from harness docs (2026-07-18) | S:90 R:85 A:95 D:90 |
-| 3 | Certain | Portable frontmatter `name` + `description` only; `name: sahil87-toolkit` equals dir name and matches `^[a-z0-9]+(-[a-z0-9]+)*$` | OpenCode-recognized subset; the shared regex/dir-match rule (intake §4 + assumption 11) | S:90 R:85 A:95 D:90 |
+| 2 | Certain | Placement paths `~/.agents/skills/shll-toolkit/SKILL.md` + `~/.claude/skills/shll-toolkit/SKILL.md`, both unconditional, dirs created as needed | Intake §4 + assumption 9/10; verified coverage matrix from harness docs (2026-07-18) | S:90 R:85 A:95 D:90 |
+| 3 | Certain | Portable frontmatter `name` + `description` only; `name: shll-toolkit` equals dir name and matches `^[a-z0-9]+(-[a-z0-9]+)*$` | OpenCode-recognized subset; the shared regex/dir-match rule (intake §4 + assumption 11) | S:90 R:85 A:95 D:90 |
 | 4 | Certain | Canonical SKILL.md is a Go string constant in `agent_setup.go` (no docs-site sync ceremony) | Intake §4 + assumption 11: the bootstrap skill is an agent-setup artifact, not a published doc | S:85 R:80 A:90 D:90 |
 | 5 | Confident | `--uninstall` deletes both skill directories (not just the SKILL.md file), and delegates `run-kit agent-setup --uninstall` | Intake §4 "`--uninstall` = delete both skill directories"; symmetric with the write path; delegation mirrors install | S:70 R:80 A:75 D:65 |
 | 6 | Confident | Per-path written/updated/unchanged summary distinguishes first-write vs overwrite-identical vs overwrite-changed by comparing existing bytes to canonical before writing | Intake §4 "per-path written/updated/unchanged summary on the default run"; the three states follow from stat+compare | S:65 R:80 A:75 D:60 |
