@@ -38,7 +38,13 @@ type helpDoc struct {
 // helpNode is one command in the recursive tree. Commands is always serialized
 // as a (possibly empty) array, never null — see buildNode.
 type helpNode struct {
-	Name     string     `json:"name"`
+	Name string `json:"name"`
+	// Aliases holds the command's registered alias names (cobra cmd.Aliases),
+	// name-adjacent so struct order pins the JSON key after `name`. Optional
+	// additive field under schema_version 1 — `omitempty` means a command with
+	// no aliases emits NO `aliases` key at all (contrast Commands, a required v1
+	// field that is always `[]`), keeping every unaliased node byte-identical.
+	Aliases  []string   `json:"aliases,omitempty"`
 	Path     string     `json:"path"`
 	Short    string     `json:"short"`
 	Usage    string     `json:"usage"`
@@ -148,7 +154,10 @@ func buildNode(cmd *cobra.Command) helpNode {
 		children = append(children, buildNode(child))
 	}
 	return helpNode{
-		Name:     cmd.Name(),
+		Name: cmd.Name(),
+		// Read cobra's own data model in declared order — no sorting or
+		// normalization; a nil/empty slice serializes to nothing via omitempty.
+		Aliases:  cmd.Aliases,
 		Path:     cmd.CommandPath(),
 		Short:    cmd.Short,
 		Usage:    cmd.UseLine(),

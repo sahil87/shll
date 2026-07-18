@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command, resolves the `docs/site/skill.md` collision now realized), the naming decisions (plain filenames, `skill` not `agent`), and the `skill` standard's contract (static-only ≤150-line agent bundle, `run-kit context` precedent). The forward-designed `shll agent-setup` HAS SINCE LANDED (change agst) as skills PLACEMENT, not the context aggregation the standard first sketched."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command), the naming decisions (plain filenames, `skill` not `agent`), the `skill` standard's contract (static-only ≤150-line agent bundle, `run-kit context` precedent, `shll agent-setup` landed as skills placement), and the help-dump standard's optional `aliases` field (first field under its § Schema evolution clause)."
 ---
 # cli/standards-content
 
@@ -42,6 +42,14 @@ docs/site/
 ### docs/site closure holds across the move
 
 Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill) survive the move unchanged because all four files stayed in the same directory. Every relative link still resolves inside `docs/site/` with no `..` escape (readme-extraction standard, closure rule 1). Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` gained a "The contracts" section and same-directory companion links to all three mechanical contracts; its "Consuming these standards" URLs point at `/shll/standards/…`.
+
+## The `help-dump` standard defines the optional `aliases` field
+
+`docs/site/standards/help-dump.md`'s **Output shape** documents an optional `aliases` node field: producers SHOULD emit it when the framework exposes alias metadata (e.g. Cobra `cmd.Aliases`) and MUST omit the key entirely — never `[]` or `null` — for a command with no aliases; consumers MUST treat an alias-form invocation (the `path` with its `name` replaced by any listed alias) as a valid command. The Node example carries an `"aliases": ["mk"]` line with an `omitted when none` comment, and a normative sentence beside it cross-links [Schema evolution](https://shll.ai/shll/standards/help-dump#schema-evolution).
+
+`aliases` is the **first field defined under the standard's § Schema evolution clause** — its rule that new fields MUST be optional so each tool adopts on its own release cadence (no seven-repo flag-day, no `schema_version` bump, older captures keep validating). shll is the first producer to emit the field (its `shell-setup`/`shell-install` command); the other six tools adopt on their own cadence. The producer-side contract and shll's implementation live in [cli/help-dump-contract](/cli/help-dump-contract.md).
+
+*Introduced by*: change whd7 (`260718-whd7-help-dump-emit-aliases`).
 
 ## The `skill` standard
 

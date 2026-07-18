@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "Hidden `shll help-dump` subcommand — the frozen `help/<tool>.json` JSON contract (shared 7-tool, `wt.json` reference) and producer rules (programmatic cobra walk, filter completion/help/Hidden, prune-before-render)."
+description: "Hidden `shll help-dump` subcommand — the frozen `help/<tool>.json` JSON contract (shared 7-tool, `wt.json` reference) and producer rules (programmatic cobra walk, filter completion/help/Hidden, prune-before-render, the optional `omitempty` `aliases` node field from `cmd.Aliases`)."
 ---
 # cli/help-dump-contract
 
@@ -36,20 +36,22 @@ A **Node** is recursive:
 
 ```json
 {
-  "name": "install",
-  "path": "shll install",
-  "short": "brew install every shll tool that isn't already installed",
-  "usage": "shll install [flags]",
+  "name": "shell-setup",
+  "aliases": ["shell-install"],
+  "path": "shll shell-setup",
+  "short": "append the shll shell-init eval line to your rc file",
+  "usage": "shll shell-setup [shell] [flags]",
   "text": "<RAW -h output, byte-for-byte, newlines preserved>",
   "commands": []
 }
 ```
 
-Per-node field source (programmatic, from cobra's data model — **never regex on `-h`**):
+`aliases` is **optional** and appears only on a command that has aliases (see [The optional `aliases` field](#the-optional-aliases-field)); a command with none — `install` above would be one — emits no `aliases` key. Per-node field source (programmatic, from cobra's data model — **never regex on `-h`**):
 
 | Field | Source |
 |-------|--------|
 | `name` | `cmd.Name()` |
+| `aliases` | `cmd.Aliases` (optional, `omitempty` — see below; key absent when the slice is nil/empty). |
 | `path` | `cmd.CommandPath()` (e.g. `"shll"`, `"shll install"`) |
 | `short` | `cmd.Short` |
 | `usage` | `cmd.UseLine()` (e.g. `"shll install [flags]"`) |
@@ -105,6 +107,18 @@ The children slice is initialized non-nil (`children := []helpNode{}`) before ap
 
 Child order is whatever cobra's `Commands()` returns (its default alphabetical sort). The dump does not re-sort beyond that — matching `wt.json`, whose children are alphabetical.
 
+### The optional `aliases` field
+
+A node carries an `aliases` array of the command's registered alias names, populated by `buildNode` directly from cobra's `cmd.Aliases` (a `[]string`) — the same walk-never-parse discipline as every other field. Aliases are emitted in cobra's **declared order** (the order they appear in the command's `Aliases:` slice), never re-sorted, mirroring the child order-preservation rule above.
+
+`aliases` uses `json:"aliases,omitempty"` and its Go struct field sits immediately after `Name` (Go struct field order pins JSON key order), so the key renders right after `name`, before `path`. Under `omitempty`, a nil or empty `cmd.Aliases` serializes to **no `aliases` key at all** — absence, never `[]` or `null`. This is the deliberate contrast with `commands`, a required v1 field that is always `[]` for a leaf: `aliases` is an *optional additive field*, so an unaliased node stays byte-identical to pre-`aliases` output and only aliased nodes change. That byte-stability is what lets the field ship with no consumer coordination.
+
+Today shll has exactly one aliased command — `shell-setup` (alias `shell-install`, registered in `src/cmd/shll/shell_setup.go`) — so its node is the only one in `help/shll.json` that carries an `aliases` key (`["shell-install"]`); every other node is unchanged. The alias already appeared inside the node's raw `text` (cobra renders an `Aliases:` help section), but structured-field consumers could not see it without regex-parsing `text` — which the contract forbids. Emitting `aliases` makes the alias a first-class structured field.
+
+> **Design Decision: optional field vs. duplicate nodes; no `schema_version` bump (change whd7).**
+> *Why a field, not extra nodes*: The alternative — emitting each alias as its own Node — would fabricate tree structure (synthesized `name`/`path` values cobra never registers as distinct commands) and break the text↔commands coherence rule: each node's `Available Commands:` block lists canonical names only, so a `commands` array padded with alias nodes would diverge from the rendered `text`, the exact incoherence prune-before-render exists to prevent.
+> *Why no `schema_version` bump*: `schema_version` stays `1`. The [help-dump standard](/cli/standards-content.md)'s § Schema evolution is the authority — it reserves bumps for breaking shape changes and names **optional additive fields** as the non-breaking evolution path (each tool adopts on its own release cadence, no seven-repo flag-day, older captures keep validating). `aliases` is the first field added under that clause.
+
 ## Why a hidden subcommand (not a standalone tool)
 
 `help-dump` is a `Hidden: true`, `NoArgs` cobra subcommand registered in `newRootCmd()` (`src/cmd/shll/root.go`), not a separate Go tool under `scripts/`. The subcommand has free access to the live `rootCmd` and to `rootCmd.Version` (already ldflags-stamped), so VERSION is read from the binary for free with no second source of truth, and it self-excludes from its own dump via the `Hidden` filter rule. `Hidden` keeps it off the user-facing help surface, so it does not raise the Constitution VII (Minimal Surface Area) bar — it is documented as build tooling, not a user command.
@@ -118,16 +132,17 @@ Child order is whatever cobra's `Commands()` returns (its default alphabetical s
 
 ## Test coverage
 
-`src/cmd/shll/help_dump_test.go` (7 tests):
+`src/cmd/shll/help_dump_test.go` (8 tests):
 
-- Contract-shape — synthetic root + visible/hidden/`completion`/`help` children: top-level keys present, `schema_version == 1`, `tool == "shll"`, leaf `commands` is `[]` (not null), filtered children absent, **and `captured_at` is absent** (the envelope must not emit the shll.ai-owned field).
+- Contract-shape — synthetic root + plain-visible/aliased-visible/hidden/`completion`/`help` children: top-level keys present, `schema_version == 1`, `tool == "shll"`, leaf `commands` is `[]` (not null), filtered children absent, **and `captured_at` is absent** (the envelope must not emit the shll.ai-owned field). The synthetic tree's `aliased` child carries two aliases in a fixed order (`["alias-one", "alias-two"]`), and the test asserts (a) that child's `aliases` equals the declared list **in order**, and (b) via a **raw-JSON key-presence** decode (a `json.RawMessage` per node — a typed `helpNode` cannot distinguish an absent key from a zero slice), that the root and the unaliased `visible` node emit **no `aliases` key** while `aliased` emits one.
 - `text` byte-for-byte — every visible command in the real `newRootCmd()` compared against captured `cmd.Help()` output.
 - Self-exclusion — `help-dump` absent from the real-tree dump.
 - Version passthrough — `root.Version = "v9.9.9"` → `doc.version == "v9.9.9"`.
-- Structural determinism — the envelope carries no time-varying field, so two successive dumps of the same tree are byte-identical.
+- Structural determinism — the envelope carries no time-varying field, so two successive dumps of the same tree are byte-identical (`aliases` adds no time-varying data; `nodeText` is untouched, so this and the byte-for-byte `text` test are unaffected).
 - Execute-path regression — `TestHelpDump_RootTextExcludesAutoCommands` + `TestHelpDump_ExcludesAutoCommandsEverywhere`: drive via `dumpViaExecute` so cobra's lazy `completion`/`help` register exactly as on the shipped binary, then assert they appear in NEITHER `commands` NOR the rendered `text` `Available Commands:` block.
+- Real-tree aliases — `TestHelpDump_EmitsAliasesRealTree`: drives the real `rootCmd.Execute()` path via `dumpViaExecute` (per prune-before-render) and asserts the `shell-setup` node carries exactly `["shell-install"]`, pinning the shipped binary's one aliased command.
 
-(Change 7huv removed `TestHelpDump_CapturedAtShape` and its `capturedAtRE`/`regexp` dependency, dropping the count from 8 to 7, and added the `captured_at`-absence assertion to the contract-shape test.)
+(Change 7huv removed `TestHelpDump_CapturedAtShape` and its `capturedAtRE`/`regexp` dependency, dropping the count from 8 to 7 and adding the `captured_at`-absence assertion to the contract-shape test; change whd7 restored the count to 8 by adding `TestHelpDump_EmitsAliasesRealTree` and extending the contract-shape test with the `aliases` order + key-presence assertions above.)
 
 ## Cross-references
 
