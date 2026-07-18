@@ -9,8 +9,8 @@ progress:
     apply: done
     review: done
     hydrate: done
-    ship: active
-    review-pr: pending
+    ship: done
+    review-pr: active
 plan:
     generated: true
     task_count: 11
@@ -33,23 +33,25 @@ stage_metrics:
     apply: {started_at: "2026-07-18T05:56:21Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-18T06:08:42Z"}
     review: {started_at: "2026-07-18T06:08:42Z", driver: fab-fff, iterations: 2, completed_at: "2026-07-18T06:20:16Z"}
     hydrate: {started_at: "2026-07-18T06:20:16Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T06:31:29Z"}
-    ship: {started_at: "2026-07-18T06:31:29Z", driver: fab-fff, iterations: 1}
-prs: []
+    ship: {started_at: "2026-07-18T06:31:29Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-18T06:34:16Z"}
+    review-pr: {started_at: "2026-07-18T06:34:16Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/48
 change_type_source: explicit
 true_impact:
-    added: 0
-    deleted: 0
-    net: 0
+    added: 2335
+    deleted: 159
+    net: 2176
     excluding:
-        added: 0
-        deleted: 0
-        net: 0
+        added: 1491
+        deleted: 119
+        net: 1372
     tests:
-        added: 0
-        deleted: 0
-        net: 0
-    computed_at: "2026-07-18T06:31:29Z"
-    computed_at_stage: hydrate
+        added: 830
+        deleted: 78
+        net: 752
+    computed_at: "2026-07-18T06:34:16Z"
+    computed_at_stage: ship
 summary: 'Add shll skill (runtime per-tool bundle composer: installed-only glossary, byte-identical <tool> skill passthrough via proc.RunCaptured, in-process shll skill shll embed) and shll agent-setup (mechanical sahil87-toolkit Agent Skill placement at ~/.agents/skills + ~/.claude/skills, run-kit hook delegation); graduate the install nudge + README to shll agent-setup; add internal/proc RunCaptured/TransportCaptureAll; adopt the skill standard (docs/site/skill.md sync+drift-guard).'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-18T06:31:29Z
+last_updated: 2026-07-18T06:34:16Z
