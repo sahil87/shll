@@ -64,8 +64,7 @@ This machine has the sahil87 toolkit installed. Before driving one of its tools:
    composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
    core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
-Run-kit also has agent-proactive capabilities — visual display in a browser window and
-push notifications; see ` + "`shll skill run-kit`" + `.
+Run-kit also has agent-proactive capabilities — visual display in a browser window and push notifications; see ` + "`shll skill run-kit`" + `.
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `

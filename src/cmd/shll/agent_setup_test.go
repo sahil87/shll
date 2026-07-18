@@ -420,15 +420,25 @@ func TestRosterProactiveHint(t *testing.T) {
 	if !strings.Contains(desc, rk.ProactiveHint) {
 		t.Errorf("description must contain run-kit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
 	}
-	// … positioned AFTER the tool clauses and BEFORE the two-step pointer.
+	// … positioned AFTER the tool clauses and BEFORE the two-step pointer. Anchor
+	// the "after clauses" check on the END of the LAST rendered clause (not the start
+	// of the "Use when driving" preamble): the hint must fall after every clause, so a
+	// hint mistakenly emitted between the preamble and the clause list must still fail.
+	last := Roster[len(Roster)-1]
+	lastName := last.Name
+	if last.LegacyName != "" {
+		lastName += "/" + last.LegacyName
+	}
+	lastClause := last.SkillHint + " (" + lastName + ")"
+	lastClauseIdx := strings.Index(desc, lastClause)
 	hintIdx := strings.Index(desc, rk.ProactiveHint)
 	pointerIdx := strings.Index(desc, "Run `shll skill`")
-	clausesIdx := strings.Index(desc, "Use when driving")
-	if clausesIdx < 0 || pointerIdx < 0 || hintIdx < 0 {
-		t.Fatalf("description missing an expected segment (clauses=%d hint=%d pointer=%d): %s", clausesIdx, hintIdx, pointerIdx, desc)
+	if lastClauseIdx < 0 || pointerIdx < 0 || hintIdx < 0 {
+		t.Fatalf("description missing an expected segment (lastClause=%d hint=%d pointer=%d): %s", lastClauseIdx, hintIdx, pointerIdx, desc)
 	}
-	if !(clausesIdx < hintIdx && hintIdx < pointerIdx) {
-		t.Errorf("ProactiveHint must fall after the tool clauses and before the two-step pointer (clauses=%d hint=%d pointer=%d): %s", clausesIdx, hintIdx, pointerIdx, desc)
+	clausesEnd := lastClauseIdx + len(lastClause)
+	if !(clausesEnd <= hintIdx && hintIdx < pointerIdx) {
+		t.Errorf("ProactiveHint must fall after the last tool clause and before the two-step pointer (clausesEnd=%d hint=%d pointer=%d): %s", clausesEnd, hintIdx, pointerIdx, desc)
 	}
 }
 
