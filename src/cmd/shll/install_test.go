@@ -18,10 +18,9 @@ import (
 // installWiredEnv returns an env func resolving zsh and pointing the rc path at a
 // fresh t.TempDir() .zshrc that already contains shll's eval block, so the
 // shell-setup nudge gate (resolveWiringFact → !wired) reports WIRED and the
-// shell-setup line is suppressed. Existing golden-string tests use this so the
-// only nudge that can fire is the run-kit agent-setup line (gated on the fake's
-// run-kit --version reporting installed). Mirrors doctor_test's rcEnv/writeWiredRC
-// pattern; NEVER touches the real ~/.zshrc.
+// shell-setup line is suppressed. Existing golden-string tests use this so the only
+// nudge that can fire is the (unconditional, change agst) shll agent-setup line.
+// Mirrors doctor_test's rcEnv/writeWiredRC pattern; NEVER touches the real ~/.zshrc.
 func installWiredEnv(t *testing.T) func(string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -42,15 +41,16 @@ func installUnwiredEnv(t *testing.T) func(string) string {
 	return envFunc(map[string]string{"SHELL": "/bin/zsh", "ZDOTDIR": dir, "HOME": dir})
 }
 
-// runKitAgentSetupGolden is the plain (non-color, bytes.Buffer) run-kit agent-setup
-// nudge line as it appears in stdout, INCLUDING the trailing newline. arrow(false)
-// yields `->` on the non-TTY test writer.
-const runKitAgentSetupGolden = "  -> run-kit agent-setup # optional, once per machine — agent state in run-kit's dashboard\n"
+// agentSetupNudgeGolden is the plain (non-color, bytes.Buffer) shll agent-setup nudge
+// line as it appears in stdout, INCLUDING the trailing newline. arrow(false) yields
+// `->` on the non-TTY test writer. It GRADUATED from the former run-kit agent-setup
+// line (change agst) and now prints unconditionally.
+const agentSetupNudgeGolden = "  -> shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)\n"
 
-// nextStepsRunKitOnly is the whole "Next steps" block a golden test sees when the
-// shell-setup nudge is suppressed (wired env) but run-kit reports installed: the
-// leading blank line, the header, then the run-kit line only.
-const nextStepsRunKitOnly = "\n" + nextStepsHeader + "\n" + runKitAgentSetupGolden
+// nextStepsAgentOnly is the whole "Next steps" block a golden test sees when the
+// shell-setup nudge is suppressed (wired env): the leading blank line, the header,
+// then the always-printed agent-setup line only.
+const nextStepsAgentOnly = "\n" + nextStepsHeader + "\n" + agentSetupNudgeGolden
 
 func TestInstall_BrewMissing(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
@@ -91,10 +91,9 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	// The wired env suppresses the shell-setup nudge; the fake reports run-kit
-	// runnable (`run-kit --version` succeeds), so the run-kit agent-setup nudge
-	// fires after the nothing-to-do note (change 93r2).
-	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"+nextStepsRunKitOnly; got != want {
+	// The wired env suppresses the shell-setup nudge; the shll agent-setup line is
+	// unconditional (change agst), so it fires after the nothing-to-do note.
+	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 	for _, tool := range Roster {
@@ -259,7 +258,7 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 		"\n==> [3/4] run-kit\n" +
 		"\n==> [4/4] fab-kit\n" +
 		"\nDone — 4 of 4 tools succeeded in 1m12s.\n" +
-		nextStepsRunKitOnly // wired env → shell-setup suppressed; run-kit runnable → agent-setup nudge (change 93r2)
+		nextStepsAgentOnly // wired env → shell-setup suppressed; run-kit runnable → agent-setup nudge (change 93r2)
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -284,7 +283,7 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"+nextStepsRunKitOnly; got != want {
+	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want the shll-first note + one-line note + run-kit nudge (no header, no tail)", got)
 	}
 	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {
@@ -316,15 +315,15 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (one install failed)", err)
 	}
-	// Partial-failure tail carries the duration before the em-dash. Since change
-	// 93r2 the run-kit agent-setup nudge follows the tail (nudges print regardless
-	// of anyFailed — the block is informational and orthogonal to install outcome),
-	// so assert the tail appears mid-stream and the nudge is the true suffix.
+	// Partial-failure tail carries the duration before the em-dash. The agent-setup
+	// nudge follows the tail (nudges print regardless of anyFailed — the block is
+	// informational and orthogonal to install outcome), so assert the tail appears
+	// mid-stream and the nudge is the true suffix.
 	if !strings.Contains(stdout.String(), "5 succeeded, 1 failed in 1m12s — see above.\n") {
 		t.Fatalf("stdout = %q, want the partial-failure tail (5/1)", stdout.String())
 	}
-	if !strings.HasSuffix(stdout.String(), nextStepsRunKitOnly) {
-		t.Fatalf("stdout = %q, want the run-kit agent-setup nudge after the tail (nudges fire despite failures)", stdout.String())
+	if !strings.HasSuffix(stdout.String(), nextStepsAgentOnly) {
+		t.Fatalf("stdout = %q, want the shll agent-setup nudge after the tail (nudges fire despite failures)", stdout.String())
 	}
 }
 
@@ -538,7 +537,7 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 		"==> [1/2] wt\n" +
 		"\n==> [2/2] fab-kit\n" +
 		"\nDone — 2 of 2 tools succeeded in 1m12s.\n" +
-		nextStepsRunKitOnly
+		nextStepsAgentOnly
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -560,7 +559,7 @@ func TestInstall_SubsetNamedAlreadyInstalled(t *testing.T) {
 	// installedOnly reports run-kit runnable on PATH (default success for
 	// `run-kit --version`), so the post-run agent-setup nudge fires after the
 	// nothing-to-do note; the wired env suppresses the shell-setup line (change 93r2).
-	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"+nextStepsRunKitOnly; got != want {
+	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want the shll-first note + nothing-to-do note + run-kit nudge for a named-already-installed target", got)
 	}
 	if invocationsContain(f.recordedCalls(), brewBinary, "install", formulaPrefix+"hop") {
@@ -616,7 +615,7 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 		"\n==> [4/5] hop\n" +
 		"\n==> [5/5] fab-kit\n" +
 		"\nDone — 5 of 5 tools succeeded in 1m12s.\n" +
-		nextStepsRunKitOnly // run-kit runnable → agent-setup nudge; wired env → no shell-setup line (change 93r2)
+		nextStepsAgentOnly // run-kit runnable → agent-setup nudge; wired env → no shell-setup line (change 93r2)
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -944,9 +943,10 @@ func TestInstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 // allInstalledRunKitState builds a fake where every roster formula is already
 // installed (brew list succeeds) so runInstall hits the all-already-installed
 // short-circuit — isolating the nudge gates from install-loop framing. runKitOnPath
-// drives the run-kit presence probe: when false, both `run-kit --version` and its
-// `rk` legacy fallback return proc.ErrNotFound (run-kit absent → agent-setup nudge
-// suppressed); when true they succeed (run-kit present → agent-setup nudge fires).
+// drives the run-kit presence probe (`run-kit --version` and its `rk` legacy
+// fallback). Since change agst the shll agent-setup nudge is UNCONDITIONAL, so
+// run-kit presence no longer gates it; the parameter is retained so tests can still
+// vary the PATH state without affecting the nudge outcome.
 func allInstalledRunKitState(runKitOnPath bool) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		// run-kit / rk PATH probe (toolInstalled → probeToolVersion, incl. the
@@ -964,9 +964,9 @@ func allInstalledRunKitState(runKitOnPath bool) *fakeRunner {
 }
 
 func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
-	// Unwired rc + run-kit absent → only the shell-setup nudge fires, after the
-	// nothing-to-do note.
-	f := allInstalledRunKitState(false /* run-kit absent */)
+	// Unwired rc → the shell-setup nudge fires; the shll agent-setup line is
+	// unconditional (change agst), so BOTH lines appear after the nothing-to-do note.
+	f := allInstalledRunKitState(false /* run-kit absent — no longer gates the nudge */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -980,15 +980,20 @@ func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
 	if !strings.Contains(out, "shll shell-setup") || !strings.Contains(out, "exec $SHELL") {
 		t.Fatalf("expected the shell-setup nudge (run 'shll shell-setup' … exec $SHELL), got %q", out)
 	}
-	// run-kit absent → no agent-setup line.
+	// The agent-setup line prints unconditionally (graduated from run-kit, change agst).
+	if !strings.Contains(out, "shll agent-setup") {
+		t.Fatalf("expected the unconditional shll agent-setup nudge, got %q", out)
+	}
+	// The former run-kit agent-setup wording is gone.
 	if strings.Contains(out, "run-kit agent-setup") {
-		t.Fatalf("run-kit absent must suppress the agent-setup nudge, got %q", out)
+		t.Fatalf("the nudge must point at 'shll agent-setup', not 'run-kit agent-setup', got %q", out)
 	}
 }
 
 func TestInstall_ShellSetupNudgeHiddenWhenWired(t *testing.T) {
-	// Wired rc + run-kit absent → NEITHER nudge fires → no "Next steps" block at all.
-	f := allInstalledRunKitState(false /* run-kit absent */)
+	// Wired rc → the shell-setup line is suppressed, but the shll agent-setup line is
+	// unconditional (change agst), so the "Next steps" block STILL prints (agent-only).
+	f := allInstalledRunKitState(false /* run-kit absent — irrelevant to the nudge now */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -999,45 +1004,37 @@ func TestInstall_ShellSetupNudgeHiddenWhenWired(t *testing.T) {
 	if strings.Contains(out, "shll shell-setup") {
 		t.Fatalf("wired rc must suppress the shell-setup nudge, got %q", out)
 	}
-	// Neither gate fires → no header, no block.
-	if strings.Contains(out, nextStepsHeader) {
-		t.Fatalf("no gate fired → no %q block expected, got %q", nextStepsHeader, out)
-	}
-	if got, want := out, shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
-		t.Fatalf("stdout = %q, want the bare shll-note + nothing-to-do note (no nudge block)", got)
+	// The agent-setup line still fires → the block prints with the agent line only.
+	if got, want := out, shllSelfInstallNote+"\n"+allInstalledMsg+"\n"+nextStepsAgentOnly; got != want {
+		t.Fatalf("stdout = %q, want the shll-note + nothing-to-do note + agent-only nudge block", got)
 	}
 }
 
-func TestInstall_AgentSetupNudgeGatedOnRunKitPresence(t *testing.T) {
-	// The run-kit agent-setup line is gated purely on run-kit being present after
-	// the run. Wired rc isolates it from the shell-setup line.
-	t.Run("shown when run-kit installed", func(t *testing.T) {
-		f := allInstalledRunKitState(true /* run-kit present */)
-		installFakeRunner(t, f)
-		var stdout, stderr bytes.Buffer
-		if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
-			t.Fatalf("runInstall err = %v, want nil", err)
+func TestInstall_AgentSetupNudgeUnconditional(t *testing.T) {
+	// The shll agent-setup line is UNCONDITIONAL (change agst) — it prints whether or
+	// not run-kit is on PATH (shll is always present, and shll cannot cheaply know
+	// whether agent-setup already ran). Wired rc isolates it from the shell-setup line.
+	for _, runKitPresent := range []bool{true, false} {
+		name := "run-kit absent"
+		if runKitPresent {
+			name = "run-kit present"
 		}
-		out := stdout.String()
-		if !strings.Contains(out, "run-kit agent-setup") {
-			t.Fatalf("run-kit present must show the agent-setup nudge, got %q", out)
-		}
-		if !strings.Contains(out, "optional, once per machine") {
-			t.Fatalf("agent-setup nudge must be marked 'optional, once per machine', got %q", out)
-		}
-	})
-	t.Run("hidden when run-kit absent", func(t *testing.T) {
-		f := allInstalledRunKitState(false /* run-kit absent */)
-		installFakeRunner(t, f)
-		var stdout, stderr bytes.Buffer
-		if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
-			t.Fatalf("runInstall err = %v, want nil", err)
-		}
-		out := stdout.String()
-		if strings.Contains(out, "run-kit agent-setup") {
-			t.Fatalf("run-kit absent must hide the agent-setup nudge, got %q", out)
-		}
-	})
+		t.Run(name, func(t *testing.T) {
+			f := allInstalledRunKitState(runKitPresent)
+			installFakeRunner(t, f)
+			var stdout, stderr bytes.Buffer
+			if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+				t.Fatalf("runInstall err = %v, want nil", err)
+			}
+			out := stdout.String()
+			if !strings.Contains(out, "shll agent-setup") {
+				t.Fatalf("the shll agent-setup nudge must always show, got %q", out)
+			}
+			if !strings.Contains(out, "optional, once per machine") {
+				t.Fatalf("agent-setup nudge must be marked 'optional, once per machine', got %q", out)
+			}
+		})
+	}
 }
 
 func TestInstall_NoNudgesOnDryRun(t *testing.T) {
@@ -1064,7 +1061,7 @@ func TestInstall_NoNudgesOnDryRun(t *testing.T) {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	out := stdout.String()
-	if strings.Contains(out, nextStepsHeader) || strings.Contains(out, "shll shell-setup") || strings.Contains(out, "run-kit agent-setup") {
+	if strings.Contains(out, nextStepsHeader) || strings.Contains(out, "shll shell-setup") || strings.Contains(out, "shll agent-setup") {
 		t.Fatalf("--dry-run must print NO nudge (preview, not outcome), got %q", out)
 	}
 	// It should still be the preview table.
@@ -1091,9 +1088,9 @@ func TestInstall_DryRunEmptyCaseNoNudge(t *testing.T) {
 
 func TestInstall_ShortCircuitPathNudgesWhenUnwired(t *testing.T) {
 	// The all-already-installed short-circuit path (no install loop) still nudges a
-	// re-runner who never wired their shell (decision 3). Unwired rc + run-kit
-	// present → both nudge lines fire after the nothing-to-do note.
-	f := allInstalledRunKitState(true /* run-kit present */)
+	// re-runner who never wired their shell (decision 3). Unwired rc → the shell-setup
+	// line fires; the agent-setup line is unconditional (change agst) → both fire.
+	f := allInstalledRunKitState(true /* run-kit present — no longer gates the nudge */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -1108,8 +1105,8 @@ func TestInstall_ShortCircuitPathNudgesWhenUnwired(t *testing.T) {
 	if !strings.Contains(out, "shll shell-setup") {
 		t.Fatalf("unwired short-circuit path must nudge shell-setup, got %q", out)
 	}
-	if !strings.Contains(out, "run-kit agent-setup") {
-		t.Fatalf("run-kit present must show the agent-setup nudge on the short-circuit path, got %q", out)
+	if !strings.Contains(out, "shll agent-setup") {
+		t.Fatalf("the short-circuit path must show the unconditional agent-setup nudge, got %q", out)
 	}
 	// No install-loop framing on the short-circuit path.
 	if strings.Contains(out, "==>") || strings.Contains(out, "Done —") {

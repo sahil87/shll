@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command, resolves the coming `docs/site/skill.md` collision), the naming decisions (plain filenames, `skill` not `agent`), and the `skill` standard's contract (static-only ≤150-line agent bundle, `run-kit context` precedent, planned `shll agent-setup` aggregation)."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command, resolves the `docs/site/skill.md` collision now realized), the naming decisions (plain filenames, `skill` not `agent`), and the `skill` standard's contract (static-only ≤150-line agent bundle, `run-kit context` precedent). The forward-designed `shll agent-setup` HAS SINCE LANDED (change agst) as skills PLACEMENT, not the context aggregation the standard first sketched."
 ---
 # cli/standards-content
 
@@ -33,7 +33,7 @@ docs/site/
 
 1. **Genre separation.** Flat `docs/site/` mixed shll's *own* tool docs with *toolkit-wide* standards — a browser (human or agent) could not tell that `help-dump.md` is a 7-repo standard rather than a shll feature doc. The subdirectory makes the genre boundary structural.
 2. **URL mirrors the command.** shll.ai renders nested `docs/site` trees, so the moved pages land at `shll.ai/shll/standards/<name>` — mirroring `shll standards <name>` exactly. The web URL and the CLI invocation become the same name.
-3. **Resolves a coming filename collision.** Each tool's own `skill` bundle will live at `docs/site/skill.md` in that tool's repo (see the [skill standard](#the-skill-standard) below). shll is itself a toolkit tool — its own future `docs/site/skill.md` bundle would have collided with the `skill` standard *document* if standards had stayed flat. The subdirectory removes the collision by construction.
+3. **Resolves a filename collision (now realized).** Each tool's own `skill` bundle lives at `docs/site/skill.md` in that tool's repo (see the [skill standard](#the-skill-standard) below). shll is itself a toolkit tool — and change `agst` **authored shll's own `docs/site/skill.md` bundle** (served by `shll skill shll`), which would have collided with the `skill` standard *document* had standards stayed flat. The subdirectory removed the collision by construction; the two now coexist as `docs/site/skill.md` (shll's bundle) and `docs/site/standards/skill.md` (the standard). See [cli/skill](/cli/skill.md).
 
 **Rejected**: keeping the standards flat and disambiguating by filename prefix (`principle-*`, `subcommand-*`/`repo-*`, `contract-*`). Filenames should be the artifact name; taxonomy is expressed via **location** (the `standards/` dir) + **list metadata** (the `scope` column — see [cli/standards §the scope field](/cli/standards.md#the-scope-field-change-i70w)), not baked into the filename.
 
@@ -80,15 +80,24 @@ The toolkit's prior art is `run-kit context` (a.k.a. `rk context`) — roughly 1
 
 ### Adoption is phased; this change authored the standard only
 
-Rollout is per-repo, like help-dump's was — **no tool ships `skill` today**, including shll. Change i70w authored the **standard document only**; implementing `shll skill` and the six other tools' bundle content is an explicit out-of-scope per-repo follow-up wave. A tool without a `skill` subcommand is not yet in violation — principle №10 is a SHOULD, and the bundle is its most forward-leaning obligation. (Contrast the `shll standards` roster's `skill` entry, which is the *reader-side* row shipped now; the *producer-side* `shll skill` command is the deferred work.)
+Rollout is per-repo, like help-dump's was. Change i70w authored the **standard document only**; implementing `shll skill` and the tools' bundle content was an explicit out-of-scope per-repo follow-up wave. A tool without a `skill` subcommand is not yet in violation — principle №10 is a SHOULD, and the bundle is its most forward-leaning obligation.
 
-### Forward design: `shll agent-setup`
+> **Update (change agst): shll now ships `skill`.** shll was the first adopter — change `agst` built the `shll skill` composer AND shll's own `docs/site/skill.md` bundle (served by `shll skill shll`), resolving the deferral tracked in `[agst]`. The **six other tools' `<tool> skill` bundles remain the deferred per-repo waves' work.** (Contrast the `shll standards` roster's `skill` entry, which is the *reader-side* row for the standard document, shipped since i70w; the *producer-side* `shll skill` command is what `agst` added.) See [cli/skill](/cli/skill.md) and [cli/standards-conformance §the skill standard](/cli/standards-conformance.md#the-skill-standard-deferred-at-audit-adopted-by-change-agst).
 
-*(Planned, not yet built — recorded in the standard because it is why bundles must stay small and static.)* A future `shll agent-setup` will graduate from `run-kit agent-setup`: it will **aggregate every installed tool's `<tool> skill` output** into the agent's context, and **delegate run-kit hook installation to `run-kit agent-setup`** (whose context-injection responsibility will then be removed, leaving it to do only hook wiring). When N bundles are concatenated into one context payload, every wasted line is paid N times — the whole reason for the static-only rule and the ≤150-line budget.
+### Forward design: `shll agent-setup` — LANDED (change agst) as skills placement, not context aggregation
+
+*(Recorded in the standard because it is why bundles must stay small and static. The standard first sketched a **context-aggregation** mechanism; the command that actually landed uses **skills placement** — the design point below still holds, but via a different route.)*
+
+Change `agst` built `shll skill` + `shll agent-setup`, graduating the harness wiring from `run-kit agent-setup`. Two clarifications to the original forward-design sketch:
+
+- **The mechanism landed as skills PLACEMENT, not context aggregation.** The standard originally described `agent-setup` as "aggregate every installed tool's `<tool> skill` output into the agent's context." That is **not** what shipped: `shll agent-setup` places ONE thin bootstrap Agent Skill (`sahil87-toolkit`) that *points at* a runtime **two-step** (`shll skill` glossary → `shll skill <tool>` bundle on demand), and the aggregation/glossary role went to the separate `shll skill` composer. Placing per-tool bundles as skill files was explicitly **rejected** (they go stale between updates and multiply listing lines); the thin bootstrap + runtime two-step keeps bundles version-locked by construction. See [cli/agent-setup](/cli/agent-setup.md) and [cli/skill](/cli/skill.md).
+- **The ≤150-line budget and static-only rule still hold, for the same reason.** Bundles are loaded into agent context every session and fetched on demand by the two-step, so a bloated bundle is still paid repeatedly. The context-economy motive survives the mechanism change — the bare `shll skill` glossary is deliberately one line per tool, never a dump of all bundles, precisely so N bundles are never concatenated at once (toolkit principle №9).
+- **run-kit hook delegation landed as designed:** `shll agent-setup` delegates run-kit's dashboard hooks to `run-kit agent-setup` (Constitution III/IV). The coordinated run-kit slim (removing run-kit's own context-injection stanza, moving that guidance into `run-kit skill`) is an **external run-kit-repo change**, not part of `agst`.
 
 ## Cross-references
 
-- shll's audited conformance against these standards documents (per-standard PASS/gap disposition, incl. the `skill` deferral this file's [Adoption section](#adoption-is-phased-this-change-authored-the-standard-only) explains): [cli/standards-conformance](/cli/standards-conformance.md).
+- The command that ADOPTS this `skill` standard — the `shll skill` composer + shll's own `docs/site/skill.md` bundle (change agst): [cli/skill](/cli/skill.md). The forward-designed harness-wiring command that landed as skills placement: [cli/agent-setup](/cli/agent-setup.md).
+- shll's audited conformance against these standards documents (per-standard PASS/gap disposition, incl. the `skill` deferral this file's Adoption section explains — now resolved): [cli/standards-conformance](/cli/standards-conformance.md).
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
 - Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill).
