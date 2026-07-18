@@ -91,8 +91,8 @@ type uninstallTarget struct {
 func newUninstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "uninstall [tool...]",
-		Short: "brew uninstall sahil87 tools (a clean-slate repair path)",
-		Long: `Uninstall sahil87 toolkit tools via Homebrew — the clean-slate repair path
+		Short: "brew uninstall shll tools (a clean-slate repair path)",
+		Long: `Uninstall shll toolkit tools via Homebrew — the clean-slate repair path
 that pairs with ` + "`shll install`" + `.
 
 With no arguments, shll uninstall removes every INSTALLED roster tool

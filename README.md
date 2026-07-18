@@ -1,10 +1,10 @@
 # shll
 
-> Part of [@sahil87's open source toolkit](https://shll.ai) — see all projects there.
+> Part of the [shll toolkit](https://shll.ai) — see all projects there.
 
 [![Latest release](https://img.shields.io/github/v/release/sahil87/shll)](https://github.com/sahil87/shll/releases) [![Downloads](https://img.shields.io/github/downloads/sahil87/shll/total)](https://github.com/sahil87/shll/releases) [![Stars](https://img.shields.io/github/stars/sahil87/shll?style=social)](https://github.com/sahil87/shll/stargazers)
 
-One command to install, update, and shell-wire every tool in the [@sahil87 toolkit](https://shll.ai) (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). `shll` doesn't replace the per-tool CLIs — it composes them.
+One command to install, update, and shell-wire every tool in the [shll toolkit](https://shll.ai) (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
 ## Install
 
@@ -147,7 +147,7 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-The output is the concatenation (in roster order — leaves-first: `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) of every installed sahil87 tool's own shell-init, with a `# ── <tool> ──` comment separator before each block. What each roster tool is for, and what it adds to your shell:
+The output is the concatenation (in roster order — leaves-first: `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) of every installed shll tool's own shell-init, with a `# ── <tool> ──` comment separator before each block. What each roster tool is for, and what it adds to your shell:
 
 | Tool | What it's for | What it adds to your shell |
 |------|---------------|----------------------------|

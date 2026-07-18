@@ -4,31 +4,31 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const rootLong = `shll — meta-CLI for the sahil87 toolkit.
+const rootLong = `shll — meta-CLI for the shll toolkit.
 
 shll composes operations that span every per-tool CLI (hop, wt, fab-kit, run-kit, tu, idea)
 so you have one entry point for cross-toolkit concerns.
 
 Subcommands:
-  shll doctor                 verify every sahil87 tool is installed, runnable, and wired (read-only)
-  shll install                brew install every sahil87 tool that isn't already installed
-  shll update                 brew update + brew upgrade for shll and every installed sahil87 tool
-  shll uninstall              brew uninstall sahil87 tools (a clean-slate repair path)
-  shll changelog              show release notes for sahil87 tools (what an update would bring)
+  shll doctor                 verify every shll tool is installed, runnable, and wired (read-only)
+  shll install                brew install every shll tool that isn't already installed
+  shll update                 brew update + brew upgrade for shll and every installed shll tool
+  shll uninstall              brew uninstall shll tools (a clean-slate repair path)
+  shll changelog              show release notes for shll tools (what an update would bring)
   shll shell-init <shell>     emit a single eval-safe shell-init blob for all installed tools
   shll shell-setup [shell]    append the shell-init eval line to your rc file (idempotent)
-  shll version                print versions of shll and every installed sahil87 tool
-  shll list                   list the managed sahil87 tools with install status and repo links
+  shll version                print versions of shll and every installed shll tool
+  shll list                   list the managed shll tools with install status and repo links
   shll standards [name]       read the toolkit's binding standards (list them, or print one)
   shll skill [tool] [topic]   read a tool's agent skill bundle or one of its topic pages (or list installed tools)
-  shll agent-setup            place the sahil87 toolkit skill for agent harnesses
+  shll agent-setup            place the shll toolkit skill for agent harnesses
 
 Per-tool CLIs continue to work standalone — shll wraps them, it does not replace them.`
 
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "shll",
-		Short:         "meta-CLI for the sahil87 toolkit",
+		Short:         "meta-CLI for the shll toolkit",
 		Long:          rootLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,

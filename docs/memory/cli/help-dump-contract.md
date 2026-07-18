@@ -4,7 +4,7 @@ description: "Hidden `shll help-dump` subcommand — the frozen `help/<tool>.jso
 ---
 # cli/help-dump-contract
 
-The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of 7 sahil87 tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai now **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump`, rather than receiving a push (the old push transport was torn down in change 7huv — see [ci/release-workflow](/ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
+The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of the 7 toolkit tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai now **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump`, rather than receiving a push (the old push transport was torn down in change 7huv — see [ci/release-workflow](/ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
 
 Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; shll.ai's scheduled puller (`scheduled-help-refresh.yml`, on shll.ai's side) consumes it. This repo's release workflow no longer publishes to shll.ai — the push transport was torn down in change 7huv (see [ci/release-workflow](/ci/release-workflow.md)).
 
@@ -38,7 +38,7 @@ A **Node** is recursive:
 {
   "name": "install",
   "path": "shll install",
-  "short": "brew install every sahil87 tool that isn't already installed",
+  "short": "brew install every shll tool that isn't already installed",
   "usage": "shll install [flags]",
   "text": "<RAW -h output, byte-for-byte, newlines preserved>",
   "commands": []

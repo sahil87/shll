@@ -14,7 +14,7 @@ import (
 func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install [tool...]",
-		Short: "brew install every sahil87 tool that isn't already installed",
+		Short: "brew install every shll tool that isn't already installed",
 		Long: `Install every roster tool that isn't already installed via Homebrew.
 
 shll install iterates the roster (` + "`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`" + `)
@@ -337,7 +337,7 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 // allInstalledMsg is the nothing-to-do message for `shll install` (every roster tool
 // already installed). Shared by the normal short-circuit and the dry-run empty case so
 // both read identically. Named per code-quality.md.
-const allInstalledMsg = "All sahil87 tools already installed."
+const allInstalledMsg = "All shll tools already installed."
 
 // shllSelfInstallNote is the shll-first informational line `shll install` prepends.
 // shll is the manager-member of the toolkit and is always already present (it is the

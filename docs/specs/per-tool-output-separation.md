@@ -63,7 +63,7 @@ alongside brew's own output.
 > eval-safety/CI risk: the em-dash sits in a human-readable run-report line that is never eval'd,
 > and the box-drawing chars sit inside a `#` shell comment (a no-op when eval'd).
 
-For `update`, the existing instant status line (`Checking installed sahil87 tools…`,
+For `update`, the existing instant status line (`Checking installed shll tools…`,
 `updateStatusLine`) is unchanged and still printed first. `shll (self)` gets a header too
 when the self-upgrade step runs.
 
@@ -143,7 +143,7 @@ incidental.
    against the `==>` / comment forms.
 3. **Golden-string churn.** Several existing tests assert verbatim stdout (e.g.
    `TestUpdate_NoToolsInstalled` expects exactly
-   `Checking installed sahil87 tools…\nNo sahil87 tools installed.\n`). Adding headers and
+   `Checking installed shll tools…\nNo shll tools installed.\n`). Adding headers and
    the tail changes these golden strings. Per the constitution's **Test Integrity** rule,
    update this spec / the expected output first, then conform the tests — never bend the
    implementation to satisfy a stale fixture.

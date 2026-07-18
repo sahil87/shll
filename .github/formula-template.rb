@@ -1,5 +1,5 @@
 class Shll < Formula
-  desc "Meta-CLI for the sahil87 toolkit — update, shell-init, and version across all sahil87 tools"
+  desc "Meta-CLI for the shll toolkit — update, shell-init, and version across all shll tools"
   homepage "https://github.com/sahil87/shll"
   version "VERSION_PLACEHOLDER"
   license "MIT"

@@ -20,7 +20,7 @@ import (
 // a blank terminal during the (now concurrent) probe phase. Named constant per
 // code-quality.md (no magic strings); the exact wording is asserted by a spec
 // scenario.
-const updateStatusLine = "Checking installed sahil87 tools…"
+const updateStatusLine = "Checking installed shll tools…"
 
 // skipBrewUpdateFlag is the toolkit-wide flag that makes a tool's own `update`
 // skip its internal `brew update --quiet` step. `shll update` hoists that refresh
@@ -38,7 +38,7 @@ const shllSelfLabel = "shll (self)"
 // noToolsInstalledMsg is the nothing-to-do message for `shll update` (no roster tool
 // installed AND shll itself not brew-installed). Shared by the normal short-circuit and
 // the dry-run empty case so both read identically. Named per code-quality.md.
-const noToolsInstalledMsg = "No sahil87 tools installed."
+const noToolsInstalledMsg = "No shll tools installed."
 
 // updatePreviewSkillRefreshLine is the dry-run preview line for the conditional
 // end-of-run agent-skill refresh (printed only when a placement exists, mirroring
@@ -48,8 +48,8 @@ const updatePreviewSkillRefreshLine = "Then: shll agent-setup (refresh placed ag
 func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update [tool...]",
-		Short: "brew update + per-tool update for shll and every installed sahil87 tool",
-		Long: `Update shll itself and every installed sahil87 tool via Homebrew.
+		Short: "brew update + per-tool update for shll and every installed shll tool",
+		Long: `Update shll itself and every installed shll tool via Homebrew.
 
 shll update runs ` + "`brew update --quiet`" + ` once, then ` + "`brew upgrade sahil87/tap/shll`" + `
 (when shll itself was installed via brew), then delegates to each installed roster
@@ -164,7 +164,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 
 	// Instant first byte: tell the user we're working before the probe phase.
 	// Printed unconditionally — before the nothing-to-do short-circuit — so the
-	// empty case reads "Checking…\nNo sahil87 tools installed.".
+	// empty case reads "Checking…\nNo shll tools installed.".
 	fmt.Fprintln(stdout, updateStatusLine)
 
 	// Concurrent read-only capability probes across the roster. These take no

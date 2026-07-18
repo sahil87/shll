@@ -4,7 +4,7 @@ description: "`shll changelog` — positional `tool@old..new` release-notes comm
 ---
 # cli/changelog
 
-`shll changelog` — show GitHub release notes for sahil87 tools. With no arguments it shows the pending releases for every installed tool (installed version → latest release) — "what would an update bring?". Named tools scope it; an explicit `tool@old..new` shows the releases in `(old, new]` regardless of what is installed.
+`shll changelog` — show GitHub release notes for shll tools. With no arguments it shows the pending releases for every installed tool (installed version → latest release) — "what would an update bring?". Named tools scope it; an explicit `tool@old..new` shows the releases in `(old, new]` regardless of what is installed.
 
 Source: `src/cmd/shll/changelog.go`; release fetching in [internal/changelog](/internal/changelog.md). Introduced by change r01z.
 
@@ -42,7 +42,7 @@ shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18   # multiple (this is what `sh
 A bare `shll changelog` builds `defaultChangelogSpecs()`: **shll itself first** (`self: true`, `rosterIx: -1`), then one no-range spec per roster tool — symmetry with bare `shll update` (which self-upgrades shll) and the intake's "shll first when included". shll-self's installed anchor is its **brew-formula** version (`installedVersion(ctx, shllFormula)`), **not** the running process's ldflags `shllSelfVersion()` — the changelog range should span the on-disk brew formula, not the live binary. Pinned by `TestChangelog_BareSweepIncludesShllSelf`.
 
 - Bareness is tracked from the **arg count** (`bare := len(specs) == 0`), not inferred from the spec set — because it changes the missing-tool policy (below).
-- A bare sweep **gracefully skips** uninstalled tools (they resolve to `skip: true` and drop silently). A bare sweep where **nothing** is installed prints the same nothing-to-do line as update — `No sahil87 tools installed.` (the shared `noToolsInstalledMsg` constant) — not silent empty output (`TestChangelog_BareSweepZeroInstalledPrintsMessage`).
+- A bare sweep **gracefully skips** uninstalled tools (they resolve to `skip: true` and drop silently). A bare sweep where **nothing** is installed prints the same nothing-to-do line as update — `No shll tools installed.` (the shared `noToolsInstalledMsg` constant) — not silent empty output (`TestChangelog_BareSweepZeroInstalledPrintsMessage`).
 
 ### Named-but-not-installed
 

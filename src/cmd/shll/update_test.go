@@ -131,7 +131,7 @@ func TestUpdate_NoToolsInstalled(t *testing.T) {
 	}
 	// The status line prints first (unconditionally, before the short-circuit),
 	// then the nothing-to-do message.
-	wantOut := updateStatusLine + "\nNo sahil87 tools installed.\n"
+	wantOut := updateStatusLine + "\nNo shll tools installed.\n"
 	if got := stdout.String(); got != wantOut {
 		t.Fatalf("stdout = %q, want %q", got, wantOut)
 	}
@@ -264,7 +264,7 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 
 func TestUpdate_OnlyShllInstalled(t *testing.T) {
 	// shll itself installed via brew, but no roster tools installed. shll
-	// update must still self-upgrade and exit 0 — the previous "No sahil87
+	// update must still self-upgrade and exit 0 — the previous "No shll
 	// tools installed." short-circuit no longer fires when shll is brewed.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
@@ -297,7 +297,7 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 			t.Errorf("delegated update for uninstalled %s should NOT run", tool.Name)
 		}
 	}
-	if strings.Contains(stdout.String(), "No sahil87 tools installed") {
+	if strings.Contains(stdout.String(), "No shll tools installed") {
 		t.Errorf("short-circuit message should NOT print when shll itself is brewed, got %q", stdout.String())
 	}
 }
@@ -717,7 +717,7 @@ func TestUpdate_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if got := stdout.String(); got != updateStatusLine+"\nNo sahil87 tools installed.\n" {
+	if got := stdout.String(); got != updateStatusLine+"\nNo shll tools installed.\n" {
 		t.Fatalf("stdout = %q, want status line + note only (no header, no tail)", got)
 	}
 	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {

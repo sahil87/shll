@@ -50,8 +50,8 @@ type listItem struct {
 func newListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "list the sahil87 tools shll manages, with install status and repo links",
-		Long: `List the sahil87 toolkit roster shll manages — one row per tool with an
+		Short: "list the shll tools shll manages, with install status and repo links",
+		Long: `List the shll toolkit roster shll manages — one row per tool with an
 install-status indicator, a one-line description, and its GitHub repo URL.
 
 Install status reuses the same PATH probe as ` + "`shll version`" + ` (` + "`<tool> --version`" + `,

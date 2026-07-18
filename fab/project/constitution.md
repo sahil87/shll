@@ -34,11 +34,11 @@ Tests MUST conform to the implementation spec — never the other way around. Wh
 Platform-specific code MUST be isolated behind a small abstraction. The binary SHALL build and run on darwin-arm64, darwin-amd64, linux-arm64, and linux-amd64. Windows is not supported.
 
 ### Tool Roster Source of Truth
-The list of sub-tools shll knows about is hardcoded in shll's source. Adding a new tool to the sahil87 toolkit requires a shll release. shll SHALL NOT discover tools dynamically from `brew tap` or any other runtime source — the explicit, versioned list is the contract.
+The list of sub-tools shll knows about is hardcoded in shll's source. Adding a new tool to the shll toolkit requires a shll release. shll SHALL NOT discover tools dynamically from `brew tap` or any other runtime source — the explicit, versioned list is the contract.
 
 ### Toolkit Standards
 
-This repo publishes and MUST itself conform to the sahil87 toolkit's binding, producer-facing standards — CLI design principles plus mechanical contracts (machine-readable help output, README/docs-site structure, and others over time), canonically authored in this repo's own `docs/site/standards/` tree and rendered on https://shll.ai. Before changing the CLI surface, help output, `README.md`, or `docs/site/`, the change MUST be checked against the standards governing that surface by reading the relevant file(s) directly under `docs/site/standards/`. Standards added or revised there bind this repo without further amendment to this constitution.
+This repo publishes and MUST itself conform to the shll toolkit's binding, producer-facing standards — CLI design principles plus mechanical contracts (machine-readable help output, README/docs-site structure, and others over time), canonically authored in this repo's own `docs/site/standards/` tree and rendered on https://shll.ai. Before changing the CLI surface, help output, `README.md`, or `docs/site/`, the change MUST be checked against the standards governing that surface by reading the relevant file(s) directly under `docs/site/standards/`. Standards added or revised there bind this repo without further amendment to this constitution.
 
 ## Governance
 

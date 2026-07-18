@@ -93,7 +93,7 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	}
 	// The wired env suppresses the shell-setup nudge; the shll agent-setup line is
 	// unconditional (change agst), so it fires after the nothing-to-do note.
-	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"+nextStepsAgentOnly; got != want {
+	if got, want := stdout.String(), shllSelfInstallNote+"\nAll shll tools already installed.\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 	for _, tool := range Roster {
@@ -283,7 +283,7 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	if got, want := stdout.String(), shllSelfInstallNote+"\nAll sahil87 tools already installed.\n"+nextStepsAgentOnly; got != want {
+	if got, want := stdout.String(), shllSelfInstallNote+"\nAll shll tools already installed.\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want the shll-first note + one-line note + run-kit nudge (no header, no tail)", got)
 	}
 	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {

@@ -55,9 +55,9 @@ var agentSkillContent = `---
 name: ` + skillDirName + `
 description: ` + agentSkillDescription() + `
 ---
-# sahil87 toolkit
+# shll toolkit
 
-This machine has the sahil87 toolkit installed. Before driving one of its tools:
+This machine has the shll toolkit installed. Before driving one of its tools:
 
 1. ` + "`shll skill`" + ` — the installed tools, one line each
 2. ` + "`shll skill <tool>`" + ` — that tool's full agent skill bundle (when to use it,
@@ -91,7 +91,7 @@ func agentSkillDescription() string {
 			proactive = append(proactive, t.ProactiveHint)
 		}
 	}
-	desc := "Use when driving any sahil87 toolkit CLI or shll itself — " +
+	desc := "Use when driving any shll toolkit CLI or shll itself — " +
 		strings.Join(clauses, ", ") + "."
 	if len(proactive) > 0 {
 		desc += " " + strings.Join(proactive, " ")
@@ -128,8 +128,8 @@ func newAgentSetupCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "agent-setup",
-		Short: "place the sahil87 toolkit skill for agent harnesses",
-		Long: `Mechanically place one thin Agent Skill — the sahil87 toolkit bootstrap — into the
+		Short: "place the shll toolkit skill for agent harnesses",
+		Long: `Mechanically place one thin Agent Skill — the shll toolkit bootstrap — into the
 agent harnesses' global skills directories, then delegate run-kit's dashboard-hook
 wiring to ` + "`run-kit agent-setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
 driving a toolkit tool.

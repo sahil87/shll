@@ -1,4 +1,4 @@
-// Command shll is the meta-CLI for the sahil87 toolkit. It composes operations
+// Command shll is the meta-CLI for the shll toolkit. It composes operations
 // that span every per-tool CLI (hop, wt, fab-kit, run-kit, tu, idea) so users have
 // one entry point for cross-toolkit concerns.
 //

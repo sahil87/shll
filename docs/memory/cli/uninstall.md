@@ -4,7 +4,7 @@ description: "`shll uninstall [tool...]` — the clean-slate repair counterpart 
 ---
 # cli/uninstall
 
-`shll uninstall [tool...]` — brew-uninstalls sahil87 toolkit tools. It is the **clean-slate repair path** that pairs with [`shll install`](/cli/install.md): when brew state gets wedged (an unlinked keg, a dual-rack orphan, a half-failed upgrade), `shll uninstall` removes it all cleanly so `shll install` can bootstrap fresh. Absence is a *success* state — the goal "gone" is already met — so a named-but-missing target is not an error (the inverse of `shll update`'s precondition).
+`shll uninstall [tool...]` — brew-uninstalls shll toolkit tools. It is the **clean-slate repair path** that pairs with [`shll install`](/cli/install.md): when brew state gets wedged (an unlinked keg, a dual-rack orphan, a half-failed upgrade), `shll uninstall` removes it all cleanly so `shll install` can bootstrap fresh. Absence is a *success* state — the goal "gone" is already met — so a named-but-missing target is not an error (the inverse of `shll update`'s precondition).
 
 Source: `src/cmd/shll/uninstall.go`, with the `stdinIsTTY` seam + `printUninstallPreview` in `src/cmd/shll/ui.go`, the `uninstallBrewMissingHint` in `src/cmd/shll/brew.go`, and wiring in `src/cmd/shll/root.go`.
 
