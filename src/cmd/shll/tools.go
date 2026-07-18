@@ -48,6 +48,13 @@ type Tool struct {
 	// printed by `shll list`. Single-sourced here so the roster cannot drift
 	// from the managed set (Constitution III — Tool Roster Source of Truth).
 	Description string
+	// SkillHint is a short task-domain phrase ("git worktrees", "backlog ideas")
+	// woven into the generated `shll agent-setup` skill description, so an agent
+	// matching on task vocabulary — not just tool names — triggers the toolkit
+	// skill. Kept on the roster (not hand-written in agent_setup.go) so the skill
+	// description cannot drift from the managed set (Constitution III). Required
+	// for every roster entry — enforced by TestRosterSkillHints.
+	SkillHint string
 	// Repo is the github.com/sahil87/<Repo> slug for the tool's source
 	// repository. It defaults to Name for most tools. Historically it was NOT
 	// always equal to Name (rk's repo was `run-kit`); after the rk→run-kit rename
@@ -142,12 +149,12 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 // TestRosterLeavesBeforeDependents — a comment cannot fail CI, so the test
 // guards against an accidental reorder.
 var Roster = []Tool{
-	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees"},
-	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal"},
-	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)"},
-	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", LegacyFormula: formulaPrefix + "rk", Description: "Run-kit — tmux session manager with a web UI (rk stays as an alias)"},
-	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees"},
-	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)"},
+	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees", SkillHint: "git worktrees"},
+	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal", SkillHint: "backlog ideas"},
+	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)", SkillHint: "AI token-usage tracking"},
+	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", LegacyFormula: formulaPrefix + "rk", Description: "Run-kit — tmux session manager with a web UI (rk stays as an alias)", SkillHint: "tmux sessions"},
+	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees", SkillHint: "directory/project jumping"},
+	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 }
 
 // shllTargetToken is the literal positional argument that selects shll itself as

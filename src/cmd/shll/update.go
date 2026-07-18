@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 
@@ -39,6 +40,11 @@ const shllSelfLabel = "shll (self)"
 // the dry-run empty case so both read identically. Named per code-quality.md.
 const noToolsInstalledMsg = "No sahil87 tools installed."
 
+// updatePreviewSkillRefreshLine is the dry-run preview line for the conditional
+// end-of-run agent-skill refresh (printed only when a placement exists, mirroring
+// the live run's guard). Named per code-quality.md (no magic strings).
+const updatePreviewSkillRefreshLine = "Then: shll agent-setup (refresh placed agent skills)"
+
 func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update [tool...]",
@@ -54,6 +60,10 @@ are preserved. A roster tool that exposes no ` + "`update`" + ` is upgraded via
 itself, e.g. on a ` + "`go install`" + ` dev build) are skipped silently. Brew and per-tool
 progress output streams directly to your terminal.
 
+When agent skills were previously placed via ` + "`shll agent-setup`" + `, the run ends by
+re-running ` + "`shll agent-setup`" + ` so the placed skills track the freshly upgraded
+binaries (best-effort; skipped entirely when no placement exists).
+
 With no arguments, shll update processes the whole roster as above. Pass one or
 more tool names to update only that subset (valid targets: shll, wt, idea, tu,
 run-kit, hop, fab-kit; the legacy alias ` + "`rk`" + ` still resolves to run-kit) — e.g.
@@ -65,7 +75,7 @@ silently skipped).`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool(dryRunFlag)
-			return runUpdate(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, args)
+			return runUpdate(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, args)
 		},
 	}
 	cmd.Flags().Bool(dryRunFlag, false, dryRunFlagUsage)
@@ -121,7 +131,11 @@ type probeResult struct {
 // hard error reported before any work; a named-but-not-installed target is an
 // error too (distinct from the whole-roster graceful skip — explicitly naming a
 // tool means the user expects it present).
-func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args []string) error {
+//
+// env resolves $HOME for the agent-skill placement probe (the conditional
+// end-of-run refresh) — injected so tests never touch the real ~. Production
+// passes os.Getenv.
+func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun bool, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -257,6 +271,13 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 			rows = append(rows, previewRow{label: t.Name, cmd: argvString(upgradeArgv(t, probes[i].supportsSkipFlag, probes[i].needsMigration)...)})
 		}
 		printUpdatePreview(stdout, rows)
+		// The real run ends with the conditional agent-skill refresh; preview it
+		// under the same placement guard so the dry-run mirrors the live path
+		// (principle №5 — an inaccurate preview is worse than none). Kept out of
+		// the tool rows: the header counts tools, and the refresh is not one.
+		if placed, _ := agentSkillPlacementState(env); placed {
+			fmt.Fprintln(stdout, updatePreviewSkillRefreshLine)
+		}
 		return nil
 	}
 
@@ -387,6 +408,16 @@ func runUpdate(ctx context.Context, stdout, stderr io.Writer, dryRun bool, args 
 			bumps = append(bumps, b)
 		}
 	}
+
+	// End-of-run agent-skill refresh: when a prior `shll agent-setup` placement
+	// exists, re-run it as a subprocess so the placed skills track the freshly
+	// upgraded binaries (the running process still holds the OLD embedded skill
+	// content after a self-upgrade — only the new binary on PATH has the new
+	// bytes). Runs AFTER the roster loop so the run-kit hook delegation inside
+	// agent-setup uses the just-upgraded run-kit. Placement-gated (no unsolicited
+	// writes), best-effort (never changes the exit code), and idempotent — a
+	// no-change run reports each path as "unchanged".
+	refreshPlacedAgentSkills(ctx, env, stdout, stderr)
 
 	// Summary tail: one line by exit-code counts (Done — N of M / X succeeded,
 	// Y failed) plus the wall-clock run duration. A blank line precedes it so the
