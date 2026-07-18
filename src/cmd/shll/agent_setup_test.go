@@ -211,7 +211,7 @@ func TestAgentSetup_DelegatesToRunKitWhenPresent(t *testing.T) {
 	}
 	var delegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 1 && c.Args[0] == runKitAgentSetupSub {
+		if c.Name == runKitToolName && len(c.Args) == 1 && c.Args[0] == agentSetupSub {
 			delegated = true
 		}
 	}
@@ -277,7 +277,7 @@ func TestAgentSetup_UninstallDelegatesUninstall(t *testing.T) {
 	}
 	var delegatedUninstall bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == runKitAgentSetupSub && c.Args[1] == "--uninstall" {
+		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == agentSetupSub && c.Args[1] == "--uninstall" {
 			delegatedUninstall = true
 		}
 	}
@@ -347,6 +347,45 @@ func TestAgentSetup_BodyTeachesTwoStepAndStandards(t *testing.T) {
 	// It must NOT reintroduce stanza/sentinel wording.
 	if strings.Contains(agentSkillContent, "stanza") || strings.Contains(agentSkillContent, "sentinel") {
 		t.Errorf("SKILL.md must not describe a stanza/sentinel mechanism, got:\n%s", agentSkillContent)
+	}
+}
+
+// TestAgentSetup_DescriptionSingleLine pins the generated frontmatter description to
+// the YAML-safe shape the builder promises: exactly one line, with no `: ` sequence
+// (which would need quoting in an unquoted YAML scalar).
+func TestAgentSetup_DescriptionSingleLine(t *testing.T) {
+	desc := agentSkillDescription()
+	if strings.Contains(desc, "\n") {
+		t.Errorf("description must be a single line, got:\n%s", desc)
+	}
+	if strings.Contains(desc, ": ") {
+		t.Errorf("description must not contain ': ' (unquoted YAML scalar), got: %s", desc)
+	}
+}
+
+// TestRosterSkillHints enforces the SkillHint roster contract: every tool carries a
+// non-empty task-domain phrase, and the generated description weaves each in as a
+// `hint (name)` trigger clause (with the legacy alias appended for run-kit) — the
+// task-vocabulary activation surface the skill description exists to provide.
+func TestRosterSkillHints(t *testing.T) {
+	desc := agentSkillDescription()
+	for _, tool := range Roster {
+		if tool.SkillHint == "" {
+			t.Errorf("roster tool %q must declare a SkillHint", tool.Name)
+			continue
+		}
+		name := tool.Name
+		if tool.LegacyName != "" {
+			name += "/" + tool.LegacyName
+		}
+		clause := tool.SkillHint + " (" + name + ")"
+		if !strings.Contains(desc, clause) {
+			t.Errorf("description missing clause %q, got: %s", clause, desc)
+		}
+	}
+	// The description must still carry the two-step teaching pointer.
+	if !strings.Contains(desc, "shll skill <tool>") {
+		t.Errorf("description must keep the `shll skill <tool>` pointer, got: %s", desc)
 	}
 }
 

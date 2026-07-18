@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -93,7 +95,7 @@ func TestUpdate_BrewMissing(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent", err)
 	}
@@ -124,7 +126,7 @@ func TestUpdate_NoToolsInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	// The status line prints first (unconditionally, before the short-circuit),
@@ -163,7 +165,7 @@ func TestUpdate_AllInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -195,7 +197,7 @@ func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 
@@ -245,7 +247,7 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -276,7 +278,7 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -319,7 +321,7 @@ func TestUpdate_PartialInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v", err)
 	}
 	calls := f.recordedCalls()
@@ -372,7 +374,7 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (brew update non-zero exit)", err)
 	}
@@ -403,7 +405,7 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (overall failure)", err)
 	}
@@ -489,7 +491,7 @@ func TestUpdate_FlagSupported(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -512,7 +514,7 @@ func TestUpdate_FlagUnsupportedVersionSkew(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -540,7 +542,7 @@ func TestUpdate_NoUpdateArgvFallsBackToBrew(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -565,7 +567,7 @@ func TestUpdate_StatusLinePrecedesProbes(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if !strings.HasPrefix(stdout.String(), updateStatusLine+"\n") {
@@ -584,7 +586,7 @@ func TestUpdate_BrewUpdateRunsExactlyOnce(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	count := 0
@@ -612,7 +614,7 @@ func TestUpdate_HeadersAndTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 
@@ -655,7 +657,7 @@ func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	// Only hop is installed (shll not brew-installed via installedOnly), so M=1 and
@@ -682,7 +684,7 @@ func TestUpdate_PartialFailureTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, nil)
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (one tool failed)", err)
 	}
@@ -712,7 +714,7 @@ func TestUpdate_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != updateStatusLine+"\nNo sahil87 tools installed.\n" {
@@ -741,7 +743,7 @@ func TestUpdate_DryRunPreview(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	// Longest label is "fab-kit" (7) since shll (self) is absent here; labels are
@@ -772,7 +774,7 @@ func TestUpdate_DryRunPreviewWithSelf(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	want := updateStatusLine + "\n" +
@@ -798,7 +800,7 @@ func TestUpdate_DryRunNoWrites(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -849,7 +851,7 @@ func TestUpdate_DryRunGracefulDegradation(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	want := updateStatusLine + "\n" +
@@ -873,7 +875,7 @@ func TestUpdate_SubsetUnknownTargetHardErrors(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hpo"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"hpo"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent for unknown target", err)
 	}
@@ -902,7 +904,7 @@ func TestUpdate_SubsetMultipleUnknownAllReported(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"foo", "bar"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"foo", "bar"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent", err)
 	}
@@ -920,7 +922,7 @@ func TestUpdate_SubsetNamedNotInstalledErrors(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent for named-not-installed", err)
 	}
@@ -946,7 +948,7 @@ func TestUpdate_SubsetShllSelfTargetOnly(t *testing.T) {
 	installFakeClock(t, t0, t0) // sub-second → "0s"
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{shllTargetToken}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{shllTargetToken}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -986,7 +988,7 @@ func TestUpdate_SubsetShllSelfNotBrewInstalledErrors(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{shllTargetToken})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{shllTargetToken})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent for `shll update shll` on a dev build", err)
 	}
@@ -1005,7 +1007,7 @@ func TestUpdate_SubsetSelfFirstThenRosterOrder(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hop", shllTargetToken}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"hop", shllTargetToken}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -1039,7 +1041,7 @@ func TestUpdate_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	installFakeClock(t, t0, t0) // sub-second → "0s"
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"fab-kit", "wt"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"fab-kit", "wt"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -1082,7 +1084,7 @@ func TestUpdate_SubsetBrewUpdateRunsOnce(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hop"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"hop"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	count := 0
@@ -1103,7 +1105,7 @@ func TestUpdate_SubsetDryRunPreviewFiltered(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, []string{"hop", "wt"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, []string{"hop", "wt"}); err != nil {
 		t.Fatalf("runUpdate --dry-run subset err = %v, want nil", err)
 	}
 	want := updateStatusLine + "\n" +
@@ -1136,7 +1138,7 @@ func TestUpdate_DryRunEmptyCase(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	if got := stdout.String(); got != updateStatusLine+"\n"+noToolsInstalledMsg+"\n" {
@@ -1214,7 +1216,7 @@ func TestUpdate_DigestPrintsForBumpedTools(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1260,7 +1262,7 @@ func TestUpdate_NoDigestWhenNothingBumped(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	want := updateStatusLine + "\n" +
@@ -1291,7 +1293,7 @@ func TestUpdate_NoDigestUnderDryRun(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	if strings.Contains(stdout.String(), "What changed:") {
@@ -1316,7 +1318,7 @@ func TestUpdate_DigestSubsetNamesOnlyBumped(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"hop"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"hop"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1344,7 +1346,7 @@ func TestUpdate_DigestUnavailableDegradesToCompareURL(t *testing.T) {
 	changelogServer(t, map[string]string{}) // no repos → 404 → unavailable
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil (fetch failure must not change exit code)", err)
 	}
 	out := stdout.String()
@@ -1375,7 +1377,7 @@ func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1422,7 +1424,7 @@ func TestUpdate_DigestNoColumnAlignmentWithInlineBodies(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1605,7 +1607,7 @@ func TestUpdate_MigrationStateA_UnlinkedLegacyKeg(t *testing.T) {
 	})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -1657,7 +1659,7 @@ func TestUpdate_MigrationLeftoverDualRackNote(t *testing.T) {
 	changelogServer(t, map[string]string{})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1683,7 +1685,7 @@ func TestUpdate_MigrationFailedUpgradeSkipsPostSteps(t *testing.T) {
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (failed migration)", err)
 	}
@@ -1726,7 +1728,7 @@ func TestUpdate_MigrationStateA_Linked(t *testing.T) {
 	changelogServer(t, map[string]string{})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -1756,7 +1758,7 @@ func TestUpdate_MigrationStateB_AlreadyMigrated(t *testing.T) {
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -1792,7 +1794,7 @@ func TestUpdate_MigrationStateC_DualRack(t *testing.T) {
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -1839,7 +1841,7 @@ func TestUpdate_MigrationWholeRosterFlowsThroughGuard(t *testing.T) {
 	changelogServer(t, map[string]string{})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, nil); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	if !invocationsContain(f.recordedCalls(), brewBinary, "upgrade", runKitLegacyFormula) {
@@ -1860,7 +1862,7 @@ func TestUpdate_MigrationViaLegacyAliasWithNotice(t *testing.T) {
 	changelogServer(t, map[string]string{})
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, false, []string{"rk"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"rk"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1888,7 +1890,7 @@ func TestUpdate_MigrationDryRunShowsRealArgv(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), &stdout, &stderr, true, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, []string{"run-kit"}); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1900,5 +1902,158 @@ func TestUpdate_MigrationDryRunShowsRealArgv(t *testing.T) {
 		if c.Transport == proc.TransportForeground {
 			t.Errorf("migration dry-run must spawn no foreground (write) subprocess, got %+v", c)
 		}
+	}
+}
+
+// --- end-of-run agent-skill refresh -------------------------------------------
+
+// shllOnlyInstalledFake responds as if ONLY shll itself is brew-installed: the
+// shll-formula `brew list` probe reports a version, every other formula probe fails
+// (not installed), and everything else (brew --version, brew update, brew upgrade,
+// shll agent-setup) succeeds silently. The minimal fixture for exercising the
+// end-of-run refresh without roster-tool noise.
+func shllOnlyInstalledFake() *fakeRunner {
+	return &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list" {
+			if req.Args[len(req.Args)-1] == shllFormula {
+				return proc.Result{Stdout: []byte("shll 1.0.0\n")}
+			}
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+}
+
+// placeAgentSkill writes a SKILL.md at the ~/.claude skill target under a fresh
+// temp HOME and returns the matching env func. content may be stale or canonical —
+// the refresh guard keys on existence only.
+func placeAgentSkill(t *testing.T, content string) func(string) string {
+	t.Helper()
+	home := t.TempDir()
+	path := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+	return envFunc(map[string]string{"HOME": home})
+}
+
+func TestUpdate_RefreshesPlacedAgentSkills(t *testing.T) {
+	f := shllOnlyInstalledFake()
+	installFakeRunner(t, f)
+	env := placeAgentSkill(t, "# stale placement\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	// The refresh runs as a SUBPROCESS (`shll agent-setup`) — the new binary on
+	// PATH places the new bytes, never the running (old) process in-memory.
+	if !invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub) {
+		t.Fatalf("expected an `shll agent-setup` refresh subprocess, calls: %+v", f.recordedCalls())
+	}
+	if !strings.Contains(stdout.String(), agentSkillRefreshHeader) {
+		t.Errorf("stdout must carry the refresh header %q, got:\n%s", agentSkillRefreshHeader, stdout.String())
+	}
+	// The refresh runs after the roster loop but is not a tool: the summary tail
+	// still counts only shll (self).
+	if !strings.Contains(stdout.String(), "1 of 1 tools succeeded") {
+		t.Errorf("refresh must not perturb the tool count, got:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_NoPlacementSkipsRefresh(t *testing.T) {
+	f := shllOnlyInstalledFake()
+	installFakeRunner(t, f)
+	// HOME exists but holds no placed skill — the user never opted in.
+	env := envFunc(map[string]string{"HOME": t.TempDir()})
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub) {
+		t.Fatal("no prior placement → no unsolicited `shll agent-setup` run")
+	}
+	if strings.Contains(stdout.String(), agentSkillRefreshHeader) {
+		t.Errorf("no placement → no refresh header, got:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_DryRunPreviewsSkillRefresh(t *testing.T) {
+	f := shllOnlyInstalledFake()
+	installFakeRunner(t, f)
+	env := placeAgentSkill(t, "# stale placement\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, true, nil); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	// The preview mirrors the live path's placement guard (principle №5)…
+	if !strings.Contains(stdout.String(), updatePreviewSkillRefreshLine) {
+		t.Errorf("dry-run with a placement must preview the refresh, got:\n%s", stdout.String())
+	}
+	// … without running it.
+	if invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub) {
+		t.Fatal("dry-run must not spawn the `shll agent-setup` refresh")
+	}
+}
+
+func TestUpdate_DryRunNoPlacementOmitsRefreshLine(t *testing.T) {
+	f := shllOnlyInstalledFake()
+	installFakeRunner(t, f)
+	env := envFunc(map[string]string{"HOME": t.TempDir()})
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, true, nil); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	if strings.Contains(stdout.String(), updatePreviewSkillRefreshLine) {
+		t.Errorf("dry-run without a placement must not preview the refresh, got:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_RefreshFailureWarnsAndContinues(t *testing.T) {
+	f := shllOnlyInstalledFake()
+	base := f.respond
+	f.respond = func(req proc.Request) proc.Result {
+		if req.Name == shllTargetToken && len(req.Args) == 1 && req.Args[0] == agentSetupSub {
+			return proc.Result{ExitCode: 2} // child ran and failed; RunForeground → (2, nil)
+		}
+		return base(req)
+	}
+	installFakeRunner(t, f)
+	env := placeAgentSkill(t, "# stale placement\n")
+
+	var stdout, stderr bytes.Buffer
+	// Best-effort adjunct: a failed refresh never fails the update run.
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("a failed refresh must not fail the update, err = %v", err)
+	}
+	if want := "agent skill refresh exited 2 (continuing)"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
+	}
+}
+
+func TestUpdate_RefreshShllNotOnPathSkipsSilently(t *testing.T) {
+	f := shllOnlyInstalledFake()
+	base := f.respond
+	f.respond = func(req proc.Request) proc.Result {
+		if req.Name == shllTargetToken {
+			return proc.Result{ExitCode: -1, Err: proc.ErrNotFound} // dev build, not on PATH
+		}
+		return base(req)
+	}
+	installFakeRunner(t, f)
+	env := placeAgentSkill(t, "# stale placement\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if strings.Contains(stderr.String(), "agent skill refresh") {
+		t.Errorf("shll missing from PATH must skip silently (doctor surfaces staleness), stderr = %q", stderr.String())
 	}
 }

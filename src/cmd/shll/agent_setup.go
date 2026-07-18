@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -41,13 +42,18 @@ const skillFileName = "SKILL.md"
 // agentSkillContent is the canonical bytes of the placed SKILL.md — the toolkit
 // bootstrap skill. Portable frontmatter carries `name` + `description` ONLY (the
 // OpenCode-recognized common subset, valid on all four harnesses); `name` equals
-// skillDirName. The description front-loads trigger words (the tool names) for
-// implicit activation; the body teaches the runtime two-step plus one `shll standards`
-// pointer. This is an agent-setup artifact (neither a published standard nor a
-// `<tool> skill` bundle), so it lives as an inline constant, not a docs-site file.
-const agentSkillContent = `---
+// skillDirName. The description front-loads trigger vocabulary — the tool names AND
+// each tool's task-domain phrase (Roster.SkillHint) — for implicit activation: the
+// description is the only text in an agent's context BEFORE the skill is invoked, so
+// task-shaped requests ("create a worktree") must match there, not just tool names.
+// The body stays thin — it teaches the runtime two-step plus one `shll standards`
+// pointer, deferring the live tool list to `shll skill` (re-derived at request time,
+// Constitution II). This is an agent-setup artifact (neither a published standard nor
+// a `<tool> skill` bundle), so it is built here from the Roster (Constitution III —
+// one source of truth), not maintained as a docs-site file.
+var agentSkillContent = `---
 name: ` + skillDirName + `
-description: Use when driving any sahil87 toolkit CLI — wt, idea, tu, run-kit (rk), hop, fab-kit, or shll itself. Run ` + "`shll skill`" + ` to list the installed tools; run ` + "`shll skill <tool>`" + ` for that tool's full usage bundle before using it.
+description: ` + agentSkillDescription() + `
 ---
 # sahil87 toolkit
 
@@ -59,6 +65,26 @@ This machine has the sahil87 toolkit installed. Before driving one of its tools:
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `
+
+// agentSkillDescription builds the frontmatter description line from the Roster, one
+// `task-domain phrase (tool)` clause per tool, so both the tool names and the task
+// vocabulary act as activation triggers. A tool with a LegacyName renders both tokens
+// (`run-kit/rk`) — the alias is trigger vocabulary too. Single-sourced with the Roster
+// so the description cannot drift from the managed set; the output MUST stay a single
+// line (YAML frontmatter value — asserted by TestAgentSetup_DescriptionSingleLine).
+func agentSkillDescription() string {
+	clauses := make([]string, 0, len(Roster))
+	for _, t := range Roster {
+		name := t.Name
+		if t.LegacyName != "" {
+			name += "/" + t.LegacyName
+		}
+		clauses = append(clauses, fmt.Sprintf("%s (%s)", t.SkillHint, name))
+	}
+	return "Use when driving any sahil87 toolkit CLI or shll itself — " +
+		strings.Join(clauses, ", ") +
+		". Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it."
+}
 
 // skillTargetRelDirs are the two global skill-DIRECTORY paths (relative to $HOME) at
 // which the toolkit bootstrap skill is placed — the minimal covering set for all four
@@ -76,8 +102,10 @@ var skillTargetRelDirs = []string{
 	".claude/skills",
 }
 
-// runKitAgentSetupSub is the run-kit subcommand shll delegates hook wiring to.
-const runKitAgentSetupSub = "agent-setup"
+// agentSetupSub is the toolkit-standard `agent-setup` subcommand name, shared by the
+// run-kit hook-wiring delegation and by `shll update`'s self-refresh subprocess
+// (refreshPlacedAgentSkills). Named per code-quality.md (no magic strings).
+const agentSetupSub = "agent-setup"
 
 func newAgentSetupCmd() *cobra.Command {
 	var (
@@ -270,7 +298,7 @@ func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.
 // this helper only writes its own diagnostics to stderr, so it takes no stdout writer.
 // Only the default (install) and --uninstall paths call this; --print never does.
 func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stderr io.Writer) {
-	args := []string{runKitAgentSetupSub}
+	args := []string{agentSetupSub}
 	if uninstall {
 		args = append(args, "--uninstall")
 	}
@@ -290,5 +318,65 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stderr io.Wri
 		// (the code carries the outcome). Same adjunct rule: warn, never fail the
 		// placement (mirrors install's delegated-trust-step precedent).
 		fmt.Fprintf(stderr, "%s: run-kit agent-setup exited %d (continuing)\n", agentSetupErrPrefix, code)
+	}
+}
+
+// agentSkillPlacementState reports the on-disk state of the placed skills, read-only:
+// placed is true when ANY skill target file exists (the user opted in via a prior
+// `shll agent-setup`); stale is true when any EXISTING target's bytes differ from the
+// running binary's canonical content. An existing-but-unreadable target counts as
+// placed with staleness unknown (never reported stale — Constitution V: don't warn on
+// a state we can't determine). Consumed by `shll update`'s conditional refresh (placed
+// only) and `shll doctor`'s shll-row staleness check (both facts).
+func agentSkillPlacementState(env func(string) string) (placed, stale bool) {
+	for _, path := range resolveSkillTargets(env) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				placed = true
+			}
+			continue
+		}
+		placed = true
+		if !bytes.Equal(data, []byte(agentSkillContent)) {
+			stale = true
+		}
+	}
+	return placed, stale
+}
+
+// agentSkillRefreshHeader is the section line `shll update` prints before the
+// self-refresh subprocess output. Named per code-quality.md (no magic strings).
+const agentSkillRefreshHeader = "Refreshing placed agent skills (shll agent-setup)…"
+
+// refreshPlacedAgentSkills re-places the agent skills at the end of a `shll update`
+// run, but ONLY when a prior `shll agent-setup` placement exists — a user who never
+// opted in gets no unsolicited writes. It invokes `shll agent-setup` as a SUBPROCESS
+// (resolved from PATH, via internal/proc — Constitution I) rather than calling
+// runAgentSetup in-process: after a brew self-upgrade the RUNNING binary still holds
+// the OLD embedded skill content, and only the freshly installed binary on PATH can
+// place the new bytes. The subprocess also re-runs the run-kit hook delegation, so a
+// run-kit upgrade's hook changes land too — which is why the caller runs this AFTER
+// the roster loop.
+//
+// Best-effort adjunct, mirroring delegateRunKitAgentSetup: an `shll` binary missing
+// from PATH (a non-brew dev build) is a silent skip (Constitution V — `shll doctor`
+// still surfaces staleness), and any other failure warns and continues without
+// affecting the update's exit code — the tool upgrades are the run's core work.
+func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, stdout, stderr io.Writer) {
+	if placed, _ := agentSkillPlacementState(env); !placed {
+		return
+	}
+	fmt.Fprintf(stdout, "\n%s\n", agentSkillRefreshHeader)
+	code, err := proc.RunForeground(ctx, shllTargetToken, agentSetupSub)
+	if errors.Is(err, proc.ErrNotFound) {
+		return // shll not on PATH (dev build) — skip silently.
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "shll update: agent skill refresh: %v (continuing)\n", err)
+		return
+	}
+	if code != 0 {
+		fmt.Fprintf(stderr, "shll update: agent skill refresh exited %d (continuing)\n", code)
 	}
 }

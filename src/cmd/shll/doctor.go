@@ -76,6 +76,12 @@ const (
 	// qualified legacy formula (`sahil87/tap/rk`), which re-resolves through the tap
 	// to the renamed formula post-rename (the known footgun).
 	suggestDualRackFmt = "a leftover %s keg remains alongside %s — remove it with 'shll uninstall %s' or 'brew uninstall %s'"
+	// suggestSkillStale is fixed text for the shll-row agent-skill check: a placed
+	// SKILL.md whose bytes differ from this binary's canonical content (typically a
+	// placement from an older shll). The skill still loads, but describes a stale
+	// toolkit — WARN, not FAIL. Absent placement is OK silently (agent-setup is
+	// opt-in; doctor never nags a user who never opted in).
+	suggestSkillStale = "placed agent skill is stale — run 'shll agent-setup'"
 )
 
 // doctorResult is the typed per-tool record. It is the single source for BOTH the
@@ -109,6 +115,10 @@ actionable suggestion. A missing or non-running binary is FAIL; an installed too
 that simply isn't wired into your shell — or whose formula isn't trusted — is
 WARN (it still works when invoked directly). doctor exits non-zero if ANY tool is
 FAIL, so it is scriptable in CI.
+
+The leading shll row additionally checks any agent skill placed by
+'shll agent-setup': a placed skill whose content is stale (from an older shll) is
+WARN with a refresh pointer. No placement means no check — agent-setup is opt-in.
 
 The trust sub-check queries 'brew trust --json=v1' read-only; if your Homebrew is
 too old to ship 'brew trust' (where trust isn't required anyway), it is skipped
@@ -165,11 +175,12 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// shll-first row: shll is the running process, so its binary is always
 	// present and its version comes from the package var (shllSelfVersion, NOT a
 	// `shll --version` self-subprocess). shll ships no shell-init, so — like
-	// idea/rk/fab-kit — no wiring check applies (ShellInit:false). The row is thus
-	// effectively always OK and is built directly (never via evaluateTool, which
-	// would spawn a subprocess); it deliberately does NOT touch anyFail, so it
-	// cannot perturb the scriptable any-FAIL→exit-1 contract.
-	results = append(results, shllDoctorResult())
+	// idea/rk/fab-kit — no wiring check applies (ShellInit:false). The row IS
+	// checkable for one thing: a placed-but-stale agent skill (WARN — see
+	// shllDoctorResult). It is built directly (never via evaluateTool, which
+	// would spawn a subprocess), and since it can at worst WARN it deliberately
+	// does NOT touch anyFail — the scriptable any-FAIL→exit-1 contract holds.
+	results = append(results, shllDoctorResult(env))
 	for _, tool := range Roster {
 		res := evaluateTool(ctx, tool, fact, trust, migration[tool.Name])
 		if res.Status == markerFail {
@@ -413,17 +424,23 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFa
 	return res
 }
 
-// shllDoctorResult builds the always-OK shll-first record for `shll doctor`. It
-// is NOT produced by evaluateTool: shll is the running process, so its binary is
+// shllDoctorResult builds the shll-first record for `shll doctor`. It is NOT
+// produced by evaluateTool: shll is the running process, so its binary is
 // definitionally on PATH and its version is read from the package var
 // (shllSelfVersion) rather than probed via a `shll --version` self-subprocess.
 // shll ships no shell-init (ShellInit:false), so no wiring check applies — like
-// idea/rk/fab-kit. The row is therefore always OK, and the caller deliberately
-// keeps it out of the anyFail tally so it cannot perturb the exit-1-on-any-FAIL
-// contract. Both the text and --json renderers consume it through the normal
-// results walk.
-func shllDoctorResult() doctorResult {
-	return doctorResult{
+// idea/rk/fab-kit.
+//
+// The one check the row carries is the agent-skill placement (shll owns the
+// placed SKILL.md): a placed skill whose bytes differ from this binary's
+// canonical content is WARN with an `shll agent-setup` pointer; an absent
+// placement is OK silently (agent-setup is opt-in), and an unreadable target is
+// never reported stale (Constitution V — agentSkillPlacementState's contract).
+// The row can thus at worst WARN, and the caller deliberately keeps it out of
+// the anyFail tally so it cannot perturb the exit-1-on-any-FAIL contract. Both
+// the text and --json renderers consume it through the normal results walk.
+func shllDoctorResult(env func(string) string) doctorResult {
+	res := doctorResult{
 		Tool:      shllSelf.Name,
 		Status:    markerOK,
 		Version:   shllSelfVersion(),
@@ -432,6 +449,11 @@ func shllDoctorResult() doctorResult {
 		ShellInit: false,
 		Wired:     false,
 	}
+	if placed, stale := agentSkillPlacementState(env); placed && stale {
+		res.Status = markerWarn
+		res.Suggestion = suggestSkillStale
+	}
+	return res
 }
 
 // probeVersion runs the shared `<tool> --version` probe (bounded by versionTimeout,
@@ -488,11 +510,11 @@ func renderDoctorText(stdout io.Writer, results []doctorResult) error {
 		return err
 	}
 	if problems > 0 {
-		// Denominator is the count of *checkable* tools — the managed roster —
-		// NOT len(results), which includes the prepended always-OK shll row.
-		// Including it would mis-report "N of 7" when only the 6 roster tools can
-		// ever register a problem (the shll row never increments `problems`).
-		if _, err := fmt.Fprintf(stdout, "\n%d of %d tools have problems. Run the suggested commands above, then re-run shll doctor.\n", problems, len(Roster)); err != nil {
+		// Denominator is len(results) — every rendered row, including the
+		// prepended shll row, which is checkable since the agent-skill staleness
+		// check landed (it can WARN and so increment `problems`). Excluding it
+		// (the old len(Roster) denominator) could mis-report "7 of 6".
+		if _, err := fmt.Fprintf(stdout, "\n%d of %d tools have problems. Run the suggested commands above, then re-run shll doctor.\n", problems, len(results)); err != nil {
 			return err
 		}
 	}

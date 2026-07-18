@@ -255,7 +255,10 @@ func TestDoctor_MissingBinaryFails(t *testing.T) {
 // prepended always-OK shll row. With exactly one roster failure (hop) the tail
 // must read "1 of 6 tools have problems", never "1 of 7" — the shll row can
 // never register a problem, so including it in the denominator would misreport.
-func TestDoctor_ProblemTailDenominatorExcludesShll(t *testing.T) {
+func TestDoctor_ProblemTailDenominatorCountsAllRows(t *testing.T) {
+	// The denominator is every rendered row INCLUDING the shll row, which became
+	// checkable (agent-skill staleness WARN) — a problems count can now include
+	// it, so a len(Roster) denominator could mis-report "7 of 6".
 	installFakeRunner(t, doctorFake(map[string]doctorVersionState{"hop": dvMissing}))
 	dir := writeWiredRC(t)
 
@@ -263,13 +266,9 @@ func TestDoctor_ProblemTailDenominatorExcludesShll(t *testing.T) {
 	_ = runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
 	out := stdout.String()
 
-	want := fmt.Sprintf("1 of %d tools have problems", len(Roster))
+	want := fmt.Sprintf("1 of %d tools have problems", len(Roster)+1)
 	if !strings.Contains(out, want) {
 		t.Errorf("problem tail denominator wrong: want %q in output:\n%s", want, out)
-	}
-	// Explicitly reject the off-by-one that includes the always-OK shll row.
-	if strings.Contains(out, fmt.Sprintf("1 of %d tools have problems", len(Roster)+1)) {
-		t.Errorf("problem tail counted the always-OK shll row in the denominator:\n%s", out)
 	}
 }
 
@@ -916,4 +915,70 @@ func lineHas(output, tool, marker string) bool {
 		}
 	}
 	return false
+}
+
+// --- shll-row agent-skill staleness check -------------------------------------
+
+// placeDoctorSkill writes a SKILL.md at the ~/.claude skill target under the given
+// HOME dir (the same dir rcEnv points HOME at).
+func placeDoctorSkill(t *testing.T, home, content string) {
+	t.Helper()
+	path := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write skill: %v", err)
+	}
+}
+
+func TestDoctor_StaleAgentSkillWarns(t *testing.T) {
+	installFakeRunner(t, doctorFake(nil)) // all tools OK
+	dir := writeWiredRC(t)
+	placeDoctorSkill(t, dir, "# placed by an older shll\n")
+
+	var stdout, stderr bytes.Buffer
+	// WARN never affects the exit — stale skill alone keeps doctor at exit 0.
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil (WARN never fails)", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, suggestSkillStale) {
+		t.Errorf("stale placed skill must WARN with %q, got:\n%s", suggestSkillStale, out)
+	}
+	// The WARN sits on the shll row.
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "shll ") && !strings.Contains(line, markerWarn) {
+			t.Errorf("shll row must carry the WARN marker, got: %q", line)
+		}
+	}
+}
+
+func TestDoctor_CurrentAgentSkillOK(t *testing.T) {
+	installFakeRunner(t, doctorFake(nil))
+	dir := writeWiredRC(t)
+	placeDoctorSkill(t, dir, agentSkillContent) // canonical bytes — current
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil", err)
+	}
+	if strings.Contains(stdout.String(), suggestSkillStale) {
+		t.Errorf("a current placement must not WARN, got:\n%s", stdout.String())
+	}
+}
+
+func TestDoctor_AbsentAgentSkillOK(t *testing.T) {
+	// agent-setup is opt-in: no placement → no check, no nag (the existing all-OK
+	// tests also cover this implicitly; this pins the intent explicitly).
+	installFakeRunner(t, doctorFake(nil))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil", err)
+	}
+	if strings.Contains(stdout.String(), suggestSkillStale) {
+		t.Errorf("no placement must not WARN, got:\n%s", stdout.String())
+	}
 }

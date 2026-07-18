@@ -18,7 +18,7 @@ For a single tool's own operations (`wt` worktrees, `hop` jumping, `fab` workflo
 One line each, keyed to the subcommand:
 
 - `shll install [tool...]` — `brew install` every missing roster tool (trust-then-install); idempotent. `--dry-run` previews; `--no-trust` skips trust.
-- `shll update [tool...]` — `brew update` once, self-upgrade, then delegate to each installed tool's own `update`. `--dry-run` previews.
+- `shll update [tool...]` — `brew update` once, self-upgrade, then delegate to each installed tool's own `update`; ends by re-running `shll agent-setup` when a placement exists. `--dry-run` previews.
 - `shll uninstall [tool...]` — remove roster tools via brew, reverse order with shll-self last; confirm-gated (`--yes` skips, non-TTY refuses), `--dry-run` previews.
 - `shll changelog [tool[@old..new]...]` — GitHub release notes; no range = installed→latest ("what would an update bring?").
 - `shll shell-init <shell>` — emit one eval-safe shell-init blob composing every installed tool's shell-init. Stdout is meant to be `eval`'d.
