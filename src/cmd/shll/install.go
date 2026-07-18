@@ -195,7 +195,7 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 		// decision 5 keeps `--dry-run` nudge-free, and this short-circuit precedes
 		// the dry-run branch, so gate on !dryRun here too.
 		if !dryRun {
-			printNextSteps(ctx, env, stdout, colorEnabled(stdout))
+			printNextSteps(env, stdout, colorEnabled(stdout))
 		}
 		return nil
 	}
@@ -326,7 +326,7 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	// informational and orthogonal to install outcome, so it prints regardless of
 	// anyFailed (the tail already conveys per-tool failures). Never reached by the
 	// dry-run / brew-missing / unknown-target early returns above.
-	printNextSteps(ctx, env, stdout, color)
+	printNextSteps(env, stdout, color)
 
 	if anyFailed {
 		return errSilent
@@ -369,9 +369,10 @@ const (
 	agentSetupNudgeFmt = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
 )
 
-// runKitToolName is the roster name of the run-kit tool, used to resolve its Tool
-// descriptor from the live Roster (Constitution III — the roster is the source of
-// truth; no second hardcoded descriptor). Named per code-quality.md (no magic strings).
+// runKitToolName is the run-kit binary name, invoked by agent_setup.go's
+// delegateRunKitAgentSetup as the subprocess target for the `run-kit agent-setup`
+// delegation (Constitution III/IV — compose, don't absorb). Named per code-quality.md
+// (no magic strings).
 const runKitToolName = "run-kit"
 
 // printNextSteps writes the post-install "Next steps" nudge block to stdout (change
@@ -397,7 +398,7 @@ const runKitToolName = "run-kit"
 // color/TTY framing as the headers/tail (the arrow glyph degrades via arrow(color)). A
 // blank line precedes the block (the existing section-spacing rule). Never called on
 // the dry-run / brew-missing / unknown-target paths (they return before the outcome).
-func printNextSteps(ctx context.Context, env func(string) string, stdout io.Writer, color bool) {
+func printNextSteps(env func(string) string, stdout io.Writer, color bool) {
 	w := resolveWiringFact(env)
 	shellSetup := w.shellResolved && !w.corrupt && !w.wired
 	fmt.Fprintln(stdout)

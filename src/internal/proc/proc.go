@@ -166,7 +166,9 @@ func defaultRunner(ctx context.Context, req Request) Result {
 				// the captured output; err stays nil so callers branch on ExitCode.
 				return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: code}
 			}
-			// Pre-start I/O failure (dir missing, etc.) — no usable exit code.
+			// No usable exit code: either a pre-start I/O failure (dir missing, etc.)
+			// or a context cancellation/deadline hit after the process started — both
+			// surface as a non-ExitError err rather than a child exit status.
 			return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: -1, Err: err}
 		}
 		return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: 0}

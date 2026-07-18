@@ -184,7 +184,7 @@ func runAgentInstall(ctx context.Context, targets []string, stdout, stderr io.Wr
 
 	// Delegate run-kit's harness hooks (Constitution III/IV). Skip silently when
 	// run-kit is absent (Constitution V).
-	delegateRunKitAgentSetup(ctx, false, stdout, stderr)
+	delegateRunKitAgentSetup(ctx, false, stderr)
 
 	if anyFailed {
 		return errSilent
@@ -253,7 +253,7 @@ func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.
 	}
 
 	// Delegate run-kit's own uninstall.
-	delegateRunKitAgentSetup(ctx, true, stdout, stderr)
+	delegateRunKitAgentSetup(ctx, true, stderr)
 
 	if anyFailed {
 		return errSilent
@@ -279,10 +279,11 @@ func bytesEqual(a, b []byte) bool {
 // delegateRunKitAgentSetup invokes `run-kit agent-setup [--uninstall]` as a foreground
 // subprocess (via internal/proc — Constitution I) for run-kit's dashboard hooks. When
 // run-kit is not on PATH (proc.ErrNotFound) the delegation is skipped silently
-// (Constitution V — graceful degradation); its stdio is inherited so the user sees
-// run-kit's own output. Only the default (install) and --uninstall paths call this;
-// --print never does.
-func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stdout, stderr io.Writer) {
+// (Constitution V — graceful degradation); its stdio is inherited (proc.RunForeground
+// always wires the real os.Stdout/os.Stderr) so the user sees run-kit's own output —
+// this helper only writes its own diagnostics to stderr, so it takes no stdout writer.
+// Only the default (install) and --uninstall paths call this; --print never does.
+func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stderr io.Writer) {
 	args := []string{runKitAgentSetupSub}
 	if uninstall {
 		args = append(args, "--uninstall")
