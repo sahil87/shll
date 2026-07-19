@@ -2057,3 +2057,143 @@ func TestUpdate_RefreshShllNotOnPathSkipsSilently(t *testing.T) {
 		t.Errorf("shll missing from PATH must skip silently (doctor surfaces staleness), stderr = %q", stderr.String())
 	}
 }
+
+// --- delegation-path unlinked-keg self-heal ---
+
+// unlinkedDelegationRunner models a MIGRATED machine (current run-kit formula
+// installed, no legacy keg) whose keg is UNLINKED: brew reports the formula
+// installed, yet every `run-kit …` invocation fails with proc.ErrNotFound until a
+// `brew link run-kit` runs. This is the state the live 2026-07-19 incident hit — a
+// half-completed rename migration left the binaries off PATH — where the migration
+// gate classifies "migrated → normal delegation" and the delegated `run-kit update`
+// dies. linkFails drives the degraded branch (`brew link` exits non-zero → no retry,
+// original ErrNotFound propagates).
+//
+// Concurrency-safe (probes run in parallel).
+type unlinkedDelegationRunner struct {
+	mu        sync.Mutex
+	linkFails bool // `brew link run-kit` exits non-zero
+	linked    bool // set once `brew link run-kit` succeeds
+}
+
+func (r *unlinkedDelegationRunner) respond(req proc.Request) proc.Result {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch {
+	case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
+		return proc.Result{Stdout: []byte("Homebrew 6.0.4\n")}
+	case req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list":
+		// The formula IS installed per brew — that is the whole point of the
+		// pathology (probe says installed, binary off PATH). Same version before and
+		// after so the digest re-query records no bump.
+		if req.Args[3] == runKitFormula {
+			return proc.Result{Stdout: []byte("run-kit 3.8.2\n")}
+		}
+		return proc.Result{Err: errors.New("not installed")}
+	case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "link" && req.Args[1] == "run-kit":
+		if r.linkFails {
+			return proc.Result{ExitCode: 1}
+		}
+		r.linked = true
+		return proc.Result{}
+	case req.Name == "run-kit":
+		// EVERY run-kit invocation — the `update --help` probe and the delegated
+		// `update` alike — is off PATH until the keg is linked.
+		if !r.linked {
+			return proc.Result{Err: proc.ErrNotFound}
+		}
+		return proc.Result{}
+	}
+	return proc.Result{}
+}
+
+// countInvocations counts recorded requests matching the (name, args...) prefix
+// exactly — the counting sibling of invocationsContain, for asserting a retry
+// happened (or did not).
+func countInvocations(calls []proc.Request, name string, args ...string) int {
+	n := 0
+	for _, c := range calls {
+		if c.Name != name || len(c.Args) != len(args) {
+			continue
+		}
+		match := true
+		for i := range args {
+			if c.Args[i] != args[i] {
+				match = false
+				break
+			}
+		}
+		if match {
+			n++
+		}
+	}
+	return n
+}
+
+func TestUpdate_DelegationUnlinkedKegSelfHeal(t *testing.T) {
+	// Migrated + unlinked: the delegated `run-kit update` returns ErrNotFound even
+	// though brew reports the formula installed. upgradeTool must self-heal — run
+	// `brew link run-kit`, print the relink note, retry the delegation ONCE — and
+	// the run must succeed.
+	r := &unlinkedDelegationRunner{}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil (self-heal should rescue the run)", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, brewBinary, "link", "run-kit") {
+		t.Fatalf("expected `brew link run-kit` for the unlinked delegation, calls: %+v", calls)
+	}
+	// The delegation ran twice: the ErrNotFound first attempt, then the post-link
+	// retry. (No --skip-brew-update: the help probe also hit the unlinked binary, so
+	// the flag was correctly not detected.)
+	if got := countInvocations(calls, "run-kit", "update"); got != 2 {
+		t.Fatalf("`run-kit update` invocations = %d, want 2 (attempt + post-link retry), calls: %+v", got, calls)
+	}
+	// The link must land BETWEEN the two delegation attempts.
+	firstUpdate, link := -1, -1
+	for i, c := range calls {
+		if c.Name == "run-kit" && len(c.Args) == 1 && c.Args[0] == "update" && firstUpdate == -1 {
+			firstUpdate = i
+		}
+		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "link" {
+			link = i
+		}
+	}
+	if link < firstUpdate {
+		t.Fatalf("`brew link` at call %d must FOLLOW the failed delegation at call %d (heal on evidence, not preemptively)", link, firstUpdate)
+	}
+	if !strings.Contains(stdout.String(), "brew link run-kit") {
+		t.Fatalf("stdout missing the relink note:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_DelegationUnlinkedKegLinkFails(t *testing.T) {
+	// The degraded branch: `brew link` exits non-zero → NO retry, the original
+	// ErrNotFound propagates (errSilent), the link failure is surfaced on stderr,
+	// and the relink note does NOT print.
+	r := &unlinkedDelegationRunner{linkFails: true}
+	f := &fakeRunner{respond: r.respond}
+	installFakeRunner(t, f)
+	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent (failed link must not mask the failure)", err)
+	}
+	calls := f.recordedCalls()
+	if got := countInvocations(calls, "run-kit", "update"); got != 1 {
+		t.Fatalf("`run-kit update` invocations = %d, want 1 (a failed link must NOT retry)", got)
+	}
+	if !strings.Contains(stderr.String(), "brew link exited 1") {
+		t.Fatalf("stderr missing the link-failure surface:\n%s", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "retrying") {
+		t.Fatalf("the relink note must NOT print when the link failed:\n%s", stdout.String())
+	}
+}
