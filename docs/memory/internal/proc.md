@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through — change agst), `ErrNotFound` sentinel, `Runner` test seam."
+description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `ErrNotFound` sentinel, `Runner` test seam."
 ---
 # internal/proc
 
@@ -26,7 +26,7 @@ func Run(ctx context.Context, name string, args ...string) ([]byte, error)
 func RunForeground(ctx context.Context, name string, args ...string) (int, error)
 
 // RunCaptured captures BOTH stdout and stderr into separate buffers and reports
-// the child's exit code, passing NEITHER stream through to the parent. (change agst)
+// the child's exit code, passing NEITHER stream through to the parent. (agst)
 // ErrNotFound (code -1) when the binary is missing; (err == nil, code) when the
 // child ran to completion (a non-zero code > 0 surfaced, NOT an error); (err, -1)
 // on a pre-start I/O failure. A ctx deadline/signal kill also surfaces as code -1
@@ -38,14 +38,13 @@ func RunCaptured(ctx context.Context, name string, args ...string) (stdout, stde
 
 That is the entire surface command code uses. Callers never import `os/exec` directly. The child always inherits the parent environment as-is — there is **no per-request environment override**.
 
-> **History — the reverted 38a6 env plumbing (change 0854).** Change 38a6 had briefly added a third variant, `RunForegroundEnv(ctx, env []string, name string, args ...string)`, plus a `Request.Env` field and an env-append branch in `defaultRunner`, so shll's brew call sites could inject a Linux-only `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` sandbox-trust workaround. That workaround was **removed in change 0854** (the upstream Homebrew bug is fixed in 6.0.4; per-formula trust in `shll install` is the correct DX), and since the workaround was its **only** consumer, the entire env plumbing was **stripped** — `proc` is back to its pre-38a6 `Run`/`RunForeground` surface. See [cli/install](/cli/install.md#per-formula-trust-before-install-change-0854) and [cli/update §removal of the 38a6 workaround](/cli/update.md#removal-of-the-38a6-linux-workaround-change-0854).
 
 ## Internal types
 
 ```go
 type Result struct {
     Stdout   []byte
-    Stderr   []byte // populated ONLY by TransportCaptureAll (nil otherwise); change agst
+    Stderr   []byte // populated ONLY by TransportCaptureAll (nil otherwise); agst
     ExitCode int
     Err      error
 }
@@ -54,7 +53,7 @@ type Transport int
 const (
     TransportCapture    Transport = iota // buffer stdout; pass stderr THROUGH to parent
     TransportForeground                  // inherit stdin/stdout/stderr
-    TransportCaptureAll                  // buffer BOTH streams; pass NEITHER through (change agst)
+    TransportCaptureAll                  // buffer BOTH streams; pass NEITHER through (agst)
 )
 
 type Request struct {
@@ -85,7 +84,7 @@ func installFakeRunner(t *testing.T, f *fakeRunner) {
 }
 ```
 
-The fake records every `Request` it receives and returns canned `Result` values (matched by binary name + args). This is how the `src/cmd/shll/*_test.go` files avoid spawning real `brew` or per-tool subprocesses — including `skill_test.go` (fakes `<tool> skill` via `TransportCaptureAll`) and `agent_setup_test.go` (fakes the `run-kit agent-setup` delegation), both added by change agst.
+The fake records every `Request` it receives and returns canned `Result` values (matched by binary name + args). This is how the `src/cmd/shll/*_test.go` files avoid spawning real `brew` or per-tool subprocesses — including `skill_test.go` (fakes `<tool> skill` via `TransportCaptureAll`) and `agent_setup_test.go` (fakes the `run-kit agent-setup` delegation), both agst.
 
 The proc package's own `proc_test.go` uses the same pattern (`withFakeRunner`) — the only test that actually spawns subprocesses is `TestDefaultRunner_RealBinary`, which uses `true`/`false` POSIX builtins (never project tools).
 
@@ -120,7 +119,7 @@ These properties are tested at the source level (acceptance A-029, A-044, A-049,
 
 `exitCode(err) (int, bool)` (`src/internal/proc/proc.go`) is the small helper that unwraps `*exec.ExitError` to its `ExitCode()` — shared by the `TransportForeground` and `TransportCaptureAll` branches.
 
-### `TransportCaptureAll` (used by `proc.RunCaptured`) — change agst
+### `TransportCaptureAll` (used by `proc.RunCaptured`)
 
 - `cmd.Stdout = &stdout`, `cmd.Stderr = &stderr` — **both** captured into `Result.Stdout` / `Result.Stderr`; **neither** passed through to the parent (unlike `TransportCapture`, which passes stderr through).
 - On `exec.ErrNotFound` → `Result{ExitCode: -1, Err: ErrNotFound}`.
@@ -130,13 +129,13 @@ These properties are tested at the source level (acceptance A-029, A-044, A-049,
 
 **Why a third transport, not `TransportCapture` + a stderr tweak.** The two existing transports both leak the child's stderr to the parent (Capture passes it through; Foreground inherits it). `shll skill` needs the opposite: it must stream the child's stdout **byte-identical on success** while capturing the child's stderr so the caller can **decide per-invocation** what to do with it on failure. Capturing both streams and passing neither through is the only combination that lets the caller fully own presentation. The two `shll skill` forms then diverge on that captured stderr: the one-arg bundle form **suppresses** it in favor of one clean notice (a tool that predates `skill` prints an unknown-command error the user should never see), while the two-arg topic form **propagates** it verbatim (the `skill` standard's unknown-topic contract must survive the composer). `RunCaptured` is the sole consumer today (see [cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured) and [§a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)).
 
-### `RunCaptured` / `TransportCaptureAll` (change agst)
+### `RunCaptured` / `TransportCaptureAll`
 
-`RunCaptured(ctx, name, args...) (stdout, stderr []byte, code int, err error)` is the public helper over `TransportCaptureAll`. It returns four values (not `([]byte, error)` like `Run`, nor `(int, error)` like `RunForeground`) because its callers need all of: the captured stdout to stream on success, the captured stderr (to suppress *or* propagate per caller), the exit code to classify a completed child (and to detect the `< 0` deadline-kill sentinel), and the error to distinguish `ErrNotFound`. The `Result.Stderr` field was added to the struct specifically for this transport — it is `nil` for `Run`/`RunForeground`. The two `shll skill` callers use the captured stderr differently: the one-arg bundle form **discards** it (`out, _, code, err := proc.RunCaptured(...)` — it suppresses the child's stderr in favor of its own notice), while the two-arg topic form **binds** it (`out, childErr, code, err := ...`) so it can write the child's bytes through verbatim on a `code > 0` failure.
+`RunCaptured(ctx, name, args...) (stdout, stderr []byte, code int, err error)` is the public helper over `TransportCaptureAll` (agst). It returns four values (not `([]byte, error)` like `Run`, nor `(int, error)` like `RunForeground`) because its callers need all of: the captured stdout to stream on success, the captured stderr (to suppress *or* propagate per caller), the exit code to classify a completed child (and to detect the `< 0` deadline-kill sentinel), and the error to distinguish `ErrNotFound`. The `Result.Stderr` field was added to the struct specifically for this transport — it is `nil` for `Run`/`RunForeground`. The two `shll skill` callers use the captured stderr differently: the one-arg bundle form **discards** it (`out, _, code, err := proc.RunCaptured(...)` — it suppresses the child's stderr in favor of its own notice), while the two-arg topic form **binds** it (`out, childErr, code, err := ...`) so it can write the child's bytes through verbatim on a `code > 0` failure.
 
 ## No per-request environment override
 
-`defaultRunner` never sets `cmd.Env` — the child always inherits the full parent environment as-is. There is no env-carrying variant on the public surface (the 38a6 `RunForegroundEnv`/`Request.Env`/env-append plumbing was reverted in change 0854 when its sole consumer, the Linux sandbox-trust workaround, was removed — see the History note under [Public API](#public-api)). If a future caller needs to inject an env override, it would re-add a `Request.Env` field + an `append(os.Environ(), req.Env...)` branch (last value wins on a duplicate key) — but nothing needs it today.
+`defaultRunner` never sets `cmd.Env` — the child always inherits the full parent environment as-is. There is no env-carrying variant on the public surface (0854 — see [cli/update §trust posture](/cli/update.md#trust-posture-and-the-homebrew-604-floor)). If a future caller needs to inject an env override, it would re-add a `Request.Env` field + an `append(os.Environ(), req.Env...)` branch (last value wins on a duplicate key) — but nothing needs it today.
 
 ## ErrNotFound contract
 
@@ -170,7 +169,6 @@ If a future shll subcommand needs cwd scoping, the path forward is to either (a)
 - `TestRunner_RecordsTransportSelection` — `Run` records `TransportCapture`, `RunForeground` records `TransportForeground`.
 - `TestDefaultRunner_RealBinary` — exercises the production path with `true`, `false`, and a missing binary; the only test that spawns real processes (and never spawns project tools).
 
-The 38a6 env tests (`TestRunForegroundEnv_RecordsEnvAndTransport`, `TestRunForegroundEnv_TransportError`, `TestRunForeground_NoEnv`, `TestDefaultRunner_EnvAppendedToParent`) were removed with the `Env` plumbing (change 0854).
 
 ## Cross-references
 

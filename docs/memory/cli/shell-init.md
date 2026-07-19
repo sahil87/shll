@@ -31,7 +31,7 @@ A single eval line replaces what would otherwise be N per-tool eval lines (today
    - Run `proc.Run(ctx, argv[0], argv[1:]...)` (capture transport).
    - On `proc.ErrNotFound` (binary not on PATH): skip silently — Constitution V (graceful degradation). Install-mechanism agnostic: any source-built or non-brew install of the tool participates as long as its binary is on PATH.
    - On any other error: write `shll shell-init: <tool>: <err>` to stderr, set `anyFailed = true`, **and skip this tool's stdout** (eval-safety — failing tool's partial output never reaches stdout). Continue with the next tool. **No separator** is emitted for this tool.
-   - On success (the only success-write path): emit the shell-comment separator `# ── <tool> ──` followed by a newline (see [Shell-comment separator](#shell-comment-separator-change-y630)), then write the captured stdout bytes verbatim to the output writer.
+   - On success (the only success-write path): emit the shell-comment separator `# ── <tool> ──` followed by a newline (see [Shell-comment separator](#shell-comment-separator)), then write the captured stdout bytes verbatim to the output writer.
 
 4. **Final exit.** If `anyFailed`, return `errSilent` (exit 1). Else return nil (exit 0).
 
@@ -45,11 +45,11 @@ This is the central correctness property of `shell-init` and is non-negotiable (
   - Sub-tool execution fails → its (partial) stdout is dropped; the error message goes to stderr only.
   - Sub-tool returns non-zero exit → falls under the "fails" branch (proc returns a non-nil err).
 - **stderr is the only diagnostic channel.** Any human-readable text — usage, error notes — goes to stderr.
-- **`shll` injects only eval-safe shell comments.** stdout consists of the bytes returned by successful sub-tools, concatenated, plus shll's own `# ── <tool> ──` comment separators (change y630). shll injects no executable shell code — a `#`-prefixed line is a shell no-op, so the comments are eval-safe and the invariant holds. A separator is emitted **only** on the success-write path, so stdout never contains a separator for a tool whose output is absent (see [Shell-comment separator](#shell-comment-separator-change-y630)).
+- **`shll` injects only eval-safe shell comments.** stdout consists of the bytes returned by successful sub-tools, concatenated, plus shll's own `# ── <tool> ──` comment separators (y630). shll injects no executable shell code — a `#`-prefixed line is a shell no-op, so the comments are eval-safe and the invariant holds. A separator is emitted **only** on the success-write path, so stdout never contains a separator for a tool whose output is absent (see [Shell-comment separator](#shell-comment-separator)).
 
 This means `eval "$(shll shell-init zsh)"` is safe even when shll exits non-zero or sub-tools are broken — at worst the user gets a shell with one fewer integration loaded, never a parse error.
 
-## Shell-comment separator (change y630)
+## Shell-comment separator
 
 `shll shell-init` frames each contributing tool's init block with a separator so a composed blob is no longer one undifferentiated wall of shell code. The separator is `# ── <tool> ──`, produced by `toolComment(name)` in the shared helper `src/cmd/shll/ui.go:67` and written (with a trailing newline) immediately before the tool's captured output on the success-write path of step 3.
 
@@ -70,14 +70,14 @@ This is the single most important fact in this file for a future maintainer. `sh
 - **Why.** `shll shell-init` stdout is consumed by `eval "$(shll shell-init <shell>)"`. A bare `▸ <tool>` line would be eval'd as a command and break the user's shell; ANSI color escapes inside eval'd output would corrupt it. A `#`-prefixed line is a shell no-op — the only eval-safe separator here. This is mandated by **Constitution V (Graceful Degradation — `shll shell-init` output MUST always be eval-safe)**.
 - **This is NOT an oversight.** A future "consistency" refactor that unifies `shell-init` onto the `▸`/`==>` header (or adds color/TTY-gating to it) **reintroduces the eval-break** and MUST NOT be done. The inconsistency with `update`/`install` is the correct, guarded design — recorded here so the guard survives.
 
-### Also the one exception to the unified shll-self representation (change bb7r)
+### Also the one exception to the unified shll-self representation
 
-`shell-init` is **also** the single command excluded from the unified shll-first representation that `version`/`update`/`list`/`doctor`/`install` share (the shared `shllSelf` descriptor — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r)). The other five commands prepend a shll-first row/object/line; `shell-init` prepends **nothing for shll**, for the same eval-safety reason as the comment-separator exception above:
+`shell-init` is **also** the single command excluded from the unified shll-first representation that `version`/`update`/`list`/`doctor`/`install` share (the shared `shllSelf` descriptor — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor)). The other five commands prepend a shll-first row/object/line; `shell-init` prepends **nothing for shll**, for the same eval-safety reason as the comment-separator exception above:
 
 - shll has **no shell-init output of its own** to compose (shll is a meta-tool that concatenates *other* tools' shell-init — there is nothing for shll itself to emit).
 - `shell-init`'s stdout is `eval`'d, so any shll-first line (even an informational one) risks breaking the user's shell — Constitution V eval-safety.
 
-So `shell_init.go` was **not** touched by change bb7r. The exclusion is deliberate and documented, not a gap.
+The exclusion is deliberate and documented, not a gap. (bb7r)
 
 ### Separator emitted only when the tool's output reaches stdout
 
@@ -90,9 +90,7 @@ This preserves the eval-safety invariant exactly: stdout consists only of bytes 
 
 ## Composition order
 
-Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `wt`, `tu`, and `hop` produce output; in the leaves-first roster (`wt, idea, tu, rk, hop, fab-kit` — change auvj) the three integrators sit at indices `wt`@0, `tu`@2, `hop`@4, so `runShellInit` emits them in ascending-index order: **`wt` first, then `tu`, then `hop`**. This order is *intentional*, not incidental — it follows the toolkit's leaves-first dependency order (`wt` is a leaf that `hop` depends on at runtime; `hop open` delegates to wt's menu), so users reading a composed blob see a dependency before its dependent. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs. The roster-order invariant itself is guarded by `TestRosterLeavesBeforeDependents` — see [cli/commands](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj).
-
-> The earlier framing here said the order was `tu, hop, wt` and that tu's position was "incidental". Both are superseded by change auvj: the order is now `wt, tu, hop` and it is a deliberate leaves-first sequencing decision. (Note: `wt, tu, hop`, NOT `tu, wt, hop` — the integrators in ascending `Roster` index order are wt@0, tu@2, hop@4.)
+Output is concatenated in `Roster` order. This is deterministic (Spec: Composition Order). Today `wt`, `tu`, and `hop` produce output; in the leaves-first roster (`wt, idea, tu, run-kit, hop, fab-kit` — auvj) the three integrators sit at indices `wt`@0, `tu`@2, `hop`@4, so `runShellInit` emits them in ascending-index order: **`wt` first, then `tu`, then `hop`**. This order is *intentional*, not incidental — it follows the toolkit's leaves-first dependency order (`wt` is a leaf that `hop` depends on at runtime; `hop open` delegates to wt's menu), so users reading a composed blob see a dependency before its dependent. `TestShellInit_DeterministicOrder` asserts byte-identical stdout across two consecutive runs. The roster-order invariant itself is guarded by `TestRosterLeavesBeforeDependents` — see [cli/commands](/cli/commands.md#design-decision-leaves-first-roster-order).
 
 ## Argv substitution
 

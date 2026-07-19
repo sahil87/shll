@@ -20,14 +20,14 @@ hop       v0.1.0
 fab-kit   v0.1.0
 ```
 
-- Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit` — the leaves-first order, change auvj; `run-kit` was `rk` before the change-9bak rename). `version` output is order-agnostic in test (assertions are index-paired to `Roster`, so reorder moves expected and actual in lockstep — no `version_test.go` change was needed for the reorder); only this example's ordering reflects the slice. The `run-kit` row displays `run-kit` regardless of whether the primary `run-kit --version` probe or the legacy `rk --version` fallback succeeded (see [The legacy-name PATH-probe fallback](#the-legacy-name-path-probe-fallback-change-9bak)). See [cli/commands](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj).
+- Exactly **7 rows**: one for `shll`, then one per roster tool in roster order (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit` — the leaves-first order, auvj). `version` output is order-agnostic in test (assertions are index-paired to `Roster`, so reorder moves expected and actual in lockstep); only this example's ordering reflects the slice. The `run-kit` row displays `run-kit` regardless of whether the primary `run-kit --version` probe or the legacy `rk --version` fallback succeeded (see [The legacy-name PATH-probe fallback](#the-legacy-name-path-probe-fallback)). See [cli/commands](/cli/commands.md#design-decision-leaves-first-roster-order).
 - Column-aligned via `text/tabwriter` (`src/cmd/shll/version.go:56`) — minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 - When the upstream tool's `--version` output contains a SemVer-shaped token, the row is normalized to a `v`-prefixed token (e.g. `v1.9.4`). When no such token is present, the row falls through the prefix-strip and raw-passthrough branches and may emit a non-`v` string (e.g. `dev`, or an unparseable banner verbatim) — see the `normalizeVersion` pipeline below for the full contract.
 - **Plain text only.** No ANSI escapes, no JSON, no colors. The output is meant to paste cleanly into bug reports.
 
 ## Behavior contract
 
-`runVersion(ctx, stdout)` (`src/cmd/shll/version.go:52`) is the implementation seam. The `runVersion`/`toolVersion` output contract — including `normalizeVersion`, the `not installed` label, the per-tool timeout, and the plain-text-no-JSON shape — is **unchanged by change lst7**: that change only extracted the probe into a shared helper (see [The shared install probe](#the-shared-install-probe-change-lst7)). It is:
+`runVersion(ctx, stdout)` (`src/cmd/shll/version.go:52`) is the implementation seam. The `runVersion`/`toolVersion` output contract — `normalizeVersion`, the `not installed` label, the per-tool timeout, and the plain-text-no-JSON shape (the probe itself is a shared helper — see [The shared install probe](#the-shared-install-probe)):
 
 1. Construct a `tabwriter.Writer` over stdout.
 2. Write `shll\t<normalizeVersion(version)>\n` first, where `version` is the package-level variable (see Ldflags injection below). The shll row goes through the same normalizer as roster rows, so the column is uniform.
@@ -36,13 +36,13 @@ fab-kit   v0.1.0
 
 `toolVersion(ctx, tool)` (`src/cmd/shll/version.go:101`) is the per-tool resolver:
 
-1. Call `probeToolVersion(ctx, tool)` — the shared probe (see [The shared install probe](#the-shared-install-probe-change-lst7) below), which runs `<tool.Name> --version` under a `versionTimeout` deadline (via `probeVersionByName`) and returns `([]byte, error)`, retrying once with `tool.LegacyName` on `proc.ErrNotFound` only (the rk→run-kit fallback).
+1. Call `probeToolVersion(ctx, tool)` — the shared probe (see [The shared install probe](#the-shared-install-probe) below), which runs `<tool.Name> --version` under a `versionTimeout` deadline (via `probeVersionByName`) and returns `([]byte, error)`, retrying once with `tool.LegacyName` on `proc.ErrNotFound` only (the rk→run-kit fallback).
 2. On any error (`proc.ErrNotFound` for missing binary, exit non-zero, deadline exceeded, etc.) → return `notInstalledLabel = "not installed"`.
 3. On success → return `normalizeVersion(string(out))`.
 
 "Installed" is detected via `proc.ErrNotFound` (binary not on PATH) rather than a brew probe — install-mechanism agnostic, and saves ~400ms per tool (no Homebrew/Ruby startup tax).
 
-`shll doctor` (change d0ct) reuses the version probe through its own `probeVersion` helper — which, since change 9bak, **calls `probeToolVersion` directly** (not just the same primitives), so the bounded invocation AND the rk→run-kit legacy-name fallback live in exactly one place (`version.go`) and cannot drift. `doctor` does NOT call `toolVersion` because `toolVersion` collapses the missing case and the unreportable (stale-brew-link) case into the single `notInstalledLabel`, whereas `doctor` needs them apart (install vs. reinstall suggestion); `probeVersion` adds only the three-way classification on top of `probeToolVersion`, leaving `toolVersion` untouched. See [cli/doctor](/cli/doctor.md#the-version-probe--probeversion-why-a-local-helper).
+`shll doctor` (d0ct) reuses the version probe through its own `probeVersion` helper — which **calls `probeToolVersion` directly** (9bak) (not just the same primitives), so the bounded invocation AND the rk→run-kit legacy-name fallback live in exactly one place (`version.go`) and cannot drift. `doctor` does NOT call `toolVersion` because `toolVersion` collapses the missing case and the unreportable (stale-brew-link) case into the single `notInstalledLabel`, whereas `doctor` needs them apart (install vs. reinstall suggestion); `probeVersion` adds only the three-way classification on top of `probeToolVersion`, leaving `toolVersion` untouched. See [cli/doctor](/cli/doctor.md#the-version-probe--probeversion-why-a-local-helper).
 
 `normalizeVersion(raw string) string` (`src/cmd/shll/version.go`) is the single point of normalization shared by the shll row and every roster row. It is purely shape-based — there is no per-tool branching — so independent upstream `--version` standardization (e.g., tu/run-kit/fab-kit cleaning up their own output in parallel) is absorbed without shll code changes.
 
@@ -59,29 +59,27 @@ The parser is **first-line-only**. It never scans deeper lines for a version tok
 
 The two regexes are compiled once via `regexp.MustCompile` at package scope; they are not recompiled per call.
 
-## The shared install probe (change lst7)
+## The shared install probe
 
-The install probe is now a **shared helper** extracted from `toolVersion`, so `version` is no longer the sole definition of "installed = runnable on PATH":
+The install probe is a **shared helper** (lst7), so `version` is not the sole definition of "installed = runnable on PATH":
 
-- `probeToolVersion(ctx, tool) ([]byte, error)` (`src/cmd/shll/version.go`) is the **single** definition of the probe: it calls `probeVersionByName(ctx, tool.Name)` — the bounded invocation (`subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`, `proc.Run(subCtx, name, "--version")`, capture transport, Constitution I) — and returns the captured output and any error. ANY error (`proc.ErrNotFound`, non-zero exit, timeout) means "not installed" — callers map that to their own representation. Since change 9bak it carries the **legacy-name fallback** (below).
-- `probeVersionByName(ctx, name) ([]byte, error)` (change 9bak) is the bounded `<name> --version` invocation factored out of `probeToolVersion` so the fallback retry reuses the exact same deadline/transport. Also called directly by `migrateRunKit`'s unlinked-keg post-check ([cli/update](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak)).
+- `probeToolVersion(ctx, tool) ([]byte, error)` (`src/cmd/shll/version.go`) is the **single** definition of the probe: it calls `probeVersionByName(ctx, tool.Name)` — the bounded invocation (`subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`, `proc.Run(subCtx, name, "--version")`, capture transport, Constitution I) — and returns the captured output and any error. ANY error (`proc.ErrNotFound`, non-zero exit, timeout) means "not installed" — callers map that to their own representation. It carries the **legacy-name fallback** (below, 9bak).
+- `probeVersionByName(ctx, name) ([]byte, error)` (9bak) is the bounded `<name> --version` invocation, factored out so the fallback retry reuses the exact same deadline/transport. Also called directly by `migrateRunKit`'s unlinked-keg post-check ([cli/update](/cli/update.md#the-rkrun-kit-migration-guard)).
 - `toolInstalled(ctx, tool) bool` (`src/cmd/shll/version.go`) layers on `probeToolVersion` and returns `err == nil`. This is the boolean install-status helper consumed by `shll list` — see [cli/list §The install probe](/cli/list.md#the-install-probe-shared-toolinstalled).
-- `toolVersion` now also layers on `probeToolVersion` (mapping a non-nil error to `notInstalledLabel`, success to `normalizeVersion`).
+- `toolVersion` also layers on `probeToolVersion` (mapping a non-nil error to `notInstalledLabel`, success to `normalizeVersion`).
 
-So there is **exactly one place** that defines "installed = runnable", shared by `version` (string label), `list` (bool), and `doctor` (three-way state via `probeVersion`, which delegates to `probeToolVersion` since change 9bak). This is the install-mechanism-agnostic notion — **NOT** the brew `isInstalled` probe (`src/cmd/shll/brew.go`) used by `install`/`update`.
+So there is **exactly one place** that defines "installed = runnable", shared by `version` (string label), `list` (bool), and `doctor` (three-way state via `probeVersion`, which delegates to `probeToolVersion` — 9bak). This is the install-mechanism-agnostic notion — **NOT** the brew `isInstalled` probe (`src/cmd/shll/brew.go`) used by `install`/`update`.
 
-### The legacy-name PATH-probe fallback (change 9bak)
+### The legacy-name PATH-probe fallback
 
 When the primary `<tool.Name> --version` fails with `proc.ErrNotFound` **only** AND the tool declares a non-empty `LegacyName`, `probeToolVersion` retries once with the legacy binary name (`probeVersionByName(ctx, tool.LegacyName)`). For `run-kit` the legacy name is `rk`, so a pre-rename install whose binary is still `rk` on PATH (no `run-kit` alias binary) is reported **installed** by `list`/`version`/`doctor` rather than "not installed".
 
 - **`ErrNotFound` only — never a non-zero exit or timeout.** A present-but-broken `run-kit` (e.g. exits non-zero, or hangs to the deadline) must NOT silently defer to `rk`; its own error is returned, so the surface still reports it via the primary probe. Missing-binary is the only state the fallback is for.
 - **Display name is untouched.** The row/label stays `tool.Name` (`run-kit`) regardless of which probe name succeeded — the fallback affects *detection*, not display.
-- **Scope: DISPLAY surfaces only.** This PATH probe is independent of the brew-keg migration gate in [cli/update](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak). A non-brew `rk` install is *shown* by list/version/doctor but is never *migrated* by shll (parity with today's brew-only update behavior). The two "is it there?" notions stay separate.
-- **Transitional.** A no-op once legacy `rk`-only installs die out. The `LegacyName` field is sunset-marked (see [cli/commands §the rk→run-kit rename](/cli/commands.md#the-rkrun-kit-rename--migration-fields-change-9bak)).
+- **Scope: DISPLAY surfaces only.** This PATH probe is independent of the brew-keg migration gate in [cli/update](/cli/update.md#the-rkrun-kit-migration-guard). A non-brew `rk` install is *shown* by list/version/doctor but is never *migrated* by shll (parity with today's brew-only update behavior). The two "is it there?" notions stay separate.
+- **Transitional.** A no-op once legacy `rk`-only installs die out. The `LegacyName` field is sunset-marked (see [cli/commands §the rk→run-kit rename](/cli/commands.md#the-rkrun-kit-rename--migration-fields)).
 
 Pinned by `version_test.go`: a run-kit visible only under the legacy `rk` binary (`run-kit --version` → `proc.ErrNotFound`, `rk --version` → a version) is reported installed with display name `run-kit`; a present-but-broken `run-kit` (non-`ErrNotFound` error) does NOT fall back.
-
-**The extraction was behavior-preserving.** `shll version`'s output (the `not installed` label, the `versionTimeout` bound, the column layout, the plain-text-no-JSON shape) is byte-for-byte identical. `version_test.go` passes **unchanged** — all six `TestVersion_*` integration tests and the 12 `TestNormalizeVersion_*` unit tests required no edit.
 
 ## Ldflags injection (shll's own version)
 
@@ -92,7 +90,7 @@ The `shll` row's version comes from the package-level `version = "dev"` declared
 
 Tests override the variable directly (`TestVersion_LdflagsInjection`) — no special build hook needed for testing.
 
-> **The shll-first row is the canonical instance of the shared display pattern (change bb7r — no behavior change).** `version` has always led with a `shll` row (step 2 of the behavior contract), reading shll's version from the package `version` var via `normalizeVersion` — never a `shll --version` self-subprocess. Change bb7r introduced the shared `shllSelf` descriptor (`src/cmd/shll/tools.go`) and `shllSelfVersion()` (which is exactly `normalizeVersion(version)`) so that `list`/`doctor`/`install` could *generalize* the shll-first ordering `version`/`update` already had. **`version.go` was NOT changed**: it still writes its own `shll\t…` row inline rather than consuming `shllSelf`, and its version source is the same package var `shllSelfVersion()` reads — so the two surfaces agree by construction. See [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r).
+> **The shll-first row is the canonical instance of the shared display pattern.** `version` leads with a `shll` row (step 2 of the behavior contract), reading shll's version from the package `version` var via `normalizeVersion` — never a `shll --version` self-subprocess. `version.go` writes its own `shll\t…` row inline rather than consuming the shared `shllSelf` descriptor; its version source is the same package var `shllSelfVersion()` reads, so the two surfaces agree by construction (bb7r). See [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor).
 
 ## Per-tool timeout
 
@@ -132,7 +130,7 @@ Integration scenarios:
 - `TestVersion_TimeoutHandling` — fake returns `context.DeadlineExceeded` immediately for the targeted tool (no real wall-clock wait) → row reads `not installed`. The test also asserts elapsed time stays under `versionTimeout` to confirm the fake short-circuited rather than actually blocking.
 - `TestVersion_NoANSI` — asserts no `\x1b[` escape in output.
 
-Legacy-name fallback (change 9bak):
+Legacy-name fallback (9bak):
 
 - `TestProbeToolVersion_LegacyNameFallbackOnErrNotFound` — run-kit's primary `run-kit --version` returns `proc.ErrNotFound`, the `rk --version` retry returns a version → reported installed (display name stays `run-kit`).
 - `TestProbeToolVersion_NoFallbackOnNonErrNotFound` — a present-but-broken `run-kit` (non-`ErrNotFound` error) does NOT retry `rk`; the primary error is returned.
@@ -151,4 +149,4 @@ Unit scenarios pinning the normalization contract (12 cases, all named `TestNorm
 - Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](/cli/update.md#detection).
 - The shared `toolInstalled` helper's other consumer: [cli/list](/cli/list.md#the-install-probe-shared-toolinstalled) — `shll list` reuses the same `probeToolVersion` probe (as a bool) for its install-status column.
 - Shared version probe: [cli/doctor](/cli/doctor.md) — `doctor`'s `probeVersion` **delegates to `probeToolVersion`** (change 9bak — inheriting the legacy-name fallback), adding only the three-way `versionState` classification that keeps the missing-vs-unreportable distinction `toolVersion` collapses; the two cannot drift.
-- The shared `shllSelf` display descriptor + `shllSelfVersion()` (change bb7r): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor-change-bb7r). `version`'s shll-first row is the established pattern that descriptor generalizes to `list`/`doctor`/`install`; `version.go` itself is unchanged.
+- The shared `shllSelf` display descriptor + `shllSelfVersion()` (bb7r): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor). `version`'s shll-first row is the pattern the descriptor generalizes to `list`/`doctor`/`install`; `version.go` itself does not consume it.

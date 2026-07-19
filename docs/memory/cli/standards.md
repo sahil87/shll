@@ -22,7 +22,7 @@ Rejected alternatives (decided in the originating conversation): an **MCP server
 
 ### Bare `shll standards` — the self-describing glossary list
 
-One row per standard, in roster order, `name` + **`scope`** + one-line description (three columns), printed to **stdout** (it is data). Human output uses `text/tabwriter` with the **same config as `shll list` / `shll version`** (minwidth 0, tabwidth 0, padding 2, padchar space, no flags). Deliberately **no status column and no color glyphs** — the standards list is a static glossary, not an install-status view — so the table output is escape-free on every writer (unlike `shll list`, which carries a color-gated status cell). The `scope` column sits **between** name and description (change i70w). Exit 0.
+One row per standard, in roster order, `name` + **`scope`** + one-line description (three columns), printed to **stdout** (it is data). Human output uses `text/tabwriter` with the **same config as `shll list` / `shll version`** (minwidth 0, tabwidth 0, padding 2, padchar space, no flags). Deliberately **no status column and no color glyphs** — the standards list is a static glossary, not an install-status view — so the table output is escape-free on every writer (unlike `shll list`, which carries a color-gated status cell). The `scope` column sits **between** name and description. Exit 0.
 
 ```
 principles         foundation     The ten toolkit CLI principles every tool is built against
@@ -33,7 +33,7 @@ skill              binary+repo    Agent skill bundle standard: docs/site/skill.m
 
 ### `shll standards --json` — the machine-readable roster array
 
-`--json` (bool flag on the bare form, `standardsJSONFlag = "json"`) emits a **bare JSON array** — one `{name, description, scope, source_path}` object per standard in roster order (the `scope` field added by change i70w — see [The scope field](#the-scope-field-change-i70w)). `source_path` is the repo-relative canonical path (e.g. `docs/site/standards/principles.md`), so a consumer can locate the doc in the shll repo without re-deriving it. Emitted via a `json.Encoder` configured with `SetEscapeHTML(false)`, `SetIndent("", "  ")` (2-space), and `enc.Encode` (single trailing newline) — the exact idiom `shll list --json` uses, and the same rationale: `SetEscapeHTML(false)` keeps `&`/`<`/`>` as literal characters (the default encoder would emit their `\uXXXX` forms) so the raw output stays legible and matches the table. Plain JSON only — no ANSI, no table framing, regardless of TTY.
+`--json` (bool flag on the bare form, `standardsJSONFlag = "json"`) emits a **bare JSON array** — one `{name, description, scope, source_path}` object per standard in roster order (see [The scope field](#the-scope-field)). `source_path` is the repo-relative canonical path (e.g. `docs/site/standards/principles.md`), so a consumer can locate the doc in the shll repo without re-deriving it. Emitted via a `json.Encoder` configured with `SetEscapeHTML(false)`, `SetIndent("", "  ")` (2-space), and `enc.Encode` (single trailing newline) — the exact idiom `shll list --json` uses, and the same rationale: `SetEscapeHTML(false)` keeps `&`/`<`/`>` as literal characters (the default encoder would emit their `\uXXXX` forms) so the raw output stays legible and matches the table. Plain JSON only — no ANSI, no table framing, regardless of TTY.
 
 The `standardJSONItem` struct field order is `{name, description, scope, source_path}` (`scope` declared before `source_path`):
 
@@ -68,15 +68,15 @@ The stdout/stderr split is not incidental — it obeys the very standard the com
 
 `standardsRoster` (`src/cmd/shll/standards.go`) is a hardcoded `[]standard` slice — the source of truth for names, descriptions, canonical source paths, and embed filenames, mirroring `tools.go`'s `Roster` pattern. **Descriptions are hardcoded here, NOT parsed from the markdown at runtime** (the constitution's "explicit versioned lists are the contract" — parsing markdown headers is fragile and couples the CLI surface to prose). Roster order is the output order for both the table and `--json`.
 
-The `standard` struct carries **five** fields (change i70w added `Scope`):
+The `standard` struct carries **five** fields:
 
 - **`Name`** — the standard's identifier (the `<name>` argument and the JSON `name`).
 - **`Description`** — the one-line "what it governs / when it applies" glossary line printed by the bare list form and emitted as JSON `description`.
-- **`Scope`** — where the standard's obligations live (change i70w): `foundation` (the principles every tool is built against), `binary` (satisfied by the compiled tool at runtime), `repo` (satisfied by the repo's file structure), or `binary+repo` (spans both). Printed as the **middle** column of the bare list form and emitted as JSON `scope`. See [The scope field](#the-scope-field-change-i70w).
+- **`Scope`** — where the standard's obligations live (i70w): `foundation` (the principles every tool is built against), `binary` (satisfied by the compiled tool at runtime), `repo` (satisfied by the repo's file structure), or `binary+repo` (spans both). Printed as the **middle** column of the bare list form and emitted as JSON `scope`. See [The scope field](#the-scope-field).
 - **`SourcePath`** — the repo-relative canonical path (`docs/site/standards/<name>.md`), emitted as JSON `source_path` and used as the drift-guard comparison target. Single-sourced so JSON and the drift guard agree.
-- **`EmbedName`** — the base filename of the embedded copy under `standardsEmbedDir` (`principles.md`); the full embed path is `standardsEmbedDir + "/" + EmbedName`. **Embedded copies stay flat** (a bare basename) under `src/cmd/shll/standards/`, NOT mirrored into a `standards/` subdir — so `SourcePath`'s basename still equals `EmbedName` and the `//go:embed standards/*.md` glob is unchanged despite the canonical sources moving into `docs/site/standards/` (change i70w Design Decision — the drift guard is the contract, so the flat layout is the minimal diff).
+- **`EmbedName`** — the base filename of the embedded copy under `standardsEmbedDir` (`principles.md`); the full embed path is `standardsEmbedDir + "/" + EmbedName`. **Embedded copies stay flat** (a bare basename) under `src/cmd/shll/standards/`, NOT mirrored into a `standards/` subdir — `SourcePath`'s basename equals `EmbedName` and the `//go:embed standards/*.md` glob is unaffected by the canonical sources living in `docs/site/standards/` (i70w Design Decision — the drift guard is the contract, so the flat layout is the minimal diff).
 
-The roster is exactly **four** entries (change i70w added `skill`), in this order:
+The roster is exactly **four** entries, in this order:
 
 | Name | Scope | SourcePath (canonical) | Description |
 |------|-------|------------------------|-------------|
@@ -85,9 +85,9 @@ The roster is exactly **four** entries (change i70w added `skill`), in this orde
 | `readme-extraction` | `repo` | `docs/site/standards/readme-extraction.md` | README + docs/site structure standard for toolkit repos |
 | `skill` | `binary+repo` | `docs/site/standards/skill.md` | Agent skill bundle standard: docs/site/skill.md served by `<tool> skill` |
 
-Adding a standard is a roster row **plus** its canonical `docs/site/standards/` file (synced in by `scripts/sync-standards.sh`) — an explicit, versioned list, exactly like the tool roster and adding a tool. Roster integrity is guarded by `TestStandardsRosterIntegrity` (non-empty `Name`/`Description`/`EmbedName`, no duplicate names, `SourcePath` under **`docs/site/standards/`** — the prefix check was tightened from `docs/site/` by change i70w so it now documents the true post-restructure invariant — and `SourcePath`'s basename equals `EmbedName` so JSON's `source_path` and the embedded copy refer to the same document).
+Adding a standard is a roster row **plus** its canonical `docs/site/standards/` file (synced in by `scripts/sync-standards.sh`) — an explicit, versioned list, exactly like the tool roster and adding a tool. Roster integrity is guarded by `TestStandardsRosterIntegrity` (non-empty `Name`/`Description`/`EmbedName`, no duplicate names, `SourcePath` under **`docs/site/standards/`** — and `SourcePath`'s basename equals `EmbedName` so JSON's `source_path` and the embedded copy refer to the same document).
 
-### The scope field (change i70w)
+### The scope field
 
 `Scope` names where a standard's obligations are satisfied, and doubles as the taxonomy that keeps the standards *filenames* plain (the intake rejected `principle-*`/`repo-*`/`contract-*` filename prefixes — taxonomy is expressed via location, the `docs/site/standards/` dir, plus this list metadata, not the filename). The vocabulary is single-sourced from the principles "The contracts" table (see [cli/standards-content](/cli/standards-content.md)):
 
@@ -102,11 +102,11 @@ Two named constants keep the embed path and flag free of magic strings (code-qua
 
 ## The build-time embed mechanism
 
-> The first three standards documents (originally `docs/site/{principles,help-dump,readme-extraction}.md`) were authored **off-pipeline** in commit f3cd931 (PR sahil87/shll#40) on the parent branch; change vo8c embedded and served them. Change i70w then **moved all three into `docs/site/standards/`** (via `git mv`, filenames unchanged) and **authored the fourth**, `docs/site/standards/skill.md` — see [cli/standards-content](/cli/standards-content.md) for the restructure rationale and the `skill` standard's contract. `docs/site/standards/` is and remains the single canonical source, pulled and rendered by shll.ai (the moved pages land at `shll.ai/shll/standards/<name>`, mirroring `shll standards <name>`).
+> `docs/site/standards/` is the single canonical source for the four standards documents, pulled and rendered by shll.ai (each page lands at `shll.ai/shll/standards/<name>`, mirroring `shll standards <name>`) — see [cli/standards-content](/cli/standards-content.md) for the directory rationale and the `skill` standard's contract. (vo8c, i70w)
 
 **The known constraint** (why a plain embed is impossible): the Go module root is `src/` (`src/go.mod`), and `docs/site/` sits **above** it — `//go:embed` cannot reach above the module root, so `//go:embed ../../../docs/site/*.md` is not allowed by the toolchain. The mechanism bridges the gap:
 
-1. **A copy step** — `scripts/sync-standards.sh` copies the canonical sources into `src/cmd/shll/standards/` (a subdir beside `standards.go`, keeping embed assets colocated with the consuming command and the `*.md` glob scoped). Since change i70w it sets `SRC_DIR="docs/site/standards"` and its `STANDARDS=(principles help-dump readme-extraction skill)` array names **four** files; the `DEST_DIR="src/cmd/shll/standards"` and the embedded filenames stay flat (see `EmbedName` above). `set -euo pipefail`, runs from the repo root regardless of caller CWD, one-liner-delegating per Constitution VI (thin justfile).
+1. **A copy step** — `scripts/sync-standards.sh` copies the canonical sources into `src/cmd/shll/standards/` (a subdir beside `standards.go`, keeping embed assets colocated with the consuming command and the `*.md` glob scoped). It sets `SRC_DIR="docs/site/standards"` and its `STANDARDS=(principles help-dump readme-extraction skill)` array names **four** files; the `DEST_DIR="src/cmd/shll/standards"` and the embedded filenames stay flat (see `EmbedName` above). `set -euo pipefail`, runs from the repo root regardless of caller CWD, one-liner-delegating per Constitution VI (thin justfile).
 2. **The copies are committed** — the embedded `src/cmd/shll/standards/*.md` files are in the tree, so a clean `go build ./...` (which does **not** run the sync script — nor does CI, which builds directly) compiles.
 3. **Embedded from there** — `//go:embed standards/*.md` into a package-level `var standardsFS embed.FS` in `standards.go` (this repo's **first `//go:embed` usage**).
 4. **Wired into the build path three ways** (all single-sourced on the sync script):
@@ -116,7 +116,7 @@ Two named constants keep the embed path and flag free of magic strings (code-qua
 
 ### The drift guard (`TestStandardsEmbedMatchesCanonical`)
 
-Because the committed copies could silently diverge from the canonical `docs/site/standards/` sources, `TestStandardsEmbedMatchesCanonical` (`src/cmd/shll/standards_test.go`) asserts, for **each of the four** roster entries, that the embedded bytes **byte-match** the canonical source. It is roster-driven, so it covered the fourth (`skill`) and the moved paths automatically once the roster and sync landed (change i70w). The test file lives at `src/cmd/shll/`, so it resolves the canonical path as `../../../<SourcePath>` (`filepath.Join("..","..","..", s.SourcePath)`) — now three levels up under `docs/site/standards/`. On drift it fails naming the file, pointing at `just sync-standards` (or `scripts/sync-standards.sh`) to refresh and commit.
+Because the committed copies could silently diverge from the canonical `docs/site/standards/` sources, `TestStandardsEmbedMatchesCanonical` (`src/cmd/shll/standards_test.go`) asserts, for **each of the four** roster entries, that the embedded bytes **byte-match** the canonical source. It is roster-driven, so it covers all four roster entries automatically. The test file lives at `src/cmd/shll/`, so it resolves the canonical path as `../../../<SourcePath>` (`filepath.Join("..","..","..", s.SourcePath)`). On drift it fails naming the file, pointing at `just sync-standards` (or `scripts/sync-standards.sh`) to refresh and commit.
 
 **Why a Go test, not a separate CI step** (Design Decision, resolving intake assumption #7): it runs on every `go test ./...` — locally **and** in the existing CI PR workflow (build, vet, test) — with **no `.github/workflows/` edit needed**. Rejected: a symlink into `src/` (embed does not follow symlinks reliably across the toolchain and breaks the byte-copy guarantee); parsing markdown at runtime (fragile, violates the hardcoded-contract principle); a separate CI-only diff step (a Go test is simpler and runs everywhere `go test` runs).
 
@@ -136,7 +136,7 @@ Helpers: `standardByName(name) (standard, bool)` and `validStandards() string` b
 
 ## Wiring
 
-`newStandardsCmd()` is registered in `newRootCmd()` (`src/cmd/shll/root.go`) alongside the other subcommands, and a one-line `shll standards [name]` entry was added to the `rootLong` help text. It is the **tenth user-facing subcommand** (see [cli/commands §Constitution VII](/cli/commands.md#constitution-vii-justification-per-subcommand)). No subprocess is involved, so `internal/proc` is untouched (Constitution I applies vacuously — no `os/exec`, no shell surface). `help-dump` picks up the new visible subcommand **mechanically** via its programmatic cobra walk — **no `help_dump.go` change** (see [cli/help-dump-contract](/cli/help-dump-contract.md)).
+`newStandardsCmd()` is registered in `newRootCmd()` (`src/cmd/shll/root.go`) alongside the other subcommands, and a one-line `shll standards [name]` entry was added to the `rootLong` help text. It is one of the twelve user-facing subcommands (see [cli/commands §Constitution VII](/cli/commands.md#constitution-vii-justification-per-subcommand)). No subprocess is involved, so `internal/proc` is untouched (Constitution I applies vacuously — no `os/exec`, no shell surface). `help-dump` picks up the new visible subcommand **mechanically** via its programmatic cobra walk — **no `help_dump.go` change** (see [cli/help-dump-contract](/cli/help-dump-contract.md)).
 
 ## Constitution VII justification
 
@@ -157,14 +157,14 @@ Helpers: `standardByName(name) (standard, bool)` and `validStandards() string` b
 
 `standards_test.go` drives `runStandards` with `bytes.Buffer`s (no fake proc runner). Scenarios (`src/cmd/shll/standards_test.go`):
 
-- `TestStandards_ListTable` — bare table has one row per roster entry carrying name, **scope**, and description (change i70w), roster order, no ANSI escapes, nothing on stderr.
+- `TestStandards_ListTable` — bare table has one row per roster entry carrying name, **scope**, and description, roster order, no ANSI escapes, nothing on stderr.
 - `TestStandards_ListJSON` — `--json` is valid JSON, `len == len(standardsRoster)`, index-paired to the live roster (a future reorder moves expected and actual in lockstep), every field incl. `scope` and `source_path` correct, trailing newline, no ANSI, nothing on stderr.
-- `TestStandards_ListJSONFieldNames` — the raw `"name"`/`"description"`/`"scope"`/`"source_path"` field names are present (the stable JSON contract mirroring `shll list --json`; `"scope"` added by change i70w).
+- `TestStandards_ListJSONFieldNames` — the raw `"name"`/`"description"`/`"scope"`/`"source_path"` field names are present (the stable JSON contract mirroring `shll list --json`).
 - `TestStandards_ReadDoc_ByteIdentical` — for every roster standard, `shll standards <name>` stdout equals the embedded bytes byte-for-byte, nothing on stderr.
 - `TestStandards_ReadDoc_JSONFlagIgnoredForReader` — a name argument runs the reader path emitting raw markdown even with `--json` set.
 - `TestStandards_UnknownName` — unknown name → `errSilent`, empty stdout, stderr names the offending input and every valid standard (now four).
 - `TestStandardsEmbedMatchesCanonical` — the drift guard: each of the four embedded standards' bytes equal `../../../<SourcePath>` (the canonical `docs/site/standards/` source), failing (naming the file) on drift.
-- `TestStandardsRosterIntegrity` — non-empty fields, no duplicate names, `SourcePath` under **`docs/site/standards/`** (tightened from `docs/site/` by change i70w), `SourcePath` basename == `EmbedName`.
+- `TestStandardsRosterIntegrity` — non-empty fields, no duplicate names, `SourcePath` under **`docs/site/standards/`**, `SourcePath` basename == `EmbedName`.
 
 ## Cross-references
 
@@ -172,4 +172,4 @@ Helpers: `standardByName(name) (standard, bool)` and `validStandards() string` b
 - Subcommand wiring, the `errSilent` exit-code sentinel, and the hardcoded-roster pattern this mirrors: [cli/commands](/cli/commands.md#subcommand-factory-pattern) and [§hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
 - The sibling read-only listing command whose `tabwriter` + `json.Encoder(SetEscapeHTML(false))` idioms this reuses: [cli/list](/cli/list.md#output-shapes).
 - `help-dump` picks up the new subcommand mechanically (no producer change): [cli/help-dump-contract](/cli/help-dump-contract.md).
-- Constitution I (Security First) — no subprocess, no `os/exec`, `internal/proc` untouched (applies vacuously). Constitution II (No State) — embedded bytes are a build snapshot, not runtime state. Constitution III (explicit versioned lists are the contract) — the hardcoded roster + accepted staleness-until-next-release. Constitution VI (thin justfile) — the copy logic lives in `scripts/sync-standards.sh`. Constitution VII (Minimal Surface Area) — the tenth user-facing subcommand, justified above.
+- Constitution I (Security First) — no subprocess, no `os/exec`, `internal/proc` untouched (applies vacuously). Constitution II (No State) — embedded bytes are a build snapshot, not runtime state. Constitution III (explicit versioned lists are the contract) — the hardcoded roster + accepted staleness-until-next-release. Constitution VI (thin justfile) — the copy logic lives in `scripts/sync-standards.sh`. Constitution VII (Minimal Surface Area) — justified above.

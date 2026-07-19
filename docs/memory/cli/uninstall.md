@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll uninstall [tool...]` — the clean-slate repair counterpart to `shll install`: reverse-roster removal with shll-self last, a `Proceed? [y/N]` confirmation gate (`--yes`/`-y`, non-TTY refusal, `--dry-run` bypass), the probe-then-act dual-name run-kit sweep with leaf verification (never a blind old-name uninstall), shll-self brew-managed gating, best-effort failure aggregation (named-missing exits 0), print-only daemon/rc-unwire hints, and the single-source `brewUninstallArgv` builder threaded into both the live run and the dry-run preview."
+description: "`shll uninstall [tool...]` — the clean-slate repair counterpart to `shll install`: reverse-roster removal with shll-self last, a `Proceed? [y/N]` confirmation gate (`--yes`/`-y`, non-TTY refusal, `--dry-run` bypass), the leaf-verified dual-name run-kit sweep (never a blind old-name uninstall), shll-self brew-managed gating, best-effort failure aggregation (named-missing exits 0), print-only daemon/rc-unwire hints, and the single-source `brewUninstallArgv` builder."
 ---
 # cli/uninstall
 
@@ -12,7 +12,7 @@ Source: `src/cmd/shll/uninstall.go`, with the `stdinIsTTY` seam + `printUninstal
 
 The full happy/unhappy paths, in the order `runUninstall(ctx, stdin io.Reader, stdout, stderr io.Writer, dryRun, yes bool, args []string) error` evaluates them (`src/cmd/shll/uninstall.go:156`):
 
-1. **Resolve targets up front — before `hasBrew` and any probe.** `resolveTargets(args, true)` (`allowShll=true`) validates the positional args and returns `(selected, selfSelected, aliased, err)`. An unknown target → `shll uninstall: <detail>` on stderr + `errSilent` (exit 1) with **no brew side effect**. `subset := len(args) > 0`; empty args yields the whole-roster sweep. The legacy alias `rk` resolves to `run-kit` and is recorded in `aliased` for the notice (below). See [cli/commands §the legacy target alias](/cli/commands.md#the-legacy-target-alias-rk--run-kit) and [cli/update §positional args](/cli/update.md#positional-tool-name-args--subset-targeting-change-b2vg).
+1. **Resolve targets up front — before `hasBrew` and any probe.** `resolveTargets(args, true)` (`allowShll=true`) validates the positional args and returns `(selected, selfSelected, aliased, err)`. An unknown target → `shll uninstall: <detail>` on stderr + `errSilent` (exit 1) with **no brew side effect**. `subset := len(args) > 0`; empty args yields the whole-roster sweep. The legacy alias `rk` resolves to `run-kit` and is recorded in `aliased` for the notice (below). See [cli/commands §the legacy target alias](/cli/commands.md#the-legacy-target-alias-rk--run-kit) and [cli/update §positional args](/cli/update.md#positional-tool-name-args--subset-targeting).
 
 2. **Brew missing.** If `hasBrew(ctx)` is false, write `uninstallBrewMissingHint` (`"shll uninstall requires Homebrew. Install from https://brew.sh"`, `src/cmd/shll/brew.go`) to stderr and return `errSilent` (exit 1). It is intentionally separate from `brewMissingHint`/`installBrewMissingHint` so each command's error names the command the user ran (the update spec asserts its hint verbatim). The up-front target resolution (step 1) runs *before* this guard, so an unknown target errors first.
 
@@ -60,7 +60,7 @@ A prompt abort (a non-affirmative answer) is exit **0** — the user chose not t
 ## Target resolution and ordering
 
 - **Valid targets**: the six `Roster` names (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) **plus** `shll` (`allowShll=true` — `shll uninstall shll` is legal, explicit-only). The legacy alias `rk` resolves to `run-kit` but is never advertised in the valid-targets diagnostic (accepted-but-unadvertised, same contract as `update`/`install`). `shll` is not in `Roster` (Constitution III), so it is handled separately (step 5), never in the no-args sweep.
-- **Reverse-roster (dependents before leaves)**: `fab-kit, hop, run-kit, tu, idea, wt`, the mirror of install's leaves-first coherence rationale (removing dependents before the leaves they depend on). Derived by reversing the single leaves-first `Roster` — see [cli/commands §leaves-first Roster order](/cli/commands.md#design-decision-leaves-first-roster-order-change-auvj). A subset is processed in reverse-roster order regardless of arg order.
+- **Reverse-roster (dependents before leaves)**: `fab-kit, hop, run-kit, tu, idea, wt`, the mirror of install's leaves-first coherence rationale (removing dependents before the leaves they depend on). Derived by reversing the single leaves-first `Roster` — see [cli/commands §leaves-first Roster order](/cli/commands.md#design-decision-leaves-first-roster-order). A subset is processed in reverse-roster order regardless of arg order.
 - **shll-self last**: the running orchestrator is removed after everything it might have managed. `reverseRosterOrder` reverses only the roster portion and re-appends the shll-self target so it stays final even in a mixed `shll uninstall shll hop wt` run.
 
 ## The confirmation gate
@@ -89,7 +89,7 @@ The user's "uninstall `rk`, uninstall `run-kit` just to be safe" is handled here
 Failure aggregates across both steps; a step is attempted even when the other found no keg. This is the classification the actionable-set builder uses too:
 
 - **`probeRunKitInstalled(ctx, t)`** probes BOTH formulas (no short-circuit on the current keg) and returns `(newInstalled, legacyKeg, version)`. `legacyKeg` is leaf-verified (`legInst && legLeaf == t.LegacyName`). The target is actionable when **either** keg is present, so a **legacy-only machine** (only the `rk` keg, and `shll uninstall run-kit`/`rk`) still counts as installed and removes the residual keg rather than erroring `not installed`. `version` prefers the current keg, falling back to the legacy keg on a legacy-only machine.
-- **Dual-rack** (both a `run-kit` keg and a separate `rk` keg): `newInstalled && legacyKeg`, so the sweep removes both — the new formula first, the residual `rk` second. This makes `shll uninstall run-kit` the **supported cleanup** for the dual-rack state that [`shll update`](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak)'s migration guard and [`shll doctor`](/cli/doctor.md) only *warn* about.
+- **Dual-rack** (both a `run-kit` keg and a separate `rk` keg): `newInstalled && legacyKeg`, so the sweep removes both — the new formula first, the residual `rk` second. This makes `shll uninstall run-kit` the **supported cleanup** for the dual-rack state that [`shll update`](/cli/update.md#the-rkrun-kit-migration-guard)'s migration guard and [`shll doctor`](/cli/doctor.md) only *warn* about.
 
 ### Dry-run preview parity via classification facts
 
@@ -105,7 +105,7 @@ The dry-run preview must render the SAME argv the live sweep would issue. `unins
 
 ## Output, exit codes, and aggregation
 
-Follows the `per-tool-output-separation` conventions via the shared `ui.go` helpers (see [cli/update §per-tool output separation](/cli/update.md#per-tool-output-separation-change-y630)):
+Follows the `per-tool-output-separation` conventions via the shared `ui.go` helpers (see [cli/update §per-tool output separation](/cli/update.md#per-tool-output-separation)):
 
 - **Per-tool header** `printToolHeader(stdout, name, i+1, total, color)` → `▸ [N/M] <tool>` (bold-cyan run on a color TTY) / `==> [N/M] <tool>` (plain ASCII), reverse-roster order, `M = len(actionable)` known up front. A blank line precedes every header except the first.
 - **Summary tail** `printSummaryTail(stdout, succeeded, total, elapsed, color)` — `Done — N of M tools succeeded in <dur>.` / `X succeeded, Y failed in <dur> — see above.`, by exit code only (the honesty constraint holds — shll never claims "removed" vs. "was absent" beyond the exit code). A blank line precedes it. Elapsed is measured via the `nowFunc` clock seam (`clock.go`), captured after the gate so it covers only the removal phase.
@@ -119,7 +119,7 @@ Follows the `per-tool-output-separation` conventions via the shared `ui.go` help
 - **Live run**: `uninstallOne` builds `argv := brewUninstallArgv(formula)` and runs `proc.RunForeground(ctx, argv[0], argv[1:]...)` (Constitution I — routed through `internal/proc`). The run-kit residual removal uses `brewUninstallArgv(t.LegacyName)` (`brew uninstall rk`).
 - **Preview**: `previewRowsFor` renders each row's command via `argvString(brewUninstallArgv(...)...)`.
 
-(This was a rework — finding A-020: `brewUninstallArgv` originally fed only the preview while the live run open-coded the identical argv; the builder is now threaded into both, matching the `upgradeArgv`/`upgradeTool` precedent.)
+(Matches the `upgradeArgv`/`upgradeTool` single-source precedent.)
 
 ## Post-run hints (print-only)
 
@@ -128,7 +128,7 @@ After the removal loop, `shll uninstall` prints (never executes — Constitution
 - **run-kit daemon stop** (`runKitDaemonStopHintFmt`): when run-kit was **successfully removed**, note that a running daemon is not stopped (`<tool> serve --stop`). The tool name comes from the actionable entry (`runKitName = a.tool.Name`), not a `"run-kit"` string literal (no magic string).
 - **rc-file unwire** (`shellUnwireHint`): when shell-integrated tools (`tu`/`hop`/`wt` — those with a non-empty `Tool.ShellInit`) were **successfully removed roster-wide**, point at `shll shell-setup --uninstall` for the rc-file block.
 
-Two load-bearing properties (rework A-013):
+Two load-bearing properties:
 
 - **Success-gated**: both signals are set only on a tool that actually **removed** (`!failed`), never on a merely-attempted-but-failed removal — mirroring `update`'s daemon-note success gating. shll-self carries no `ShellInit`, so it never trips the rc-unwire signal.
 - **Roster-wide keys on roster-set COVERAGE**, not `!subset`: `rosterWide := len(consider) == len(Roster)`. Because `resolveTargets` returns a de-duplicated roster-ordered set, full coverage is exactly the length equality — so a **NAMED full-roster sweep** (all six roster tools listed explicitly) qualifies alongside the no-args case. Scoping the rc-unwire hint to roster-wide avoids a misleading rc-unwiring nudge on a partial subset that may leave other integrated tools present and still wired.
@@ -147,25 +147,25 @@ Two load-bearing properties (rework A-013):
 **Decision**: `runUninstall` takes an explicit `stdin io.Reader` (wired from `cmd.InOrStdin()`), and `stdinIsTTY(io.Reader) bool` (a swappable `ui.go` var mirroring `colorEnabled`) detects a non-terminal stdin.
 **Why**: matches the established writer-injection test seam — `bytes.Buffer`/`strings.Reader` in tests hit the non-TTY branch deterministically, and the swappable var lets tests force the interactive branch; no global `os.Stdin` reference in command code.
 **Rejected**: reading `os.Stdin` directly (untestable without process-level fixtures).
-*Introduced by*: change 260709-kkaj-shll-uninstall-command.
+*Introduced by*: `260709-kkaj-shll-uninstall-command`.
 
 ### run-kit removal is a dedicated `uninstallRunKit` reusing the leaf parser
 **Decision**: probe the current formula and act on leaf `run-kit`, then re-probe the legacy formula and act only on a confirmed `rk` leaf — a single detection path (the shared `probeInstalledLeaf`/`parseBrewLeaf`).
 **Why**: mirrors `migrateRunKit`'s structure (Constitution III — one detection path); never a blind old-name uninstall (the session-observed rename-resolution footgun that would delete the migrated keg).
 **Rejected**: a blind `brew uninstall sahil87/tap/rk` (deletes the good keg post-rename).
-*Introduced by*: change 260709-kkaj-shll-uninstall-command.
+*Introduced by*: `260709-kkaj-shll-uninstall-command`.
 
 ### Reverse-roster via slice iteration, not a second declared order
 **Decision**: reverse the actionable set built in leaves-first `Roster` order (`reverseRosterOrder`), keeping shll-self last.
 **Why**: one source of truth (the `Roster` slice); the dependents-first order is derived, mirroring the leaves-first coherence rationale.
 **Rejected**: a second hardcoded dependents-first slice (drift risk).
-*Introduced by*: change 260709-kkaj-shll-uninstall-command.
+*Introduced by*: `260709-kkaj-shll-uninstall-command`.
 
 ### The Tentative orphan-rack assumption
 **Decision**: plain `brew uninstall rk` is assumed sufficient to remove an orphan `rk` rack post-rename; `--force`/rack-targeted escalation is deferred.
 **Why**: post-rename brew behavior for an orphan `rk` rack is unverified and cannot be exercised in fake-runner tests (the author's dual-rack machine is the live verification point). The code is shaped (single-source `brewUninstallArgv` builder) so escalation to `--force`/a rack-targeted form is a one-line change in `uninstallRunKit`/`previewRowsFor` if the live run shows plain removal is insufficient.
 **Rejected**: pre-emptively adding `--force` (unverified as necessary, and heavier than the observed need warrants).
-*Introduced by*: change 260709-kkaj-shll-uninstall-command (plan Assumption 8 / intake Open Question — Tentative).
+*Introduced by*: `260709-kkaj-shll-uninstall-command` (plan Assumption 8 / intake Open Question — Tentative).
 
 ## Test seam
 
@@ -174,8 +174,8 @@ Two load-bearing properties (rework A-013):
 ## Cross-references
 
 - Counterpart lifecycle command: [cli/install](/cli/install.md) — install/uninstall are the paired bootstrap/repair verbs; `shll uninstall` reuses install's brew helpers and the shared `ui.go` framing.
-- The rk→run-kit migration guard whose dual-rack warning this command's cleanup resolves: [cli/update §the migration guard](/cli/update.md#the-rkrun-kit-migration-guard-change-9bak). Its `migrationDualRackNoteFmt` now points at `shll uninstall <tool>` + `brew uninstall rk`.
-- The hardcoded roster, `resolveTargets`, the legacy alias, and the keg-leaf parser: [cli/commands](/cli/commands.md#the-rkrun-kit-rename--migration-fields-change-9bak).
+- The rk→run-kit migration guard whose dual-rack warning this command's cleanup resolves: [cli/update §the migration guard](/cli/update.md#the-rkrun-kit-migration-guard). Its `migrationDualRackNoteFmt` points at `shll uninstall <tool>` + `brew uninstall rk`.
+- The hardcoded roster, `resolveTargets`, the legacy alias, and the keg-leaf parser: [cli/commands](/cli/commands.md#the-rkrun-kit-rename--migration-fields).
 - Shared UI helpers (header/tail/color/preview + the `stdinIsTTY` seam): [cli/commands §file layout](/cli/commands.md#file-layout-srccmdshll).
 - Subprocess wrapper conventions: [internal/proc](/internal/proc.md).
 - Constitution I (Security First — all subprocesses via `internal/proc`), III (Wrap, Don't Reinvent — wrap `brew uninstall`; print-don't-run the daemon/rc hints), V (Graceful Degradation — graceful skips, exit-0 aborts, named-missing exits 0), VII (Minimal Surface Area — justified in [cli/commands §Constitution VII per subcommand](/cli/commands.md#constitution-vii-justification-per-subcommand)).

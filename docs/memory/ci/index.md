@@ -4,5 +4,5 @@
 
 | File | Description |
 |------|-------------|
-| [install-bootstrap](install-bootstrap.md) | `scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, brew-required (never auto-installed), capability-probed tap-trust, and `exec shll install \"$@\"` delegation. Owns the shll.ai raw-fetch URL contract (must merge to main before shll.ai#84) and the dev-script rename to `scripts/install-local.sh`. |
-| [release-workflow](release-workflow.md) | `release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap. No longer pushes to shll.ai (help-push transport torn down in change 7huv; shll.ai now pulls via `shll help-dump`). |
+| [install-bootstrap](install-bootstrap.md) | `scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, brew-required (never auto-installed), capability-probed tap-trust, and `exec shll install \"$@\"` delegation. Owns the load-bearing `scripts/install.sh` path shll.ai raw-fetches from `main`. |
+| [release-workflow](release-workflow.md) | `release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap on `v*` tags. Carries no shll.ai publish step — shll.ai pulls via its own scheduled `shll help-dump` job. |

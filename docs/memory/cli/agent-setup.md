@@ -4,19 +4,27 @@ description: "`shll agent-setup` — places ONE thin `shll-toolkit` Agent Skill 
 ---
 # cli/agent-setup
 
-`shll agent-setup` — mechanically places one thin Agent Skill (the toolkit bootstrap) into the agent harnesses' global skills directories, then delegates run-kit's dashboard-hook wiring to `run-kit agent-setup`. It graduates the cross-toolkit harness wiring from run-kit (a leaf tool, where it was mis-homed) up to shll (the manager) — the graduation half of change `agst`; the composition half is [cli/skill](/cli/skill.md).
+`shll agent-setup` — mechanically places one thin Agent Skill (the toolkit bootstrap) into the agent harnesses' global skills directories, then delegates run-kit's dashboard-hook wiring to `run-kit agent-setup`. Cross-toolkit harness wiring belongs in shll (the manager), not run-kit (a leaf tool); the composition half of the design is [cli/skill](/cli/skill.md). (agst)
 
-Source: `src/cmd/shll/agent_setup.go` (+ `agent_setup_test.go`). Added by change `agst` (`260718-agst-agent-setup-skill-commands`).
+Source: `src/cmd/shll/agent_setup.go` (+ `agent_setup_test.go`).
 
 ## The mechanism: skill placement, NOT stanza injection
 
-**Load-bearing design decision.** The backlog's original `[agst]` mechanism was sentinel-wrapped context-stanza injection into `~/.claude/CLAUDE.md` / AGENTS.md-family files (reusing `shell_setup.go`'s sentinel machinery). The user **rejected** that this session — *"no merge operation, just mechanical placement of skills"* — in favor of placing an **Agent Skill**. The skill directories are shll-owned, so:
+The skill directories are shll-owned, so:
 
 - **install = write, re-run/upgrade = overwrite, `--uninstall` = delete** — idempotent by construction.
-- **No sentinel, no merge, no diff-and-confirm, no `--yes` gate, no non-TTY refusal.** Those existed to protect user-authored files; overwriting shll-owned skill files needs none of them.
+- **No sentinel, no merge, no diff-and-confirm, no `--yes` gate, no non-TTY refusal.** Those exist to protect user-authored files; overwriting shll-owned skill files needs none of them.
 - A skill costs one description line per agent session (loaded on demand) instead of an always-loaded CLAUDE.md stanza.
 
-The rejected stanza machinery must not reappear: `shell_setup.go` stays byte-identical to HEAD and no `sentinel_block.go` exists (guarded by the removal-verification acceptance; the change reverted the apply's first-pass stanza work).
+**Stanza machinery must not reappear**: `shell_setup.go`'s sentinel machinery is not reused here and no `sentinel_block.go` exists — see the Design Decision below.
+
+## Design Decisions
+
+### Skill placement, not context-stanza injection
+**Decision**: `agent-setup` places an Agent Skill file (write/overwrite/delete); it never merges content into user-authored files.
+**Why**: "No merge operation, just mechanical placement of skills" — skill directories are shll-owned, so the sentinel/merge/confirm machinery that protects user-authored rc files is unnecessary, and a skill's description line loads on demand instead of taxing every session like a CLAUDE.md stanza.
+**Rejected**: Sentinel-wrapped context-stanza injection into `~/.claude/CLAUDE.md` / AGENTS.md-family files (reusing `shell_setup.go`'s sentinel machinery) — explicitly rejected by the user.
+*Introduced by*: `260718-agst-agent-setup-skill-commands`
 
 ## The placement set (two writes cover four harnesses)
 
@@ -56,7 +64,6 @@ Use when driving any shll toolkit CLI or shll itself — {clause, …}. {Proacti
 - **Single-line, `: `-free invariant.** The whole description MUST be one line with no `: ` sequence (it is an unquoted YAML scalar). `TestAgentSetup_DescriptionSingleLine` pins this; run-kit's `ProactiveHint` sentence is newline- and `: `-free so it satisfies the invariant as-is.
 
 **`ProactiveHint` holds the complete sentence verbatim; the builder just appends it** — there is no builder-owned "Also use proactively" preamble composed around a stored fragment. This is the simplest faithful rendering while exactly one tool carries a hint; a composed preamble would be over-engineering. The sprawl guard (only agent-proactive capabilities earn description space) is enforced by `TestRosterProactiveHint`, which asserts **exactly run-kit** carries a `ProactiveHint`, that the sentence appears verbatim in the rendered description, and that it is positioned between the tool clauses and the two-step pointer. `SkillHint` is unaffected — run-kit's stays `"tmux sessions"` (the reactive task-domain phrase); `TestRosterSkillHints` still enforces the every-tool `SkillHint` contract.
->>>>>>> 5616cae (feat: add ProactiveHint trigger vocabulary for run-kit's proactive capabilities)
 
 ## Modes and the run seam
 
@@ -86,12 +93,12 @@ The compare uses a tiny local `bytesEqual` helper (the file's footprint is file-
 - Its stdio is inherited (foreground) so the user sees run-kit's own output.
 - Only the default (install) and `--uninstall` paths delegate; **`--print` never does.**
 
-## Touchpoint graduation (both former `run-kit agent-setup` pointers)
+## Touchpoints
 
-Change `agst` graduated the two existing pointers at `run-kit agent-setup` to `shll agent-setup`:
+Two surfaces point users at `shll agent-setup` (agst):
 
-- **`install.go`'s post-install "Next steps" nudge** — the former run-kit-gated `runKitAgentSetupFmt` line became the unconditional `agentSetupNudgeFmt` (`shll agent-setup # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)`). Because shll is by definition present, the presence gate was removed — the line prints unconditionally on both outcome paths, still not on dry-run. See [cli/install §the post-install nudge graduation](/cli/install.md#the-post-install-next-steps-nudge-change-93r2).
-- **README install flow** — the command block and its explanation paragraph, plus new `### shll agent-setup` and `### shll skill` command sections describing the current skills-placement + two-step design (no stanza wording anywhere).
+- **`install.go`'s post-install "Next steps" nudge** — the unconditional `agentSetupNudgeFmt` line (`shll agent-setup # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)`). shll is by definition present, so the line carries no presence gate — it prints on both outcome paths, never on dry-run. See [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge).
+- **README install flow** — the command block and its explanation paragraph, plus `### shll agent-setup` and `### shll skill` command sections describing the skills-placement + two-step design (no stanza wording anywhere).
 
 ## Constitution VII justification
 
@@ -110,8 +117,8 @@ Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (
 ## Cross-references
 
 - The runtime steps the placed skill teaches (`shll skill` glossary → `shll skill <tool>` bundle → `shll skill <tool> <topic>` topic page): [cli/skill](/cli/skill.md).
-- The nudge graduation and the shared `runKitToolName` constant (now consumed only by this file's delegation): [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge-change-93r2).
+- The nudge and the shared `runKitToolName` constant (consumed only by this file's delegation): [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge).
 - The subprocess wrapper the delegation uses: [internal/proc](/internal/proc.md).
 - Root wiring (`newAgentSetupCmd`), the exit-code sentinels (`errExitCode`/`usageExitCode`/`errSilent`): [cli/commands](/cli/commands.md).
-- The standard paragraph this command realizes (which originally described "aggregating bundles into context" — now the standard's own landed-design note records skills placement, not context aggregation): [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-agent-setup-skills-placement-not-context-aggregation).
+- The standard's landed-design note recording skills placement (not context aggregation): [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-agent-setup-skills-placement-not-context-aggregation).
 - Constitution I (Security First — the delegation routes through `internal/proc`), III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation), VII (Minimal Surface Area).
