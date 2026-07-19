@@ -10,7 +10,7 @@ Source: `src/internal/changelog/changelog.go`, tests in `src/internal/changelog/
 
 ## Overview
 
-The package (a) fetches a repo's GitHub Releases (unauthenticated, stdlib `net/http` only — no new module dependency), (b) normalizes versions and filters releases to a half-open `(old, new]` range newest-first, and (c) degrades **any** failure to a typed `Unavailable` `Result` so callers render a compare-URL fallback and keep going (Constitution V). Introduced by change r01z.
+The package (a) fetches a repo's GitHub Releases (unauthenticated, stdlib `net/http` only — no new module dependency), (b) normalizes versions and filters releases to a half-open `(old, new]` range newest-first, and (c) degrades **any** failure to a typed `Unavailable` `Result` so callers render a compare-URL fallback and keep going (Constitution V). (r01z)
 
 ## Endpoint, constants, and the test seams
 
@@ -25,7 +25,7 @@ The fetch targets `GET {baseURL}/repos/sahil87/{repo}/releases?per_page=100`, un
 | `githubOrgBase` | `https://github.com/` + `owner` + `/` | browser-facing URL base (compare/releases links) — NOT the API host |
 | `orgRepoPrefix` | `owner` + `/` | the owner segment of every API repo path (`repos/{owner}/{repo}`) |
 
-**Owner single-sourcing (r01z rework).** The `owner = "sahil87"` constant is the one place the owner is encoded; both `githubOrgBase` (browser URLs) and `orgRepoPrefix` (API path) derive from it, so the owner is never re-encoded and cannot drift. It deliberately *mirrors* `cmd/shll`'s `githubOrgBase` value rather than importing across the package boundary (this package MUST NOT depend on `cmd/shll`).
+**Owner single-sourcing.** The `owner = "sahil87"` constant is the one place the owner is encoded; both `githubOrgBase` (browser URLs) and `orgRepoPrefix` (API path) derive from it, so the owner is never re-encoded and cannot drift. It deliberately *mirrors* `cmd/shll`'s `githubOrgBase` value rather than importing across the package boundary (this package MUST NOT depend on `cmd/shll`).
 
 **Test seams — package-level vars, mirroring `proc.Runner`.** Two package-level vars are the injection points: `var baseURL = apiBaseDefault` (API host) and `var httpClient = &http.Client{}` (the client; requests carry their own context timeout, so the client needs no `Timeout` field). Tests swap them to point at an `httptest.Server`, exercising the **real** `net/http` code paths (status codes, JSON decode, timeout) without network. The exported `SetTransportForTest(base string, client *http.Client) (restore func())` is the one cross-package entry (used by `cmd/shll`'s `changelog_test.go`/`update_test.go`) — it swaps both seams and returns a restore closure; not for production use.
 
@@ -34,7 +34,7 @@ The fetch targets `GET {baseURL}/repos/sahil87/{repo}/releases?per_page=100`, un
 | Symbol | Contract |
 |--------|----------|
 | `Release{Tag, Title, Body}` | one release decoded from the JSON (`tag_name`→`Tag`, `name`→`Title`, `body`→`Body`); only rendered fields decoded, rest of the large payload ignored |
-| `RangeReq{Tool, Repo, Old, New}` | names one tool's fetch — tool name (for result labelling), repo slug (**not** always the name — rk's is `run-kit`), and the `(old, new]` bounds |
+| `RangeReq{Tool, Repo, Old, New}` | names one tool's fetch — tool name (for result labelling), repo slug (a distinct field as future-proofing — `Name == Repo` for every roster tool today), and the `(old, new]` bounds |
 | `Result{Tool, Repo, Old, New, Releases, Unavailable, Err}` | the fetch+filter outcome (see § Degradation) |
 | `FetchRange(ctx, RangeReq) Result` | fetch repo's releases + filter to `(old, new]`; folds any failure into `Unavailable=true, Err=…` — never returns an error |
 | `FetchAll(ctx, []RangeReq) []Result` | concurrent multi-tool fetch, order-preserving (see § Concurrency) |
@@ -45,7 +45,7 @@ The fetch targets `GET {baseURL}/repos/sahil87/{repo}/releases?per_page=100`, un
 | `CompareURL(repo, old, new) string` | browser "Full Changelog" compare link `github.com/sahil87/{repo}/compare/v{old}...v{new}` (tags always v-prefixed via `vTag`) |
 | `ReleasesURL(repo) string` | browser releases page `github.com/sahil87/{repo}/releases` (up-to-date notice / fallback anchor) |
 
-`CompareURL`/`ReleasesURL` are single-sourced here so neither `shll changelog` nor `shll update`'s digest re-open-codes the `rk`/`run-kit` slug footgun.
+`CompareURL`/`ReleasesURL` are single-sourced here so neither `shll changelog` nor `shll update`'s digest re-open-codes the repo-slug footgun.
 
 ## Version normalization + compare
 
@@ -59,11 +59,11 @@ The fetch targets `GET {baseURL}/repos/sahil87/{repo}/releases?per_page=100`, un
 
 ## LatestTag single-fetch contract
 
-`LatestTag(ctx, repo)` returns `(newestTag, allReleases, err)` — it fetches **once** and returns the release list too, so a caller resolving a no-range `shll changelog tool` (installed → latest) does NOT re-fetch: it takes `latest`, then range-filters the returned `[]Release` locally via `ReleasesInRange`. This is the "one GET per repo, not two" contract (the r01z rework that eliminated the no-range double-fetch). An empty release set returns `("", nil, nil)` — a successful fetch with no releases, not an error. Covered by `TestLatestTag`; the single-GET guarantee is asserted cross-package by `TestChangelog_NoRangeSingleFetchPerRepo`.
+`LatestTag(ctx, repo)` returns `(newestTag, allReleases, err)` — it fetches **once** and returns the release list too, so a caller resolving a no-range `shll changelog tool` (installed → latest) does NOT re-fetch: it takes `latest`, then range-filters the returned `[]Release` locally via `ReleasesInRange`. This is the "one GET per repo, not two" contract (r01z). An empty release set returns `("", nil, nil)` — a successful fetch with no releases, not an error. Covered by `TestLatestTag`; the single-GET guarantee is asserted cross-package by `TestChangelog_NoRangeSingleFetchPerRepo`.
 
 ## Degradation contract (Constitution V)
 
-`fetchReleases` is the single degradation point: it returns `ErrUnavailable` (wrapped with detail via `fmt.Errorf("%w: …")`) on a transport error, timeout, **any** non-200 status (403 rate-limit, 404, 5xx alike), a body-read error, or a JSON decode failure. On a non-200 the body is **intentionally not read** — the status code alone is the degradation signal (the deferred `resp.Body.Close()` still releases the connection; the r01z rework corrected a stale "drain" comment here). **No retries in v1.**
+`fetchReleases` is the single degradation point: it returns `ErrUnavailable` (wrapped with detail via `fmt.Errorf("%w: …")`) on a transport error, timeout, **any** non-200 status (403 rate-limit, 404, 5xx alike), a body-read error, or a JSON decode failure. On a non-200 the body is **intentionally not read** — the status code alone is the degradation signal (the deferred `resp.Body.Close()` still releases the connection). **No retries in v1.**
 
 `FetchRange` folds `ErrUnavailable` into `Result{Unavailable: true, Err: …}` and never returns an error, so call sites branch on the `bool` without importing the sentinel. Callers match the raw sentinel via `errors.Is(err, ErrUnavailable)` on the `LatestTag`/`fetchReleases` paths.
 
@@ -79,7 +79,7 @@ The Constitution-I-style boundary — `net/http` confined to this package exactl
 
 ## Cross-references
 
-- Command surface consuming this package: [cli/changelog](/cli/changelog.md) (full output) and [cli/update](/cli/update.md#version-capture--the-what-changed-digest-change-r01z) (the "What changed:" digest) — both surfaces share one release rendering (`renderReleases`, change 13k3); the digest adds a tool-name-bearing transition line above the shared release blocks.
+- Command surface consuming this package: [cli/changelog](/cli/changelog.md) (full output) and [cli/update](/cli/update.md#version-capture--the-what-changed-digest) (the "What changed:" digest) — both surfaces share one release rendering (`renderReleases`, 13k3); the digest adds a tool-name-bearing transition line above the shared release blocks.
 - Subprocess isolation sibling (the pattern this mirrors): [internal/proc](/internal/proc.md).
-- The `rk`/`run-kit` repo-slug footgun that `RangeReq.Repo` / `CompareURL` avoid re-open-coding: [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
+- The repo-slug footgun that `RangeReq.Repo` / `CompareURL` avoid re-open-coding: [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
 - Constitution I (net/http isolated in an internal package), II (stateless — every call re-fetches, no caching), V (any fetch failure degrades to a typed `Unavailable` Result).

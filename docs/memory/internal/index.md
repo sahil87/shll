@@ -5,4 +5,4 @@
 | File | Description |
 |------|-------------|
 | [changelog](changelog.md) | `internal/changelog` — shll's isolated stdlib-`net/http` GitHub-releases fetch layer: fetch + version normalize/compare + `(old, new]` range filter, concurrent `FetchAll`, and the typed `Unavailable` degradation Result. |
-| [proc](proc.md) | Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through — change agst), `ErrNotFound` sentinel, `Runner` test seam. |
+| [proc](proc.md) | Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `ErrNotFound` sentinel, `Runner` test seam. |

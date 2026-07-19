@@ -1,14 +1,12 @@
 ---
 type: memory
-description: "`release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap. No longer pushes to shll.ai (help-push transport torn down in change 7huv; shll.ai now pulls via `shll help-dump`)."
+description: "`release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap on `v*` tags. Carries no shll.ai publish step — shll.ai pulls via its own scheduled `shll help-dump` job."
 ---
 # ci/release-workflow
 
 The GitHub Actions release pipeline for shll. Source: `.github/workflows/release.yml`.
 
 Per Constitution VI, releases are cut by tagging `v*`; the workflow cross-compiles, publishes a GitHub Release, and updates the Homebrew tap.
-
-> **shll.ai integration is now pull-based (change 7huv).** This workflow no longer pushes anything to `sahil87/shll.ai`. shll.ai's own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself. The former help-push transport — a dedicated native build, `help/shll.json` generation, and an auto-merged cross-repo PR authed by `SHLLAI_TOKEN` (added in change ep4z) — was torn down in change 7huv. `SHLLAI_TOKEN` is no longer referenced anywhere in this workflow.
 
 ## Triggers
 
@@ -29,14 +27,19 @@ Per Constitution VI, releases are cut by tagging `v*`; the workflow cross-compil
 
 All third-party actions are pinned to commit SHAs.
 
-## shll.ai help-tree integration (now pull-based — teardown change 7huv)
+## shll.ai help-tree integration
 
-This workflow no longer publishes anything to `sahil87/shll.ai`. Change ep4z originally added a help-push transport here (a dedicated native `help-dump` build, `help/shll.json` generation + validation, and an auto-merged cross-repo PR authed by `SHLLAI_TOKEN`); change 7huv removed all three steps once shll.ai inverted the integration to **pull**.
+shll.ai's integration is pull-based: its own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself. The producer is the `help-dump` command (shipped with shll); the transport lives entirely in shll.ai. This workflow publishes nothing to `sahil87/shll.ai` and references no `SHLLAI_TOKEN`. (7huv)
 
-Today shll.ai's own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself — so the producer remains the `help-dump` command (still shipped), but the transport lives entirely in shll.ai. The JSON contract `help-dump` produces is documented in [cli/help-dump-contract](/cli/help-dump-contract.md).
+The JSON contract `help-dump` produces is documented in [cli/help-dump-contract](/cli/help-dump-contract.md).
 
-> **Design Decision: retire the push, let shll.ai pull (change 7huv).**
-> *Why*: shll.ai migrated to a scheduled puller (its change `oa63`) that runs `shll help-dump` itself, so the push transport ran on every release for no consumer — wasted work at best, and a loudly-failing release step once shll.ai's auto-merge / `SHLLAI_TOKEN` prerequisites were revoked. Removing only the transport (not the `help-dump` command) keeps the producer intact while eliminating the dead cross-repo push. `SHLLAI_TOKEN` is gone from the workflow; its repo-secret deletion is a post-merge manual settings action flagged in the change's PR.
+## Design Decisions
+
+### No push transport — shll.ai pulls
+**Decision**: The release workflow carries no shll.ai publish step; the `help-dump` producer stays in shll, and shll.ai's scheduled puller owns the transport.
+**Why**: A push transport runs on every release for no consumer (shll.ai's puller runs `shll help-dump` itself — its change `oa63`), and fails loudly once the shll.ai-side auto-merge / `SHLLAI_TOKEN` prerequisites are revoked. Keeping the `help-dump` command intact preserves the producer while eliminating the dead cross-repo push.
+**Rejected**: Removing the `help-dump` command along with the transport — shll.ai's puller still consumes it.
+*Introduced by*: `260603-7huv-teardown-shllai-push`
 
 ## Constitution conformance
 

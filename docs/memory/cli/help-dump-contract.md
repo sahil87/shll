@@ -4,9 +4,9 @@ description: "Hidden `shll help-dump` subcommand — the frozen `help/<tool>.jso
 ---
 # cli/help-dump-contract
 
-The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of the 7 toolkit tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai now **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump`, rather than receiving a push (the old push transport was torn down in change 7huv — see [ci/release-workflow](/ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
+The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of the 7 toolkit tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump` (see [ci/release-workflow](/ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
 
-Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; shll.ai's scheduled puller (`scheduled-help-refresh.yml`, on shll.ai's side) consumes it. This repo's release workflow no longer publishes to shll.ai — the push transport was torn down in change 7huv (see [ci/release-workflow](/ci/release-workflow.md)).
+Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; shll.ai's scheduled puller (`scheduled-help-refresh.yml`, on shll.ai's side) consumes it. This repo's release workflow publishes nothing to shll.ai (7huv — see [ci/release-workflow](/ci/release-workflow.md)).
 
 ## The JSON contract (frozen — schema_version 1)
 
@@ -21,7 +21,7 @@ The **tool-emitted envelope** — exactly what `shll help-dump` writes to stdout
 }
 ```
 
-`captured_at` is **shll.ai-owned**: shll.ai's puller stamps it onto the captured document post-capture, so the *stored* `help/<tool>.json` (e.g. the `wt.json` reference) does carry it — but the tool-emitted stdout envelope above MUST NOT. §3 of the contract and the pull-model teardown directive forbid the tool emitting it (a tool cannot know its own capture time). It was dropped from `help-dump`'s envelope in change 7huv (along with the `capturedAt()` helper, the `capturedAtLayout` constant, and the `"time"` import); its old purpose — a date-granular value powering the now-removed CI no-op guard — died with the push CI.
+`captured_at` is **shll.ai-owned**: shll.ai's puller stamps it onto the captured document post-capture, so the *stored* `help/<tool>.json` (e.g. the `wt.json` reference) does carry it — but the tool-emitted stdout envelope above MUST NOT. §3 of the contract forbids the tool emitting it — a tool cannot know its own capture time. (7huv)
 
 Top-level field meanings (field order is contractual — encoded via Go struct field order, see below):
 
@@ -83,9 +83,10 @@ This is the subtle, load-bearing rule. The real binary invokes `help-dump` via `
 
 Resolution: `pruneSkipped(root)` runs **before** building any node. It force-registers cobra's lazy `help`/`completion` (`InitDefaultHelpCmd` / `InitDefaultCompletionCmd` — idempotent no-ops if absent or already present), then recursively `RemoveCommand`s every skip-listed child from the live tree, recursing only into survivors. After pruning, every node's `UsageString()` `Available Commands:` block lists exactly its surviving `commands` entries.
 
-> **Design Decision: prune the live tree, not just filter the array (change ep4z).**
+> **Design Decision: prune the live tree, not just filter the array.**
 > *Why*: An earlier implementation filtered only the `commands` array and built `text` from a tree that still held `completion`/`help`, producing an incoherent split (text lists them, array omits them) that also diverged from `wt.json`. The earlier assumption — that `text` comes from a walk that never sees `completion`/`help` — was WRONG for the real binary because `Execute()` registers them before `RunE`. Pruning the live tree first is the fix; verified end-to-end against the Execute-built binary and guarded by an Execute-path regression test (`TestHelpDump_RootTextExcludesAutoCommands`, `TestHelpDump_ExcludesAutoCommandsEverywhere`) that fails pre-fix and passes post-fix.
 > *Consequence for tests*: tests MUST drive the dump through the real `rootCmd.Execute()` path (helper `dumpViaExecute`), not a bare `runHelpDump` call — a bare call never triggers cobra's lazy registration, so it would mask the incoherence the prune step exists to prevent.
+> *Introduced by*: `260602-ep4z-help-dump-cli-tree`
 
 ### `text` byte-for-byte
 
@@ -115,9 +116,10 @@ A node carries an `aliases` array of the command's registered alias names, popul
 
 Today shll has exactly one aliased command — `shell-setup` (alias `shell-install`, registered in `src/cmd/shll/shell_setup.go`) — so its node is the only one in `help/shll.json` that carries an `aliases` key (`["shell-install"]`); every other node is unchanged. The alias already appeared inside the node's raw `text` (cobra renders an `Aliases:` help section), but structured-field consumers could not see it without regex-parsing `text` — which the contract forbids. Emitting `aliases` makes the alias a first-class structured field.
 
-> **Design Decision: optional field vs. duplicate nodes; no `schema_version` bump (change whd7).**
+> **Design Decision: optional field vs. duplicate nodes; no `schema_version` bump.**
 > *Why a field, not extra nodes*: The alternative — emitting each alias as its own Node — would fabricate tree structure (synthesized `name`/`path` values cobra never registers as distinct commands) and break the text↔commands coherence rule: each node's `Available Commands:` block lists canonical names only, so a `commands` array padded with alias nodes would diverge from the rendered `text`, the exact incoherence prune-before-render exists to prevent.
 > *Why no `schema_version` bump*: `schema_version` stays `1`. The [help-dump standard](/cli/standards-content.md)'s § Schema evolution is the authority — it reserves bumps for breaking shape changes and names **optional additive fields** as the non-breaking evolution path (each tool adopts on its own release cadence, no seven-repo flag-day, older captures keep validating). `aliases` is the first field added under that clause.
+> *Introduced by*: `260718-whd7-help-dump-emit-aliases`
 
 ## Why a hidden subcommand (not a standalone tool)
 
@@ -128,7 +130,7 @@ Today shll has exactly one aliased command — `shell-setup` (alias `shell-insta
 - **I (Security First)** — N/A to the producer: it does a pure in-process tree walk with no subprocess execution (no `os/exec`, no `internal/proc`). Constitution I governs Go subprocess invocation; the CI git/gh shell-out lives in YAML, not Go.
 - **II (No State)** — the dump is re-derived from the live command tree on every invocation; no caching.
 - **VII (Minimal Surface Area)** — `Hidden` build tooling, not a user-facing addition to the `update`/`shell-init`/`version`/`install` surface.
-- **Dependencies** — standard library only (`encoding/json`, `strings`, `unicode`, `io`) plus the existing `github.com/spf13/cobra`. No new go.mod deps. (The `"time"` import was dropped in change 7huv along with `captured_at`.)
+- **Dependencies** — standard library only (`encoding/json`, `strings`, `unicode`, `io`) plus the existing `github.com/spf13/cobra`. No other go.mod deps.
 
 ## Test coverage
 
@@ -142,10 +144,9 @@ Today shll has exactly one aliased command — `shell-setup` (alias `shell-insta
 - Execute-path regression — `TestHelpDump_RootTextExcludesAutoCommands` + `TestHelpDump_ExcludesAutoCommandsEverywhere`: drive via `dumpViaExecute` so cobra's lazy `completion`/`help` register exactly as on the shipped binary, then assert they appear in NEITHER `commands` NOR the rendered `text` `Available Commands:` block.
 - Real-tree aliases — `TestHelpDump_EmitsAliasesRealTree`: drives the real `rootCmd.Execute()` path via `dumpViaExecute` (per prune-before-render) and asserts the `shell-setup` node carries exactly `["shell-install"]`, pinning the shipped binary's one aliased command.
 
-(Change 7huv removed `TestHelpDump_CapturedAtShape` and its `capturedAtRE`/`regexp` dependency, dropping the count from 8 to 7 and adding the `captured_at`-absence assertion to the contract-shape test; change whd7 restored the count to 8 by adding `TestHelpDump_EmitsAliasesRealTree` and extending the contract-shape test with the `aliases` order + key-presence assertions above.)
 
 ## Cross-references
 
-- Transport: `help-dump` writes to stdout; shll.ai's scheduled puller consumes it. The release workflow no longer publishes to shll.ai (push transport torn down in change 7huv): [ci/release-workflow](/ci/release-workflow.md).
+- Transport: `help-dump` writes to stdout; shll.ai's scheduled puller consumes it; the release workflow publishes nothing to shll.ai (7huv): [ci/release-workflow](/ci/release-workflow.md).
 - Root command wiring, version ldflags injection: [cli/commands](/cli/commands.md).
 - The reference sample `help/wt.json` lives in `sahil87/shll.ai`, not this repo — the byte-for-byte `text` test against real `-h` is the enforceable fidelity contract.

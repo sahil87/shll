@@ -6,11 +6,11 @@ description: "`shll shell-setup [shell]` (alias `shell-install`) — sentinel-wr
 
 `shll shell-setup [shell]` — maintains a single sentinel-wrapped shll-managed block in the user's shell rc file. The block holds the cross-tool `eval "$(shll shell-init <shell>)"` line — **the only managed line**. Idempotent re-runs (per-line), optional `--print` (dry run) and `--uninstall` (removal) modes, plus `--rc-file` as a universal escape hatch for non-standard layouts.
 
-> **Pure rc-wiring since change 0854 — `--trust-tap` removed.** Earlier versions (change l6lo) carried a `--trust-tap` flag that wrote an `export HOMEBREW_REQUIRE_TAP_TRUST=1` policy line **and** ran a whole-tap `brew trust --tap` ceremony. Change 0854 **removed `--trust-tap` entirely** (the flag, the export line + its merge logic, the `ensureTrustFunc` ceremony seam, `blockMatch.hasExport`, and the whole-tap ceremony helpers in `brew.go`). Trust is no longer a shell-wiring concern — it belongs with *installing* formulae, so per-formula trust moved to `shll install` (per-formula, the Homebrew-recommended granularity for third-party taps — see [cli/install](/cli/install.md#per-formula-trust-before-install-change-0854)). `shell-setup` is now **pure rc-wiring**: a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` line from a former `--trust-tap` install is actively stripped on the next run (see [Stale-export migration](#stale-export-migration-change-0854)).
+> **Pure rc-wiring.** `shell-setup` writes only the eval line. Homebrew trust is not a shell-wiring concern — it belongs with *installing* formulae, so per-formula trust lives in `shll install` (the Homebrew-recommended granularity for third-party taps — see [cli/install](/cli/install.md#per-formula-trust-before-install)). A stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` line written by an older shll is actively stripped on the next run (see [Stale-export migration](#stale-export-migration)). (0854)
 
-**Canonical name + back-compat alias.** `shell-setup` is the canonical command name (renamed from `shell-install` by change ri3h). `shell-install` is retained as a cobra alias (`Aliases: []string{"shell-install"}`) that dispatches to the same `*cobra.Command` — existing rc files, scripts, and muscle memory keep working with zero breakage. The rename was a full Go-identifier rename (file, factory `newShellSetupCmd`, run helpers, test file/helpers) off the `ShellInstall` stem; behavior is identical, only names/help/message-prefixes changed.
+**Canonical name + back-compat alias.** `shell-setup` is the canonical command name; `shell-install` is a cobra alias (`Aliases: []string{"shell-install"}`) dispatching to the same `*cobra.Command` — existing rc files, scripts, and muscle memory keep working. (ri3h)
 
-Source: `src/cmd/shll/shell_setup.go`. This file performs **file I/O only** and imports neither `internal/proc` nor `os/exec` (Constitution I scope is subprocess execution). Since change 0854 removed the `--trust-tap` ceremony seam, the file is **strictly** file-I/O — there is no longer even a function-value bridge to `brew.go`. `TestNoProcImports` (`func TestNoProcImports` in `shell_setup_test.go`) enforces the no-import invariant by reading the source as bytes, and is now **stronger**: it additionally asserts the removed `ensureTrustFunc` seam is absent.
+Source: `src/cmd/shll/shell_setup.go`. This file performs **file I/O only** and imports neither `internal/proc` nor `os/exec` (Constitution I scope is subprocess execution) — there is not even a function-value bridge to `brew.go`. `TestNoProcImports` (`shell_setup_test.go`) enforces the no-import invariant by reading the source as bytes, and additionally asserts no `ensureTrustFunc` reference exists (0854).
 
 ## Usage
 
@@ -29,13 +29,13 @@ The single managed line this command writes:
 eval "$(shll shell-init zsh)"             # always — the only managed line
 ```
 
-The eval line is the cross-tool composition entry point — see [cli/shell-init](/cli/shell-init.md). `shell-setup` exists so the user does not have to know which rc file to paste it into, nor remember to dedupe on re-install. (Homebrew tap-trust is no longer touched here — it moved to `shll install` as of change 0854.)
+The eval line is the cross-tool composition entry point — see [cli/shell-init](/cli/shell-init.md). `shell-setup` exists so the user does not have to know which rc file to paste it into, nor remember to dedupe on re-install.
 
 ## Behavior contract
 
-`runShellSetup(ctx, args, rcFileFlag, printMode, uninstallMode, stdout, stderr)` (`shell_setup.go`, `runShellSetup`) is the implementation seam. The cobra `RunE` wrapper builds the writers and delegates — there is no ceremony function to pass (change 0854). The dispatch sequence:
+`runShellSetup(ctx, args, rcFileFlag, printMode, uninstallMode, stdout, stderr)` (`shell_setup.go`, `runShellSetup`) is the implementation seam. The cobra `RunE` wrapper builds the writers and delegates. The dispatch sequence:
 
-1. **Default `ctx`.** A nil context is replaced with `context.Background()`, then immediately discarded (`_ = ctx`) — the parameter is retained only for signature stability; shell-setup performs no ctx-scoped work after the ceremony seam was removed.
+1. **Default `ctx`.** A nil context is replaced with `context.Background()`, then immediately discarded (`_ = ctx`) — the parameter is retained only for signature stability; shell-setup performs no ctx-scoped work.
 2. **Flag conflict.** If both `--print` and `--uninstall` are set → return `errExitCode{code: 2, msg: "shll shell-setup: --print and --uninstall are mutually exclusive"}`. Exit code **2**.
 3. **Resolve shell.** Delegate to `resolveShell(args, os.Getenv)`.
 4. **Resolve rc file.** If `--rc-file <path>` was passed, use it verbatim. Otherwise derive via `resolveRcFile(shell, os.Getenv)`.
@@ -72,7 +72,7 @@ The `--rc-file <path>` flag short-circuits derivation entirely: the supplied pat
 
 ## Sentinel block format (exact)
 
-The shll-managed block uses the **`# >>> shll >>>` / `# <<< shll <<<`** sentinel pair (note the close sentinel uses three `<` chars). Since change 0854 it holds exactly **one** managed line — the eval line:
+The shll-managed block uses the **`# >>> shll >>>` / `# <<< shll <<<`** sentinel pair (note the close sentinel uses three `<` chars). It holds exactly **one** managed line — the eval line:
 
 ```
 # >>> shll >>>
@@ -80,7 +80,7 @@ eval "$(shll shell-init <shell>)"
 # <<< shll <<<
 ```
 
-(Before change 0854, a `--trust-tap` install could additionally carry an `export HOMEBREW_REQUIRE_TAP_TRUST=1` line above the eval line; that export line is no longer written, and a stale one is stripped on the next run — see [Stale-export migration](#stale-export-migration-change-0854).)
+(A stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` line from an older install is stripped on the next run — see [Stale-export migration](#stale-export-migration).)
 
 ### Constants (top of `shell_setup.go`)
 
@@ -89,26 +89,25 @@ eval "$(shll shell-init <shell>)"
 - `evalLineFmt = `eval "$(shll shell-init %s)"`` — the eval body, with `%s` substituted by the resolved shell. `evalLine(shell)` formats it.
 - `evalLinePrefix = `eval "$(shll shell-init`` — the shell-agnostic prefix used to recognize an existing eval line during a merge, regardless of which shell it was installed for.
 
-(The `exportTrustLine` constant was removed by change 0854 along with `--trust-tap`.)
 
 ### Block builders
 
 - `buildBlockBody(lines []string) []byte` is the **single source of truth** for block contents: it wraps an ordered set of managed lines in the new sentinel pair, each line plus a trailing `\n`, ending with a single trailing `\n` after the close sentinel. It does **not** reorder or dedup.
 - `buildBlock(shell) []byte` is the eval-only convenience builder (routes through `buildBlockBody([]string{evalLine(shell)})`); used by `--print`.
-- `wantLines(_ blockMatch, shell string) []string` computes the canonical managed-line set after this invocation. Since shell-setup is pure rc-wiring, it returns **just `[evalLine(shell)]`** — the eval line is unconditional and there are no other managed lines to carry forward. The `blockMatch` parameter is **unused** (retained for signature symmetry with the merge call site); it no longer carries the dropped export-branch logic. A pre-existing block's no-longer-managed lines (e.g. a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1`) are simply not recognized by `findBlockWith`, so a rewrite drops them.
+- `wantLines(_ blockMatch, shell string) []string` computes the canonical managed-line set after this invocation. Since shell-setup is pure rc-wiring, it returns **just `[evalLine(shell)]`** — the eval line is unconditional and there are no other managed lines to carry forward. The `blockMatch` parameter is **unused** (retained for signature symmetry with the merge call site). A pre-existing block's no-longer-managed lines (e.g. a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1`) are simply not recognized by `findBlockWith`, so a rewrite drops them.
 
 Drift between the write, print, and migration paths is a defect — they all derive from the same constants via `buildBlockBody`. The block carries no "managed by shll, do not edit" line; the bookend sentinels are themselves the visual signal.
 
 ## Block location and parsing
 
-`blockMatch` describes a located block: its inclusive byte range `[start, end)` (open sentinel through the trailing `\n` after the close sentinel) plus a single `hasEval` flag extracted from the body. (The `hasExport` flag was removed by change 0854 along with the export line.)
+`blockMatch` describes a located block: its inclusive byte range `[start, end)` (open sentinel through the trailing `\n` after the close sentinel) plus a single `hasEval` flag extracted from the body.
 
 - `findBlockWith(content, open, close) (m blockMatch, ok, partial bool)` locates a block for a given sentinel pair and parses whether it carries the eval line (body lines are trimmed; **only** a line with `evalLinePrefix` is recognized — any other body line, e.g. a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` from a former `--trust-tap` install, is ignored and so dropped on rewrite). It returns `partial=true` when the open sentinel is present but its matching close is **absent** — an unclosed/corrupted block.
 - `locateBlock(content)` is the single entry point used by install and uninstall. It calls `findBlockWith` for **both** the new and legacy sentinels and returns `(newM, newOK, legacyM, legacyOK, partial)`, where `partial` is the OR of either sentinel being open-without-close.
 
 ## Idempotency invariant (now per-line)
 
-Idempotency is **per-line**, not a single substring match. The desired block body is `buildBlockBody(wantLines(...))` — since change 0854 that is just the eval line (the only managed line). A managed line already present is not duplicated.
+Idempotency is **per-line**, not a single substring match. The desired block body is `buildBlockBody(wantLines(...))` — just the eval line (the only managed line). A managed line already present is not duplicated.
 
 The byte-identical no-op is detected in the **rewrite path** (`rewriteBlocks`): after splicing out existing block(s) and inserting the merged block, if `bytes.Equal(merged, content)` the file is left untouched, `shll shell-setup: already installed in <path> (no changes).` is written to stderr, and the command exits 0. So a full re-run of `shll shell-setup` against a block that already contains exactly the eval line is byte-identical before and after. `TestInstall_Idempotent` and `TestMigration_StaleExportThenReRunIsNoop` (the second run after a stale-export strip) assert this with byte-equality.
 
@@ -120,8 +119,8 @@ The byte-identical no-op is detected in the **rewrite path** (`rewriteBlocks`): 
 
 1. `os.Stat` the rc file (**no `O_CREATE`** ever). Missing → `errExitCode{code:2}` (see [never creates rc files](#shll-never-creates-rc-files-invariant)). Other stat error → `errSilent` (exit 1).
 2. `os.ReadFile` the content.
-3. `locateBlock(content)`. If `partial` (open-without-close, either sentinel) → **refuse**: return `errExitCode{code:2, msg: "...has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run."}`. This is a deliberate divergence from the legacy short-circuit-as-"already-installed" behavior (guessing the bounds of an unclosed block risks corrupting the rc file).
-4. **Compute the desired block.** `desired = buildBlockBody(wantLines(blockMatch{}, shell))` — the eval-only block (no ceremony, no union; change 0854 made the eval line the only managed line, so a synthesized `existing` blockMatch is no longer needed and a literal `blockMatch{}` is passed). This single call is byte-equivalent to `buildBlock(shell)`.
+3. `locateBlock(content)`. If `partial` (open-without-close, either sentinel) → **refuse**: return `errExitCode{code:2, msg: "...has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run."}`. Guessing the bounds of an unclosed block risks corrupting the rc file, so refusing is deliberate.
+4. **Compute the desired block.** `desired = buildBlockBody(wantLines(blockMatch{}, shell))` — the eval-only block (no ceremony, no union; the eval line is the only managed line, so a literal `blockMatch{}` is passed). This single call is byte-equivalent to `buildBlock(shell)`.
 5. **Write.**
    - No existing block (`!newOK && !legacyOK`) → `appendBlock` (plain `O_APPEND`, symlink-safe).
    - One or both blocks exist → `rewriteBlocks` (read-modify-write → `EvalSymlinks`→`O_TRUNC`).
@@ -142,9 +141,9 @@ A legacy `# >>> shll shell-init >>>` block is migrated **in place** on the next 
 
 Migration preserves the symlink, trailing-newline, and never-creates-rc-files invariants (it goes through the same `rewriteBlocks` write path).
 
-## Stale-export migration (change 0854)
+## Stale-export migration
 
-When `--trust-tap` was removed, an existing rc block written by a former `--trust-tap` install may still carry a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` line. The next `shll shell-setup` run **actively strips it** — no special-casing required, because the existing rewrite/merge path does it for free:
+An rc block written by an older shll may still carry a stale `export HOMEBREW_REQUIRE_TAP_TRUST=1` line. The next `shll shell-setup` run **actively strips it** — no special-casing required, because the existing rewrite/merge path does it for free (0854):
 
 - `findBlockWith` recognizes **only** the eval line as a managed line, so the export line is invisible to the block parse.
 - `wantLines` returns just the eval line, so `desired` is the eval-only block.
@@ -154,7 +153,7 @@ The export line was inert anyway (it only re-set Homebrew's default), so strippi
 
 ## `--print` (dry-run)
 
-`runShellSetupPrint(shell, rcPath, stdout, stderr)` is a dry-run: it resolves shell + rc file (still errors on a missing rc file — the user may be debugging exactly that), then writes the eval-only block (`buildBlock(shell)`) to stdout with no surrounding messages, and modifies **no file**. (Change 0854 removed the `trustTap` parameter and the combined-block print path — there is now only the eval-only block.)
+`runShellSetupPrint(shell, rcPath, stdout, stderr)` is a dry-run: it resolves shell + rc file (still errors on a missing rc file — the user may be debugging exactly that), then writes the eval-only block (`buildBlock(shell)`) to stdout with no surrounding messages, and modifies **no file**.
 
 ## Symlink-preservation invariants
 
@@ -201,7 +200,7 @@ This prevents the open sentinel from landing on the same line as the user's prev
 
 - It recognizes BOTH the new `# >>> shll >>>` sentinel AND a legacy `# >>> shll shell-init >>>` block (so users who never re-installed can still uninstall), via `locateBlock`.
 - It splices out every located block (later range first), then `EvalSymlinks`→`O_TRUNC`-writes the result. Both-blocks-present removes both.
-- It runs **no Homebrew command at all** — `shell-setup` is pure file I/O (change 0854; there is no longer any trust state for it to touch, and any stale `export` line inside the block is removed with the block). The `shell` argument is unused (sentinels are shell-agnostic).
+- It runs **no Homebrew command at all** — `shell-setup` is pure file I/O (any stale `export` line inside the block is removed with the block). The `shell` argument is unused (sentinels are shell-agnostic).
 - Missing rc file or no block present → benign no-op message, exit 0.
 
 On success: `Removed shll shell integration from <path>.` Tests: `TestUninstall_RemovesBlock` (new), `TestUninstall_RemovesLegacyBlock`, `TestUninstall_RemovesBothSentinelBlocks`, `TestUninstall_RemovesStaleExportBlock` (a block still carrying a stale `export` line is removed whole), `TestUninstall_PreservesSymlink`, `TestUninstall_BlockAbsent`, `TestUninstall_RcAbsent`.
@@ -222,27 +221,27 @@ Mirrors the convention `shll shell-init` already established — see [cli/comman
 
 `shell_setup_test.go` (test-alongside, per `code-quality.md` `## Test Strategy`):
 
-- **No `proc.Runner` fake — shell-setup invokes no subprocess (change 0854).** With `--trust-tap` and its ceremony seam removed, the command is pure file I/O, so every test goes through `runShellSetupCmd(t, argv)` (a fresh cobra command with `bytes.Buffer` writers) against a `t.TempDir()` rc file. The prior trust-path tests (`TestTrustTap_*`, `TestBuildBlock_CombinedTrust`, `TestPrintTrustTap_*`, `TestMigration_*OnTrustTap`, the `installTrustSuccessRunner` helper) are gone; the test file no longer imports `internal/proc`.
+- **No `proc.Runner` fake — shell-setup invokes no subprocess.** The command is pure file I/O, so every test goes through `runShellSetupCmd(t, argv)` (a fresh cobra command with `bytes.Buffer` writers) against a `t.TempDir()` rc file. The test file does not import `internal/proc`.
 - **`t.TempDir()`** for every rc-file test — the user's real `~/.zshrc` / `~/.bashrc` / `~/.bash_profile` is never touched.
 - **`osGoos` swap** via `setOsGoos(t, value)` for the macOS-vs-Linux bash defaults. Saves and restores the package-level variable through `t.Cleanup`.
 - **`envFunc(map)`** — unit tests for `resolveShell` / `resolveRcFile` use a map-backed env lookup so they run without mutating process state.
 - **`t.Setenv`** for end-to-end tests that go through the real cobra command.
 
-Source-level guard: `TestNoProcImports` (`func TestNoProcImports` in `shell_setup_test.go`; its hardcoded filename argument was updated from `shell_install.go` to `shell_setup.go` by change ri3h) reads `shell_setup.go` as bytes and fails if the source contains `internal/proc` or `"os/exec"`. Change 0854 made it **stronger**: it additionally fails if the source still references the removed `ensureTrustFunc` seam (a regression that pulled subprocess work back toward this file). This is a defensive check protecting Constitution I scoping.
+Source-level guard: `TestNoProcImports` (`shell_setup_test.go`) reads `shell_setup.go` as bytes and fails if the source contains `internal/proc` or `"os/exec"`; it additionally fails if the source references `ensureTrustFunc` (a regression that would pull subprocess work back toward this file). This is a defensive check protecting Constitution I scoping.
 
-Alias-coverage guard: `TestRoot_ShellInstallAliasResolves` (`func TestRoot_ShellInstallAliasResolves` in `shell_setup_test.go`, added by change ri3h) asserts the backward-compat `shell-install` alias dispatches to the same `*cobra.Command` as the canonical `shell-setup` — it builds the root via `newRootCmd()` and checks `root.Find([]string{"shell-install"})` and `root.Find([]string{"shell-setup"})` return the identical command pointer (cobra's `Find` resolves aliases), and that the resolved command's `Name()` is `shell-setup`. The registration test was renamed `TestRoot_ShellInstallRegistered` → `TestRoot_ShellSetupRegistered` (cobra's `Name()` returns the first word of `Use`, now `shell-setup`).
+Alias-coverage guard: `TestRoot_ShellInstallAliasResolves` (`shell_setup_test.go`, ri3h) asserts the backward-compat `shell-install` alias dispatches to the same `*cobra.Command` as the canonical `shell-setup` — it builds the root via `newRootCmd()` and checks `root.Find([]string{"shell-install"})` and `root.Find([]string{"shell-setup"})` return the identical command pointer (cobra's `Find` resolves aliases), and that the resolved command's `Name()` is `shell-setup`.
 
-(The whole-tap ceremony helpers `brewTrustTap`/`ensureTapTrust`/`trustHatchHint` and their `brew_test.go` tests were removed by change 0854; `brewTrustAvailable` survives — reused by `shll install`'s per-formula trust and `shll doctor`'s trust sub-check — and its `TestBrewTrustAvailable_*` tests remain.)
+(`brewTrustAvailable` in `brew.go` is reused by `shll install`'s per-formula trust and `shll doctor`'s trust sub-check; its `TestBrewTrustAvailable_*` tests live in `brew_test.go`.)
 
 ## Cross-references
 
 - Read-only reuse by `doctor` and `shll install`: these primitives (`resolveShell`, `resolveRcFile`, `locateBlock`, `blockMatch.hasEval`) are composed by `doctor.go`'s `resolveWiringFact` and consumed **strictly READ-ONLY** by two commands — neither ever calls a write path (`appendBlock`, `rewriteBlocks`, `buildBlockBody`) nor creates/migrates the rc file:
   - [cli/doctor](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse) — `shll doctor`'s wiring check `os.ReadFile`s the rc file and inspects `hasEval` to mark each shell-init tool wired/unwired/corrupt.
-  - [cli/install §the post-install "Next steps" nudge](/cli/install.md#the-post-install-next-steps-nudge-change-93r2) *(change 93r2)* — `shll install` reuses the same `resolveWiringFact` to gate its post-install shell-setup nudge (nudge only when `shellResolved && !corrupt && !wired`).
-- Where trust went (change 0854): per-formula Homebrew trust moved to `shll install` (the Homebrew-recommended granularity for third-party taps) — see [cli/install §per-formula trust before install](/cli/install.md#per-formula-trust-before-install-change-0854). The surviving `brewTrustAvailable` helper in `brew.go` is reused there and by `doctor`'s read-only trust sub-check ([cli/doctor §the trust sub-check](/cli/doctor.md#the-trust-sub-check-change-0854)). The constant `tapName` (`"sahil87/tap"`) survives in `tools.go` but is now used only by `doctor`'s tap-level trust check, not by any `shell-setup` ceremony.
+  - [cli/install §the post-install "Next steps" nudge](/cli/install.md#the-post-install-next-steps-nudge) (93r2) — `shll install` reuses the same `resolveWiringFact` to gate its post-install shell-setup nudge (nudge only when `shellResolved && !corrupt && !wired`).
+- Trust lives with install (0854): per-formula Homebrew trust is `shll install`'s job (the Homebrew-recommended granularity for third-party taps) — see [cli/install §per-formula trust before install](/cli/install.md#per-formula-trust-before-install). The `brewTrustAvailable` helper in `brew.go` is reused there and by `doctor`'s read-only trust sub-check ([cli/doctor §the trust sub-check](/cli/doctor.md#the-trust-sub-check)). The constant `tapName` (`"sahil87/tap"`) in `tools.go` is used only by `doctor`'s tap-level trust check.
 - Subcommand registration and exit-code translation: [cli/commands](/cli/commands.md).
 - The eval-line target: [cli/shell-init](/cli/shell-init.md) — `shell-setup` writes the line that `shell-init` produces output for.
 - Subprocess execution: [internal/proc](/internal/proc.md) — `shell-setup` invokes **none** (it is pure file I/O); the `TestNoProcImports` guard pins this.
-- Constitution I (Security First) → `shell_setup.go` is subprocess-free, enforced by the (now stronger) `TestNoProcImports` guard — since change 0854 there is no ceremony seam bridging to `brew.go` at all.
-- Constitution VII (Minimal Surface Area) → change 0854 **removed** the `--trust-tap` flag (a net surface-area reduction); the `shell-setup` rename (change ri3h) keeps the `shell-install` alias without changing the count. Justifications recorded in the respective change intakes.
-- Cross-Platform Behavior → the darwin-vs-other branch in `resolveRcFile` is the only platform-specific code path, isolated behind the `osGoos` package-level variable (`osGoos` is no longer used by any brew call — change 0854).
+- Constitution I (Security First) → `shell_setup.go` is subprocess-free, enforced by the `TestNoProcImports` guard — there is no ceremony seam bridging to `brew.go` at all (0854).
+- Constitution VII (Minimal Surface Area) → `shell-setup` carries no trust flag (0854 — a net surface-area reduction); the `shell-install` alias (ri3h) does not change the count. Justifications recorded in the respective change intakes.
+- Cross-Platform Behavior → the darwin-vs-other branch in `resolveRcFile` is the only platform-specific code path, isolated behind the `osGoos` package-level variable (used by no brew call — 0854).

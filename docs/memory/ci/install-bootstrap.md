@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, brew-required (never auto-installed), capability-probed tap-trust, and `exec shll install \"$@\"` delegation. Owns the shll.ai raw-fetch URL contract (must merge to main before shll.ai#84) and the dev-script rename to `scripts/install-local.sh`."
+description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, brew-required (never auto-installed), capability-probed tap-trust, and `exec shll install \"$@\"` delegation. Owns the load-bearing `scripts/install.sh` path shll.ai raw-fetches from `main`."
 ---
 # ci/install-bootstrap
 
@@ -15,8 +15,6 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt   # install a subset
 
 `scripts/install.sh` is a **thin** POSIX-sh bootstrap. Its only job is to solve the circularity that `shll` cannot trust/install its own Homebrew formula before that binary exists on `PATH`. Once `shll` is present it `exec`s into `shll install "$@"`, which owns all the intelligence — roster knowledge, subset filtering, per-formula trust for the other six tools, graceful skips (Constitution III — wrap, don't reinvent). The script is a few dozen auditable lines and carries none of that logic.
 
-Introduced by change `m1zt`.
-
 ## Behavior contract
 
 The body is wrapped `main() { … }; main "$@"` and runs `set -eu`. In `main`'s evaluation order:
@@ -24,7 +22,7 @@ The body is wrapped `main() { … }; main "$@"` and runs `set -eu`. In `main`'s 
 1. **Homebrew required, never auto-installed.** If `command -v brew` fails, write `Homebrew is required but was not found.` and an `Install it from https://brew.sh, then re-run this script.` pointer to **stderr** and `exit 1`. The script never installs Homebrew (explicitly ruled out in design — see [Design Decisions](#design-decisions)).
 2. **Idempotent shll short-circuit.** If `command -v shll` succeeds, skip the whole bootstrap block (no `brew trust`, no `brew install`) and fall straight through to the exec.
 3. **Trust-then-install shll (only when missing).** Otherwise print one progress line (`shll not found — installing sahil87/tap/shll via Homebrew...`) to stdout, then:
-   - **Capability-probed trust.** `brew trust --help >/dev/null 2>&1` gates the trust step. On success run `brew trust --formula sahil87/tap/shll`; on non-zero (pre-6.0 Homebrew has no `brew trust` and no trust requirement) skip it silently. This mirrors the Go probe `brewTrustAvailable` (`src/cmd/shll/brew.go:67`) — **the probe is the contract, never a version-floor check**. See [cli/install §Per-formula trust before install](/cli/install.md#per-formula-trust-before-install-change-0854).
+   - **Capability-probed trust.** `brew trust --help >/dev/null 2>&1` gates the trust step. On success run `brew trust --formula sahil87/tap/shll`; on non-zero (pre-6.0 Homebrew has no `brew trust` and no trust requirement) skip it silently. This mirrors the Go probe `brewTrustAvailable` (`src/cmd/shll/brew.go:67`) — **the probe is the contract, never a version-floor check**. See [cli/install §Per-formula trust before install](/cli/install.md#per-formula-trust-before-install).
    - `brew install sahil87/tap/shll`.
    - Under `set -e`, a failing `brew trust` or `brew install` on Homebrew 6.0+ aborts the script with brew's own error output — no swallowing. That surface-the-error tolerance is intentional.
 4. **Exec hand-off.** `exec shll install "$@"` — every arg forwarded verbatim as the install subset (tool names, e.g. `hop wt`). `shll install` validates the names itself (`resolveTargets`, `allowShll=false`; the alias `rk` resolves to `run-kit`). The script contains zero roster/subset/per-tool-trust logic.
@@ -57,21 +55,13 @@ The final action SHALL be `exec shll install "$@"`. The script SHALL NOT duplica
 
 ## The shll.ai raw-fetch URL contract
 
-`scripts/install.sh` on `main` is what shll.ai serves at `shll.ai/install`. The site repo's build (sahil87/shll.ai#84, in flight at the time of this change) fetches `https://raw.githubusercontent.com/sahil87/shll/main/scripts/install.sh` into its `public/install` with a fail-hard `curl -f`.
+`scripts/install.sh` on `main` is what shll.ai serves at `shll.ai/install`. The site repo's build fetches `https://raw.githubusercontent.com/sahil87/shll/main/scripts/install.sh` into its `public/install` with a fail-hard `curl -f` (sahil87/shll.ai#84).
 
-Two consequences pinned by this contract:
+**The path is load-bearing.** Renaming or moving `scripts/install.sh` breaks the site deploy (the raw-fetch 404s). This is why the local dev script lives at a different path — see [The local dev script](#the-local-dev-script).
 
-- **The path is load-bearing.** Renaming or moving `scripts/install.sh` later breaks the site deploy (the raw-fetch 404s). This is why the pre-existing dev script had to move rather than the bootstrap taking a different path — see [The dev-script rename](#the-dev-script-rename).
-- **Merge-order constraint (ship-stage).** This change MUST merge to `main` before sahil87/shll.ai#84 merges — the site's build-time `curl -f` 404s until the file exists on `main`. No mechanism is needed in this repo; it is a sequencing note for ship.
+## The local dev script
 
-## The dev-script rename
-
-Before change `m1zt`, `scripts/install.sh` was the **local dev install script** (bash: `./scripts/build.sh` then copy `./bin/shll` to `~/.local/bin/shll`), delegated to by the `justfile` `install` recipe. Because the bootstrap must own the pinned `scripts/install.sh` path (above), the dev script was renamed:
-
-- `git mv scripts/install.sh scripts/install-local.sh` (content unchanged).
-- `justfile` `install` recipe body → `./scripts/install-local.sh` (the recipe name `install` and its comment are unchanged, so `just install` UX is identical — it still builds and copies the binary to `~/.local/bin/shll`).
-
-This was the sole in-repo reference to the old path (verified across `justfile`, `scripts/`, `.github/`, `README.md`, `docs/site/`).
+`scripts/install-local.sh` is the **local dev install script** (bash: `./scripts/build.sh`, then copy `./bin/shll` to `~/.local/bin/shll`), delegated to by the `justfile` `install` recipe — `just install` builds and installs the binary locally. The bootstrap owns the pinned `scripts/install.sh` path (see the URL contract above). (m1zt)
 
 ## Design Decisions
 
@@ -103,7 +93,7 @@ Behavior is verified by inspection and a syntax/lint gate — no Go changes, no 
 
 ## Cross-references
 
-- The delegation target and the trust contract it mirrors: [cli/install](/cli/install.md) (esp. [§the curl \| sh upstream entry point](/cli/install.md#the-curl--sh-upstream-entry-point-change-m1zt) and [§Per-formula trust before install](/cli/install.md#per-formula-trust-before-install-change-0854)).
+- The delegation target and the trust contract it mirrors: [cli/install](/cli/install.md) (esp. [§the curl \| sh upstream entry point](/cli/install.md#the-curl--sh-upstream-entry-point) and [§Per-formula trust before install](/cli/install.md#per-formula-trust-before-install)).
 - The Go trust capability probe this script mirrors: `brewTrustAvailable` in `src/cmd/shll/brew.go`.
 - User-facing docs leading with the one-liner: `README.md` (`## Install`), `docs/site/install.md` (Bootstrap via Homebrew), `docs/site/workflows.md` (fresh-machine walkthrough).
 - Constitution III (Wrap, Don't Reinvent — all intelligence stays in `shll install`), V (Graceful Degradation — trust degrades to skip on pre-6.0), VI (Thin Justfile — the renamed dev script keeps logic in `scripts/`).
