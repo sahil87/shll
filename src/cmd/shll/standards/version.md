@@ -19,7 +19,7 @@ This standard implements principle №4 of the [toolkit CLI principles](principl
 
 `shll version`, `shll doctor`, and the shared install probe run `<tool> --version` under a **2-second timeout** (`versionTimeout`), and the worst case for `shll version` is `len(roster) × versionTimeout` — so a slow tool taxes the whole table.
 
-- **MUST respond within 2 seconds.** This is a hard consumer bound: exceed it and shll's probe kills the call and classifies the tool as **not installed** — the same outcome as a missing binary.
+- **MUST respond within 2 seconds.** This is a hard consumer bound: exceed it and shll's probe kills the call. In `shll version` and the shared install probe that collapses to **not installed** — the same row as a missing binary. `shll doctor` keeps the two apart: a timeout is an **unreportable** tool (installed but `--version` failed), distinct from a genuinely missing binary — see the failure mode below.
 - **This implies no network I/O on the version path.** A `--version` that phones home (checks for updates, resolves a remote manifest) will intermittently blow the 2-second budget on a slow network and flap between "installed" and "not installed" across runs. The version path MUST be purely local.
 
 ## The version is on the first non-empty line
