@@ -1,18 +1,18 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command), the naming decisions (plain filenames, `skill` not `agent`), the `skill` standard's contract (static-only ≤150-line agent bundle, `run-kit context` precedent, `shll agent-setup` landed as skills placement), and the help-dump standard's optional `aliases` field (first field under its § Schema evolution clause)."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command), the naming decisions (plain filenames, `skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, and the three producer-surface standards (`update`, `version`, `shell-init`) — their obligations, the naming/release fold into `update`, and the `binary`-scope choice."
 ---
 # cli/standards-content
 
 **Domain**: cli
 
-The toolkit-wide standards *documents* — the canonical `docs/site/standards/*.md` pages the shll repo hosts, and which `shll standards` embeds and serves. This file covers the **content and structure** of those documents: the `docs/site/standards/` directory restructure (i70w) and the `skill` standard's contract. The **command** that reads them — its roster, embed mechanism, drift guard, and output shapes — is [cli/standards](/cli/standards.md).
+The toolkit-wide standards *documents* — the canonical `docs/site/standards/*.md` pages the shll repo hosts, and which `shll standards` embeds and serves. This file covers the **content and structure** of those documents: the `docs/site/standards/` directory restructure (i70w), the `skill` standard's contract, and the three producer-surface standards (`update`, `version`, `shell-init`). The **command** that reads them — its roster, embed mechanism, drift guard, and output shapes — is [cli/standards](/cli/standards.md).
 
 > Placement note: these are toolkit-wide documents, not shll-CLI behavior, but the shll repo is where their canonical source lives and where the reader command consumes them, so the memory lives beside [cli/standards](/cli/standards.md) rather than in a separate single-file domain.
 
 ## The `docs/site/standards/` restructure
 
-The four producer-facing standards pages live in the `docs/site/standards/` subdirectory (i70w):
+The seven producer-facing standards pages live in the `docs/site/standards/` subdirectory (i70w established the layout):
 
 ```
 docs/site/
@@ -22,7 +22,10 @@ docs/site/
     ├── principles.md
     ├── help-dump.md
     ├── readme-extraction.md
-    └── skill.md         # authored by change i70w
+    ├── skill.md
+    ├── update.md        # producer-surface standard (y367)
+    ├── version.md       # producer-surface standard (y367)
+    └── shell-init.md    # producer-surface standard (y367)
 ```
 
 ### Why the subdirectory
@@ -41,7 +44,7 @@ docs/site/
 
 ### docs/site closure
 
-Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill) all resolve inside `docs/site/` with no `..` escape (readme-extraction standard, closure rule 1) — the four files share one directory. Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` carries a "The contracts" section and same-directory companion links to all three mechanical contracts; its "Consuming these standards" URLs point at `/shll/standards/…`.
+Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill ↔ update ↔ version ↔ shell-init) all resolve inside `docs/site/standards/` with no `..` escape (readme-extraction standard, closure rule 1) — the seven files share one directory. The three producer-surface pages cross-link each other (`version` ↔ `update` on the one-string binary/formula identity; `shell-init` → `principles` for the exit-2 usage convention) and back to `principles.md`, all same-directory. Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` carries a "The contracts" section and same-directory companion links to all six companion standards; its "Consuming these standards" URLs point at `/shll/standards/…`.
 
 ## The `help-dump` standard defines the optional `aliases` field
 
@@ -104,10 +107,53 @@ Rollout is per-repo, like help-dump's. A tool without a `skill` subcommand is no
 
 *Introduced by*: `260718-agst-agent-setup-skill-commands`; the standard document's § reflects it (fw9d).
 
+## The three producer-surface standards (`update`, `version`, `shell-init`)
+
+`update.md`, `version.md`, and `shell-init.md` are the producer-facing standards for the three per-tool surfaces `shll` composes by shelling out (Constitution III/IV). Each **codifies shll's already-implemented probe behavior as the written contract** — the standards did not redesign anything; shll's probes, timeouts, and regexes are byte-unchanged (y367). Each page follows the house register: single `#` H1 `Standard: <name>`, an implements-principle line, "rules with teeth", and a "Verifying conformance" checklist. They document *what a tool author must uphold*; the shll-side consumer machinery (probe-first ordering, roster order, digest rendering, the composer's concatenation) stays in [cli/update](/cli/update.md), [cli/version](/cli/version.md), and [cli/shell-init](/cli/shell-init.md), not in the standards.
+
+### `update` — the in-place upgrade contract (scope `binary`)
+
+Binds the **six roster tools** (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`); `shll` is explicitly **out of producer scope** — inside its own delegation loop shll self-upgrades via a direct `brew upgrade sahil87/tap/shll`, so it is the *consumer* here, not an `update`-subcommand producer. Implements principle №7 (compose, don't reinvent); its brew-handling clause serves principle №6 (stateless → retry-safe). The obligations:
+
+- **MUST expose an `update` subcommand** that upgrades the tool in place and runs its own post-upgrade side effects (e.g. run-kit's daemon restart) — the reason `shll update` delegates instead of running `brew upgrade` itself.
+- **MUST advertise `--skip-brew-update` as a literal substring** in `<tool> update --help` and honor it (skip the tool's internal `brew update`). Discovery is a substring presence check (`strings.Contains`), never a regex — the flag string is a frozen textual contract, exactly like the help-dump JSON shape.
+- **Exit `0` on success including already-up-to-date**; non-zero only on genuine failure. shll's summary tail reads this exit code for pass/fail; the post-upgrade digest is driven separately off the brew-read version transition, not off the exit code.
+- **Brew-handling safety** — MUST NOT `SIGKILL` a package-manager subprocess mid-transaction; MUST NOT impose a short hard timeout on `brew upgrade` (brew can legitimately block for minutes on the network); any bound SHOULD be generous and terminate via `SIGTERM` + grace, never `SIGKILL`. The clause cites the concrete failure it exists to prevent: a stalled `api.github.com` call inside `brew upgrade` (Homebrew 6 makes an un-timed GitHub API call per tap-formula upgrade) exceeded a wrapper's 120-second hard kill, landing `SIGKILL` mid-swap between `unlink` and `link` and corrupting the keg (observed 2026-07-19). The page also points at `HOMEBREW_NO_GITHUB_API=1` as the sidestep.
+- **SHOULD self-update via brew only when brew-installed** — detected via `os.Executable()` symlink resolution containing `/Cellar/` (the hop/fab-kit convention); a non-brew install degrades with a clear message rather than erroring.
+
+### `version` — the `--version` shape (scope `binary`)
+
+Binds **all seven binaries** — the six roster tools **plus shll itself** (shll is a producer here too: `shll version` prints its own ldflags-injected row through the same first-line parse). Implements principle №4 (fail fast); its stdout discipline serves principle №2. The obligations: `--version` MUST exit `0` and write to stdout; MUST respond **within 2 seconds** (consumers run it under `versionTimeout`), which implies no network I/O on the version path; the version token MUST appear on the **first non-empty line**, matching `versionTokenRE` (`v?\d+(\.\d+)*([.-][\w.+-]+)?`) or the `<word> version <rest>` prefix (`versionPrefixRE`) — the parser never scans past line 1, so a banner-first layout is non-conformant (shll falls back to the trimmed first line verbatim, printing the banner where the version belongs); RECOMMENDED canonical shape `<tool> version vX.Y.Z`; and the **binary name on PATH MUST equal the tool name** (the version probe doubles as shll's install-mechanism-agnostic install probe — a differently-named binary reads as "not installed"). The page names the one sanctioned exception: a rename in flight, where shll retries under the legacy binary name (the `rk` → `run-kit` precedent).
+
+### `shell-init` — eval-safe shell-integration output (scope `binary`)
+
+Binds the tools that expose shell integration — today `tu`, `hop`, `wt`; `shll shell-init` is the **consumer/composer that conforms by construction** (it drops any tool that exits non-zero and re-emits the rest). Implements principle №2 (stdout is data) in its strictest form — "data" means eval-safe shell source; its usage-error handling serves principle №4. The obligations: `<tool> shell-init <shell>` for `zsh`/`bash` MUST emit eval-safe shell source on stdout (ONLY shell source — no prompts, colors, banners, warnings) and exit `0`; diagnostics go to stderr only; on any failure the tool MUST exit non-zero, because the composer drops a tool's stdout **only when the exit code signals failure** — printing junk to stdout while exiting `0` sails straight into `eval "$(shll shell-init …)"` on every machine (the single most damaging failure mode, precisely because the exit-code gate cannot catch it); and an unsupported/missing shell argument MUST exit non-zero (convention: **exit 2** for usage errors) with a usage message on stderr and an empty stdout.
+
+### Design Decisions
+
+#### Fold naming/release alignment into `update.md`, not a fourth standard
+**Decision**: The one-name-four-places identity (GitHub repo == roster/tool name == tap formula leaf == binary on PATH), the `v{semver}` release-tag rule, and the `formula_renames.json` rename obligation live as a section of `update.md`.
+**Why**: The update path is where a tool's brew/formula identity is load-bearing (`shll update` composes `brew upgrade sahil87/tap/<formula>` and the digest consumes `v{semver}` tags), so the alignment rules bite exactly there; the intake recommended folding "into whichever comes first"; cheap to relocate to a standalone standard later.
+**Rejected**: Minting a fourth `naming`/`release` standard now — premature; adds a roster entry and a page for rules that only bite on the update/brew path.
+*Introduced by*: `260719-y367-update-version-shell-init-standards`.
+
+#### Scope `binary` for all three producer-surface standards
+**Decision**: `update`, `version`, and `shell-init` each carry `Scope: "binary"` in the roster.
+**Why**: Their obligations are satisfied by the compiled tool at runtime (the `update` / `--version` / `shell-init` subcommand behavior), exactly like help-dump's `binary` scope — not by repo file structure.
+**Rejected**: `binary+repo` (nothing in these three lives canonically as a repo file the way the `skill` bundle does); a new scope value (the four-value `foundation`/`binary`/`repo`/`binary+repo` vocabulary already fits, and `TestStandardsRosterIntegrity` pins that set).
+*Introduced by*: `260719-y367-update-version-shell-init-standards`.
+
+#### Standards codify shll's existing probe behavior verbatim
+**Decision**: The three pages restate shll's implemented probe/timeout/regex behavior as the producer contract; no shll behavior changed.
+**Why**: These per-tool surfaces were load-bearing frozen contracts existing nowhere as written obligations (only as shll-side implementation plus graceful degradation) — a tool author who reworded a help line or added a `--version` banner silently degraded shll with nothing telling them a contract was broken. Standard-from-implementation avoids coupling a contract change with its own rollout.
+**Rejected**: Redesigning the probes alongside standardizing them (would couple two risks and force a shll behavior change in a docs change); moving the shll-side consumer machinery into the standards (they are producer-facing — consumer machinery stays in `docs/memory/cli/`).
+*Introduced by*: `260719-y367-update-version-shell-init-standards`.
+
 ## Cross-references
 
 - The command that ADOPTS this `skill` standard — the `shll skill` composer + shll's own `docs/site/skill.md` bundle (agst): [cli/skill](/cli/skill.md). The harness-wiring command: [cli/agent-setup](/cli/agent-setup.md).
 - shll's audited conformance against these standards documents (per-standard PASS/gap disposition): [cli/standards-conformance](/cli/standards-conformance.md).
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
-- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill).
+- The shll-side consumer machinery these three standards codify (probe-first ordering, digest, timeout, composer concatenation): [cli/update](/cli/update.md), [cli/version](/cli/version.md), [cli/shell-init](/cli/shell-init.md).
+- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill), [update](https://shll.ai/shll/standards/update), [version](https://shll.ai/shll/standards/version), [shell-init](https://shll.ai/shll/standards/shell-init).
