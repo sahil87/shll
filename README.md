@@ -311,6 +311,9 @@ shll install                                                             # trust
 - [docs/site/standards/help-dump.md](docs/site/standards/help-dump.md) — producer standard for the machine-readable help contract (`help-dump` JSON every tool must emit)
 - [docs/site/standards/readme-extraction.md](docs/site/standards/readme-extraction.md) — producer standard for README & `docs/site/` structure (what shll.ai pulls and renders per tool)
 - [docs/site/standards/skill.md](docs/site/standards/skill.md) — producer standard for the offline, embedded `<tool> skill` agent bundle (one-page usage briefing, versioned with the binary)
+- [docs/site/standards/update.md](docs/site/standards/update.md) — producer standard for the in-place `update` subcommand (`--skip-brew-update` probe, exit-code semantics, brew-handling safety, naming/release alignment)
+- [docs/site/standards/version.md](docs/site/standards/version.md) — producer standard for the `--version` surface shll probes (2s budget, first-non-empty-line token, binary-name-equals-tool install probe)
+- [docs/site/standards/shell-init.md](docs/site/standards/shell-init.md) — producer standard for the eval-safe `shell-init` output shll concatenates (stdout-only shell source, diagnostics to stderr, fail-non-zero)
 - `shll --help` — full subcommand listing
 - **Command reference at [shll.ai/shll/commands](https://shll.ai/shll/commands/)** — a browsable, always-current command tree. On every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to [shll.ai](https://shll.ai), which renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:

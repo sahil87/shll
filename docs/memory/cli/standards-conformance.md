@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "shll's audited conformance state against the 4 toolkit standards (principles, help-dump, readme-extraction, skill), audited on HEAD against shll v0.0.23: per-standard audit method, the two fixes (usage-error exit 2, README badge run), the by-design non-gaps (version-without-`--json`, README footer-heading absence), and the conformance-report-in-PR-body convention. The `skill` standard is adopted — `shll skill shll` serves the drift-guarded `docs/site/skill.md` bundle."
+description: "shll's conformance state against the 7 toolkit standards: the four audited on HEAD against shll v0.0.23 (principles, help-dump, readme-extraction, skill) with their two fixes (usage-error exit 2, README badge run) and by-design non-gaps, plus the three producer-surface standards (update, version, shell-init) — version and shell-init conformant by construction (shll the composer), update N/A (shll is the consumer, not a producer). Includes the conformance-report-in-PR-body convention."
 ---
 # cli/standards-conformance
 
@@ -16,7 +16,7 @@ The constitution's Toolkit Standards article (§ Additional Constraints — qas0
 
 ## Audit method
 
-The audit is **runtime-enumerated, not assumed**: `shll standards` lists the standards, and `shll standards <name>` prints each one; that list is authoritative. As of the audit, the enumeration is **4 standards**, audited against **shll v0.0.23** (`shll version`'s shll row — standards are versioned with the shll release).
+The audit is **runtime-enumerated, not assumed**: `shll standards` lists the standards, and `shll standards <name>` prints each one; that list is authoritative. `shll standards` enumerates **seven** standards. The **four** documentation/help standards (`principles`, `help-dump`, `readme-extraction`, `skill`) carry a behavioral audit against **shll v0.0.23** (`shll version`'s shll row — standards are versioned with the shll release); their audit table is below. The three producer-surface standards (`update`, `version`, `shell-init`) codify shll's own already-shipped probe behavior, so shll's posture against them is a **by-construction / not-applicable** determination rather than a behavioral audit — see [The three producer-surface standards](#the-three-producer-surface-standards-updateversionshell-init) below.
 
 - **Standards *text* comes from the installed binary (v0.0.23)**, which is byte-matched to this repo's `docs/site/standards/` by the `TestStandardsEmbedMatchesCanonical` drift guard (see [cli/standards §the drift guard](/cli/standards.md#the-drift-guard-teststandardsembedmatchescanonical)).
 - **Behavioral checks run against a dev build from repo HEAD** (`cd src && go build -o /tmp/shll-audit ./cmd/shll`), not the installed v0.0.23 — the repo, not the shipped binary, is what a conformance change can fix.
@@ -63,6 +63,18 @@ The audit deferred `skill` (no `shll skill` subcommand existed then; the standar
 
 The other six tools' `<tool> skill` bundles remain the per-repo standards waves' work (out of scope for `agst`, which is shll-only).
 
+## The three producer-surface standards (`update`/`version`/`shell-init`)
+
+These three standards (y367) codify the per-tool surfaces `shll` composes. They were authored *from* shll's already-shipped probe behavior, so shll's posture against each is a by-construction / not-applicable determination, not a behavioral audit — and no shll conformance fix was required to publish them.
+
+| Standard | Scope | shll's posture | Basis |
+|----------|-------|----------------|-------|
+| `update` | binary | **N/A — shll is the consumer, not a producer.** `shll update` exists, but only as the composer that probes and delegates to each roster tool's own `update`; shll is bound by no producer-side `update` contract for itself, and inside that delegation loop it self-upgrades via a direct `brew upgrade sahil87/tap/shll`. The standard's producer scope is the six roster tools, explicitly excluding shll. | The standard names shll out of producer scope; `shll update` is the consumer that probes and delegates ([cli/update](/cli/update.md)). |
+| `version` | binary | **Conformant by construction.** shll is a producer here (the standard binds all seven binaries incl. shll); `shll version` prints its own ldflags-injected row through the exact first-line parse the standard requires of everyone else, exits 0, does no network I/O on the version path, and its binary name on PATH == `shll`. | `shll` holds itself to the shape it enforces — the standard codifies shll's own `versionTokenRE`/`versionPrefixRE`/`versionTimeout` behavior verbatim ([cli/version](/cli/version.md)). |
+| `shell-init` | binary | **Conformant by construction as the composer.** `shll shell-init` is the consumer/composer, not a producer of per-tool init; it drops any sub-tool that exits non-zero and re-emits the rest, so the composed blob is only ever as safe as each producer's stdout. The standard names shll the composer that conforms by construction. | The eval-safety invariant is shll's own — the standard restates it as the producer obligation ([cli/shell-init](/cli/shell-init.md)). |
+
+No new deferral and no conformance fix arose from publishing these three — the standards restate behavior shll already ships. The **six roster tools'** conformance to `update`/`version`/`shell-init` is per-repo rollout work (the `[std1]`/`[std2]` wave pattern), out of scope for y367; fab-kit's `SIGKILL`-on-`brew upgrade` fix (the 2026-07-19 incident) becomes that repo's `update`-conformance work, not shll's.
+
 ## Where deferred gaps are tracked
 
 Larger gaps (new subsystems, breaking output-contract changes) defer to `fab/backlog.md` items with fresh 4-char IDs (this repo's deferral convention — precedent `[38a6]`/`[tkch]`/`[agst]`), referenced by ID in the report. This audit created no new deferrals — the only deferred standard (`skill`) was tracked in `[agst]`, both other gaps were additive and fixed at audit time, and `[agst]` is resolved (above).
@@ -75,6 +87,7 @@ The deliverable is a single fab change whose **PR body carries a per-standard co
 
 - The command that serves the audited standards (roster, embed, drift guard): [cli/standards](/cli/standards.md).
 - The command that ADOPTS the `skill` standard (the composer + shll's own embedded bundle): [cli/skill](/cli/skill.md).
-- The standards *documents* and the `skill` contract: [cli/standards-content](/cli/standards-content.md).
+- The standards *documents* (incl. the three producer-surface standards' contracts) and the `skill` contract: [cli/standards-content](/cli/standards-content.md).
+- The shll-side consumer machinery for the three producer-surface standards: [cli/update](/cli/update.md), [cli/version](/cli/version.md), [cli/shell-init](/cli/shell-init.md).
 - The exit-code fix's full mechanism (the `translateExit` classification, `SetFlagErrorFunc`, `usageExitCode`): [cli/commands §exit-code translation](/cli/commands.md#exit-code-translation).
 - Constitution → Toolkit Standards (the article this conformance work satisfies) and Principle IV (the standards govern all seven tools, so no single tool owns them — shll is their home).

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll standards` — agent-facing reader for the toolkit's binding standards: self-describing list (name · scope · description) + `--json` ({name, description, scope, source_path}), byte-identical `<name>` document reader, unknown-name errSilent error; build-time embed (committed `src/cmd/shll/standards/*.md` + `scripts/sync-standards.sh` from `docs/site/standards/`) with the 4-file `TestStandardsEmbedMatchesCanonical` drift guard; docs/site/standards/ is the single canonical source."
+description: "`shll standards` — agent-facing reader for the toolkit's binding standards: self-describing list (name · scope · description) + `--json` ({name, description, scope, source_path}), byte-identical `<name>` reader, unknown-name errSilent error; build-time embed (committed `src/cmd/shll/standards/*.md` + `scripts/sync-standards.sh` from `docs/site/standards/`) with the roster-driven `TestStandardsEmbedMatchesCanonical` drift guard over all seven standards; docs/site/standards/ is canonical."
 ---
 # cli/standards
 
@@ -76,7 +76,7 @@ The `standard` struct carries **five** fields:
 - **`SourcePath`** — the repo-relative canonical path (`docs/site/standards/<name>.md`), emitted as JSON `source_path` and used as the drift-guard comparison target. Single-sourced so JSON and the drift guard agree.
 - **`EmbedName`** — the base filename of the embedded copy under `standardsEmbedDir` (`principles.md`); the full embed path is `standardsEmbedDir + "/" + EmbedName`. **Embedded copies stay flat** (a bare basename) under `src/cmd/shll/standards/`, NOT mirrored into a `standards/` subdir — `SourcePath`'s basename equals `EmbedName` and the `//go:embed standards/*.md` glob is unaffected by the canonical sources living in `docs/site/standards/` (i70w Design Decision — the drift guard is the contract, so the flat layout is the minimal diff).
 
-The roster is exactly **four** entries, in this order:
+The roster is **seven** entries, in this order (roster order == output order for both the table and `--json`):
 
 | Name | Scope | SourcePath (canonical) | Description |
 |------|-------|------------------------|-------------|
@@ -84,6 +84,11 @@ The roster is exactly **four** entries, in this order:
 | `help-dump` | `binary` | `docs/site/standards/help-dump.md` | Machine-readable help contract every tool must emit |
 | `readme-extraction` | `repo` | `docs/site/standards/readme-extraction.md` | README + docs/site structure standard for toolkit repos |
 | `skill` | `binary+repo` | `docs/site/standards/skill.md` | Agent skill bundle standard: docs/site/skill.md served by `<tool> skill` |
+| `update` | `binary` | `docs/site/standards/update.md` | In-place `update` upgrade contract: `--skip-brew-update` probe, exit codes, brew-handling safety |
+| `version` | `binary` | `docs/site/standards/version.md` | `--version` shape shll probes: 2s budget, first-line token, binary-name install probe |
+| `shell-init` | `binary` | `docs/site/standards/shell-init.md` | Eval-safe `shell-init` output every shell-integration tool emits on stdout |
+
+The three producer-surface standards (`update`, `version`, `shell-init`) are appended after `skill` at `Scope: "binary"` — their obligations are satisfied by the compiled tool at runtime (the `update` / `--version` / `shell-init` subcommand behavior), the same scope as `help-dump`. Content is [cli/standards-content](/cli/standards-content.md); shll's own posture against them is [cli/standards-conformance](/cli/standards-conformance.md).
 
 Adding a standard is a roster row **plus** its canonical `docs/site/standards/` file (synced in by `scripts/sync-standards.sh`) — an explicit, versioned list, exactly like the tool roster and adding a tool. Roster integrity is guarded by `TestStandardsRosterIntegrity` (non-empty `Name`/`Description`/`EmbedName`, no duplicate names, `SourcePath` under **`docs/site/standards/`** — and `SourcePath`'s basename equals `EmbedName` so JSON's `source_path` and the embedded copy refer to the same document).
 
@@ -102,11 +107,11 @@ Two named constants keep the embed path and flag free of magic strings (code-qua
 
 ## The build-time embed mechanism
 
-> `docs/site/standards/` is the single canonical source for the four standards documents, pulled and rendered by shll.ai (each page lands at `shll.ai/shll/standards/<name>`, mirroring `shll standards <name>`) — see [cli/standards-content](/cli/standards-content.md) for the directory rationale and the `skill` standard's contract. (vo8c, i70w)
+> `docs/site/standards/` is the single canonical source for the seven standards documents, pulled and rendered by shll.ai (each page lands at `shll.ai/shll/standards/<name>`, mirroring `shll standards <name>`) — see [cli/standards-content](/cli/standards-content.md) for the directory rationale and the individual standards' contracts. (vo8c, i70w)
 
 **The known constraint** (why a plain embed is impossible): the Go module root is `src/` (`src/go.mod`), and `docs/site/` sits **above** it — `//go:embed` cannot reach above the module root, so `//go:embed ../../../docs/site/*.md` is not allowed by the toolchain. The mechanism bridges the gap:
 
-1. **A copy step** — `scripts/sync-standards.sh` copies the canonical sources into `src/cmd/shll/standards/` (a subdir beside `standards.go`, keeping embed assets colocated with the consuming command and the `*.md` glob scoped). It sets `SRC_DIR="docs/site/standards"` and its `STANDARDS=(principles help-dump readme-extraction skill)` array names **four** files; the `DEST_DIR="src/cmd/shll/standards"` and the embedded filenames stay flat (see `EmbedName` above). `set -euo pipefail`, runs from the repo root regardless of caller CWD, one-liner-delegating per Constitution VI (thin justfile).
+1. **A copy step** — `scripts/sync-standards.sh` copies the canonical sources into `src/cmd/shll/standards/` (a subdir beside `standards.go`, keeping embed assets colocated with the consuming command and the `*.md` glob scoped). It sets `SRC_DIR="docs/site/standards"` and its `STANDARDS=(principles help-dump readme-extraction skill update version shell-init)` array names **seven** files; the `DEST_DIR="src/cmd/shll/standards"` and the embedded filenames stay flat (see `EmbedName` above). A second block in the same script copies shll's own `docs/site/skill.md` bundle into `src/cmd/shll/skill/skill.md` (a separate concern from the standards array — see [cli/skill](/cli/skill.md)). `set -euo pipefail`, runs from the repo root regardless of caller CWD, one-liner-delegating per Constitution VI (thin justfile).
 2. **The copies are committed** — the embedded `src/cmd/shll/standards/*.md` files are in the tree, so a clean `go build ./...` (which does **not** run the sync script — nor does CI, which builds directly) compiles.
 3. **Embedded from there** — `//go:embed standards/*.md` into a package-level `var standardsFS embed.FS` in `standards.go` (this repo's **first `//go:embed` usage**).
 4. **Wired into the build path three ways** (all single-sourced on the sync script):
@@ -116,7 +121,7 @@ Two named constants keep the embed path and flag free of magic strings (code-qua
 
 ### The drift guard (`TestStandardsEmbedMatchesCanonical`)
 
-Because the committed copies could silently diverge from the canonical `docs/site/standards/` sources, `TestStandardsEmbedMatchesCanonical` (`src/cmd/shll/standards_test.go`) asserts, for **each of the four** roster entries, that the embedded bytes **byte-match** the canonical source. It is roster-driven, so it covers all four roster entries automatically. The test file lives at `src/cmd/shll/`, so it resolves the canonical path as `../../../<SourcePath>` (`filepath.Join("..","..","..", s.SourcePath)`). On drift it fails naming the file, pointing at `just sync-standards` (or `scripts/sync-standards.sh`) to refresh and commit.
+Because the committed copies could silently diverge from the canonical `docs/site/standards/` sources, `TestStandardsEmbedMatchesCanonical` (`src/cmd/shll/standards_test.go`) asserts, for **each** roster entry, that the embedded bytes **byte-match** the canonical source. It is **roster-driven** — it iterates `standardsRoster`, so it covers all seven entries automatically and picks up a newly appended standard with no test edit. The test file lives at `src/cmd/shll/`, so it resolves the canonical path as `../../../<SourcePath>` (`filepath.Join("..","..","..", s.SourcePath)`). On drift it fails naming the file, pointing at `just sync-standards` (or `scripts/sync-standards.sh`) to refresh and commit.
 
 **Why a Go test, not a separate CI step** (Design Decision, resolving intake assumption #7): it runs on every `go test ./...` — locally **and** in the existing CI PR workflow (build, vet, test) — with **no `.github/workflows/` edit needed**. Rejected: a symlink into `src/` (embed does not follow symlinks reliably across the toolchain and breaks the byte-copy guarantee); parsing markdown at runtime (fragile, violates the hardcoded-contract principle); a separate CI-only diff step (a Go test is simpler and runs everywhere `go test` runs).
 
@@ -162,8 +167,8 @@ Helpers: `standardByName(name) (standard, bool)` and `validStandards() string` b
 - `TestStandards_ListJSONFieldNames` — the raw `"name"`/`"description"`/`"scope"`/`"source_path"` field names are present (the stable JSON contract mirroring `shll list --json`).
 - `TestStandards_ReadDoc_ByteIdentical` — for every roster standard, `shll standards <name>` stdout equals the embedded bytes byte-for-byte, nothing on stderr.
 - `TestStandards_ReadDoc_JSONFlagIgnoredForReader` — a name argument runs the reader path emitting raw markdown even with `--json` set.
-- `TestStandards_UnknownName` — unknown name → `errSilent`, empty stdout, stderr names the offending input and every valid standard (now four).
-- `TestStandardsEmbedMatchesCanonical` — the drift guard: each of the four embedded standards' bytes equal `../../../<SourcePath>` (the canonical `docs/site/standards/` source), failing (naming the file) on drift.
+- `TestStandards_UnknownName` — unknown name → `errSilent`, empty stdout, stderr names the offending input and every valid standard (all seven).
+- `TestStandardsEmbedMatchesCanonical` — the drift guard: each embedded standard's bytes equal `../../../<SourcePath>` (the canonical `docs/site/standards/` source), failing (naming the file) on drift. Roster-driven, so it covers all seven entries.
 - `TestStandardsRosterIntegrity` — non-empty fields, no duplicate names, `SourcePath` under **`docs/site/standards/`**, `SourcePath` basename == `EmbedName`.
 
 ## Cross-references

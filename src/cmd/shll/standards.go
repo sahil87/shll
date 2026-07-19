@@ -100,6 +100,27 @@ var standardsRoster = []standard{
 		SourcePath:  "docs/site/standards/skill.md",
 		EmbedName:   "skill.md",
 	},
+	{
+		Name:        "update",
+		Description: "In-place `update` upgrade contract: `--skip-brew-update` probe, exit codes, brew-handling safety",
+		Scope:       "binary",
+		SourcePath:  "docs/site/standards/update.md",
+		EmbedName:   "update.md",
+	},
+	{
+		Name:        "version",
+		Description: "`--version` shape shll probes: 2s budget, first-line token, binary-name install probe",
+		Scope:       "binary",
+		SourcePath:  "docs/site/standards/version.md",
+		EmbedName:   "version.md",
+	},
+	{
+		Name:        "shell-init",
+		Description: "Eval-safe `shell-init` output every shell-integration tool emits on stdout",
+		Scope:       "binary",
+		SourcePath:  "docs/site/standards/shell-init.md",
+		EmbedName:   "shell-init.md",
+	},
 }
 
 // standardJSONItem is one roster row as emitted by `shll standards --json`. Field

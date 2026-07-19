@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 # 1. The producer-facing standards documents (docs/site/standards/ → embed dir).
 SRC_DIR="docs/site/standards"
 DEST_DIR="src/cmd/shll/standards"
-STANDARDS=(principles help-dump readme-extraction skill)
+STANDARDS=(principles help-dump readme-extraction skill update version shell-init)
 
 mkdir -p "$DEST_DIR"
 for name in "${STANDARDS[@]}"; do
