@@ -1,5 +1,5 @@
 ---
-description: "Run fab upgrade-repo across all shll toolkit repos — a mechanical per-repo move in a fresh worktree; an agent is started only when the upgrade prints that /fab-setup migrations is required. Ships a PR per repo only if anything changed. Zero-argument preset over bulk-shll-op's roster and conventions."
+description: "Run fab upgrade-repo across all shll toolkit repos — a mechanical per-repo move in a fresh worktree; an agent is started only when the upgrade prints that /fab-setup migrations is required. Ships a PR per repo only if anything changed, then merges the PRs, git-pulls each merged repo's main worktree, and runs fab sync there. Zero-argument preset over bulk-shll-op's roster and conventions."
 ---
 
 # /bulk-shll-fab-upgrade
@@ -20,6 +20,14 @@ For each roster repo, in its own `<wt>-<repo>` window of the dedicated bulk sess
 4. **Branch on the output**:
    - **"/fab-setup migrations" NOT printed** — the diff is complete as-is. If the upgrade produced a diff, commit, push, and open a PR directly (no agent needed). If there is no diff, skip the PR entirely — no empty PRs (the `bulk-shll-op` PR-skip rule).
    - **"/fab-setup migrations" printed** — start an agent in that window using `fab agent` (also a binary command — it reads the repo's configured session command and launches the session) and run `/fab-setup migrations` in it. Once the migrations are done, ask the **same agent** to send the PR for the combined diff.
+
+## After the per-repo runs
+
+Once every repo has either shipped a PR or been skipped (no diff):
+
+1. **Merge the PRs** — merge each PR created by this run (`gh pr merge --squash`). Repos that produced no PR are skipped.
+2. **Pull the merged changes** — for each repo whose PR was merged, run `git pull` in the repo's **main worktree** root (resolved earlier via `hop <repo> where`) so main picks up the merge.
+3. **Re-sync fab scaffolding** — run the binary command `fab sync` in each merged repo's main worktree, so the freshly pulled fab-kit version redeploys its skills/scaffolding there.
 
 ## Conventions (inherited from `bulk-shll-op`)
 
