@@ -7,4 +7,4 @@ description: "Repo-tooling for the fab-operator role — `.claude/commands/` bul
 
 | File | Description |
 |------|-------------|
-| [bulk-op-commands](bulk-op-commands.md) | The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo in one tmux session, one slash command each) plus `bulk-shll-fab-upgrade` / `bulk-shll-release` presets: the one-session-per-task and `<wt>-<repo>` window conventions, the no-operator-registration rule, the release preset's direct loop (no worktree/agent/PR, confirm before first tag push), and the `.gitignore` carve-out keeping `commands/` tracked, `skills/` fab-regenerated. |
+| [bulk-op-commands](bulk-op-commands.md) | The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo via `fab agent`, one slash command each) plus `bulk-shll-fab-upgrade` (mechanical `fab upgrade-repo`; agent only for migrations) and `bulk-shll-release` (direct loop, no worktree/agent/PR): session/window conventions, ask-or-skip root resolution, no operator registration, and the `.gitignore` carve-out. |

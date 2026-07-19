@@ -14,7 +14,7 @@ All 7 roster repos carry a `release` justfile recipe. shll's reference implement
 
 For each roster repo, in order:
 
-1. **Resolve the main-worktree root** — `hop <repo> where` (fallback `~/code/sahil87/<repo>`). Run the release from the repo root itself, not a worktree.
+1. **Resolve the main-worktree root** — `hop <repo> where`; on failure, ask the user for the location or record a **skip** for the repo. Run the release from the repo root itself, not a worktree.
 2. **Verify the repo is releasable**:
    - Working tree is clean (`git status --porcelain` empty).
    - **On `main`, at `origin/main`**: `git fetch origin`, then confirm the current branch is `main` (`git branch --show-current`) **and** local `HEAD` equals `origin/main` (`git rev-parse HEAD` == `git rev-parse origin/main`). `scripts/release.sh` tags the current `HEAD` on whatever branch it runs from — releasing off a feature branch or a stale/ahead `main` would tag the wrong commit, so require an exact up-to-date `main` checkout, not merely a not-behind one.
