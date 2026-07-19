@@ -1,0 +1,5 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-19T08:10:56Z"}
+{"args":"Backlog item [hh4t]: reusable bulk-tool orchestration commands in .claude/commands/ — generic bulk-op primitive + bulk-upgrade-repo preset, gitignore narrowing, operator-monitored with per-bulk-task tmux session and repo-name window suffix conventions","cmd":"fab-new","event":"command","ts":"2026-07-19T08:10:56Z"}
+{"delta":"+4.5","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-07-19T08:12:00Z"}
+{"delta":"-0.2","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-07-19T08:22:03Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"ship","ts":"2026-07-19T08:53:17Z"}
