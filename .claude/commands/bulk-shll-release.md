@@ -17,8 +17,8 @@ For each roster repo, in order:
 1. **Resolve the main-worktree root** — `hop <repo> where` (fallback `~/code/sahil87/<repo>`). Run the release from the repo root itself, not a worktree.
 2. **Verify the repo is releasable**:
    - Working tree is clean (`git status --porcelain` empty).
-   - `main` is up to date: `git fetch origin`, then confirm local `main` is not behind `origin/main`.
-   - On any failure, record an **error** for this repo and move on — do not release from a dirty or stale checkout.
+   - **On `main`, at `origin/main`**: `git fetch origin`, then confirm the current branch is `main` (`git branch --show-current`) **and** local `HEAD` equals `origin/main` (`git rev-parse HEAD` == `git rev-parse origin/main`). `scripts/release.sh` tags the current `HEAD` on whatever branch it runs from — releasing off a feature branch or a stale/ahead `main` would tag the wrong commit, so require an exact up-to-date `main` checkout, not merely a not-behind one.
+   - On any failure, record an **error** for this repo and move on — do not release from a dirty, off-`main`, or out-of-sync checkout.
 3. **Skip repos with no new commits since the last tag** — if `git describe --tags --exact-match HEAD` succeeds (HEAD already carries the latest tag), there is nothing to release: record a **skip** and move on. This is the release-only-if-changed analogue of the PR-skip rule; a zero-commit release is pointless.
 4. **Release** — run `just release` (patch) in the repo root. Record the **new tag**.
 

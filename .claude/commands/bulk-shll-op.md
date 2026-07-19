@@ -1,12 +1,12 @@
 ---
-description: "Run one operation across all (or a subset of) shll toolkit repos — spawn a fresh-worktree agent per repo in a dedicated tmux session, dispatching one slash command each. The generic primitive behind bulk-shll-fab-upgrade and bulk-shll-release."
+description: "Run one operation across all (or a subset of) shll toolkit repos — spawn a fresh-worktree agent per repo in a dedicated tmux session, dispatching one slash command each. The generic spawn primitive behind bulk-shll-fab-upgrade (bulk-shll-release is a sibling preset that does NOT use the spawn loop)."
 ---
 
 # /bulk-shll-op
 
 Run a single per-repo operation across the shll toolkit as a batch: for each target repo, create a fresh worktree, read that repo's own session command, and spawn an agent tab that runs **one** slash command. All spawned windows land in one dedicated tmux session so the fab-operator can see and group them via `fab pane map --all-sessions`.
 
-This is the generic primitive. `/bulk-shll-fab-upgrade` and `/bulk-shll-release` are presets built on top of it (the release preset does NOT use the spawn loop — see its own doc).
+This is the generic spawn primitive. `/bulk-shll-fab-upgrade` is a preset built on top of it. `/bulk-shll-release` is a sibling preset over the same roster that does **not** use this spawn loop — no worktree, no spawned agent, no PR — see its own doc.
 
 > **Monitoring is one-directional.** This command spawns agents and makes them discoverable; it does NOT enroll them with the fab-operator. Watching spawned agents is the operator's job, by definition — the operator sweeps every session on the server with `fab pane map --all-sessions`. This command writes no operator state (see § No operator registration).
 
