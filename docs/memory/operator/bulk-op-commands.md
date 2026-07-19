@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo in one tmux session, one slash command each) plus `bulk-shll-fab-upgrade` / `bulk-shll-release` presets: the one-session-per-task and `<wt>-<repo>` window conventions, the no-operator-registration rule, the release preset's direct loop (no worktree/agent/PR, confirm before first tag push), and the `.gitignore` carve-out keeping `commands/` tracked, `skills/` fab-regenerated."
+description: "The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo via `fab agent`, one slash command each) plus `bulk-shll-fab-upgrade` (mechanical `fab upgrade-repo`; agent only for migrations) and `bulk-shll-release` (direct loop, no worktree/agent/PR): session/window conventions, ask-or-skip root resolution, no operator registration, and the `.gitignore` carve-out."
 ---
 # operator/bulk-op-commands
 
@@ -16,7 +16,7 @@ Files:
 - `.claude/commands/bulk-shll-fab-upgrade.md` — zero-argument preset over the primitive.
 - `.claude/commands/bulk-shll-release.md` — patch-release preset (a direct loop, *not* the spawn primitive).
 
-The default roster is the 7 sahil87 toolkit repos: `fab-kit, hop, idea, run-kit, shll, tu, wt`. Each repo's main-worktree root is resolved with `hop <repo> where` (hop's selection-first grammar), falling back to `~/code/sahil87/<repo>` when hop is unavailable or the repo is absent from `hop.yaml`.
+The default roster is the 7 sahil87 toolkit repos: `fab-kit, hop, idea, run-kit, shll, tu, wt`. Each repo's main-worktree root is resolved with `hop <repo> where` (hop's selection-first grammar); when resolution fails (hop unavailable or the repo absent from `hop.yaml`), the agent asks the user for the location or skips that repo — there is no guessed fallback path. Wherever a bulk command needs to start an agent in a worktree, it does so via `fab agent` (a binary call that resolves and launches the repo's own configured session command) — the invoker never reads or composes another repo's session command.
 
 ## `bulk-shll-op` — the generic primitive
 
@@ -28,14 +28,14 @@ Runs a single per-repo operation as a batch. Inputs:
 
 **Per-repo loop** — mirrors fab-operator §6's spawn sequence, minus the operator's enrollment steps. For each target repo:
 
-1. Resolve the main-worktree root (`hop <repo> where`, fallback `~/code/sahil87/<repo>`).
+1. Resolve the main-worktree root (`hop <repo> where`; on failure ask the user or skip the repo).
 2. `wt create --non-interactive` **with the target repo as the working directory**, so the worktree lands under `$(dirname <repo-root>)/<repo>.worktrees/` rather than the invoker's repo. Capture the generated worktree name `<wt>` and absolute path.
-3. Read the target repo's session command via `fab agent --print --repo <repo-root>` — always the **target** repo's config, never the invoking repo's, since each repo may configure a different session command.
-4. Spawn one window in the dedicated session: `tmux new-window -t <bulk-session> -n "<wt>-<repo>" -c <worktree-path> "<spawn_cmd> '<task>'"`, embedding **exactly one** slash command per spawn (no `&&`-joined strings — a spawned agent reads one leading `/command` per prompt, per fab-operator §6).
+3. Start the agent in the worktree: `tmux new-window -t <bulk-session> -n "<wt>-<repo>" -c <worktree-path> "fab agent"` — `fab agent` resolves and launches the repo's own configured session command from the worktree.
+4. Dispatch the task once the session is up: `tmux send-keys -t "<bulk-session>:<wt>-<repo>" "<task>" Enter`, sending **exactly one** slash command per agent (no `&&`-joined strings — a spawned agent reads one leading `/command` per prompt, per fab-operator §6).
 
 ## `bulk-shll-fab-upgrade` — fab-upgrade preset
 
-A thin zero-argument preset over `bulk-shll-op`. For each roster repo, in its fresh worktree it runs `fab upgrade-repo`, drives the resulting change through `/fab-fff`, and ships a PR **only if anything changed** (the primitive's PR-skip rule). All `bulk-shll-op` conventions apply unchanged (default session `bulk-fab-upgrade`, `<wt>-<repo>` window names, no operator registration). This codifies the exact op that was improvised ad hoc in change 260718.
+A zero-argument preset over `bulk-shll-op`'s roster and conventions whose core move is **mechanical, not agent-driven**: `fab upgrade-repo` is a binary command — no fab change is created and no pipeline runs. Per roster repo, in its `<wt>-<repo>` window of the `bulk-fab-upgrade` session: create a fresh worktree, run `fab upgrade-repo`, and branch on its console output. If "/fab-setup migrations" is **not** printed, commit/push/PR the diff directly (skipping entirely when there is no diff — the PR-skip rule). If it **is** printed, start an agent in that window via `fab agent`, run `/fab-setup migrations` in it, then ask the same agent to send the PR for the combined diff. The session and window conventions and the no-operator-registration rule apply unchanged. This codifies the exact op that was improvised ad hoc in change 260718.
 
 ## `bulk-shll-release` — patch-release preset
 
