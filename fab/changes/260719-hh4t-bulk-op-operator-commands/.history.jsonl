@@ -3,3 +3,10 @@
 {"delta":"+4.5","event":"confidence","score":4.5,"trigger":"calc-score","ts":"2026-07-19T08:12:00Z"}
 {"delta":"-0.2","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-07-19T08:22:03Z"}
 {"action":"enter","driver":"git-pr","event":"stage-transition","stage":"ship","ts":"2026-07-19T08:53:17Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-19T09:08:42Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-19T09:09:54Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-19T09:14:17Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-19T09:15:12Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-19T09:21:12Z"}
+{"event":"review","result":"passed","ts":"2026-07-19T09:21:12Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-19T09:25:17Z"}

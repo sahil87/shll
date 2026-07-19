@@ -20,3 +20,4 @@ fkf_version: "0.1"
 | [ci](ci/index.md) | — |
 | [cli](cli/index.md) | — |
 | [internal](internal/index.md) | — |
+| [operator](operator/index.md) | Repo-tooling for the fab-operator role — `.claude/commands/` bulk-orchestration slash commands that run one operation across the shll toolkit roster. |
