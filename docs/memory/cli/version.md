@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll version` — column-aligned plain-text table, per-tool 2s timeout, ldflags-injected `shll` version; also hosts the shared `toolInstalled`/`probeToolVersion` install probe and its rk→run-kit legacy-name PATH fallback (ErrNotFound-only)."
+description: "`shll version` — column-aligned plain-text table, per-tool 2s timeout, ldflags-injected `shll` version; also hosts the shared `toolInstalled`/`probeToolVersion` install probe and its rk→run-kit legacy-name PATH fallback (ErrNotFound-only), plus the root `shll --version` flag (producer surface) pinned by a `version`-standard conformance test — distinct from the subcommand's consumer-side table."
 ---
 # cli/version
 
@@ -141,6 +141,14 @@ Unit scenarios pinning the normalization contract (12 cases, all named `TestNorm
 - `_BareDev` (`dev` → `dev`), `_NamePrefixedDev` (`shll version dev` → `dev` via prefix-strip), `_Unparseable` (raw passthrough).
 - `_Empty` (`""` and whitespace-only → `""`), `_FirstLineOnly` (banner on line 1 wins; line 2 never searched), `_BlankLeadingLines` (leading blanks skipped to find the first non-empty line).
 - `_PermissiveSemVer` (`1.2` and `1.2.3-rc1+build.42`), `_CaseInsensitiveVersionWord` (`MyTool Version 1.0` → `v1.0`), `_PrefixStripCase` (`shll Version dev` → `dev`).
+
+## The root `--version` flag (producer side) — pinned by conformance test
+
+`shll --version` (the cobra root flag) and `shll version` (the subcommand table above) are **two distinct surfaces**. The subcommand is shll's **consumer/composer** surface — it probes and normalizes every roster tool's `--version`. The root `--version` flag is shll's own **producer** surface: it is what the toolkit `version` standard binds `shll` to as one of the seven binaries (the standard holds shll to the shape it enforces — see [cli/standards-conformance §producer-surface standards](/cli/standards-conformance.md#the-three-producer-surface-standards-updateversionshell-init)).
+
+Mechanism: `main.go` wires `rootCmd.Version = version` (the same ldflags-injected package var the shll row reads), enabling cobra's built-in root version flag. Cobra's default template renders exactly `shll version <Version>\n` to `OutOrStdout()` — the RECOMMENDED canonical `<tool> version vX.Y.Z` shape — with nothing on stderr and no banner above it.
+
+`TestRootVersionFlag_VersionStandardConformance` (`version_test.go`) pins this producer contract, mapping one assertion per standard clause: `newRootCmd()` + `root.Version = "v1.2.3"` (the same seam `help_dump_test.go` uses), `SetArgs(["--version"])`, then asserts `Execute()` returns nil (exit 0 via `translateExit`), the first non-empty stdout line is exactly `shll version v1.2.3`, `normalizeVersion(output) == "v1.2.3"` (reusing the repo's own `versionTokenRE`/`versionPrefixRE` so shll provably parses its own output, not a hand-rolled regex), and stderr is empty. A `dev_default` subtest (`root.Version = "dev"` → first line `shll version dev`, `normalizeVersion` → `dev`) keeps unstamped builds parseable. Clauses 3–4 (respond within 2s, no network I/O) carry no in-process assertion — the path is a purely local read of the package var with no subprocess or I/O seam to fake; a test comment records that rationale.
 
 ## Cross-references
 

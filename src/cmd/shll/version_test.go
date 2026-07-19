@@ -190,6 +190,82 @@ func TestVersion_TimeoutHandling(t *testing.T) {
 	}
 }
 
+// --- root --version flag: toolkit `version` standard conformance (5ys1) -------
+
+// TestRootVersionFlag_VersionStandardConformance pins the producer-side
+// contract of `shll --version` against the toolkit `version` standard
+// (docs/site/standards/version.md, "Verifying conformance"): exit 0, version
+// written to stdout on the first non-empty line, matching the published shape
+// — the RECOMMENDED canonical `<tool> version vX.Y.Z` — with nothing on
+// stderr and no banner above the version. Assertions reuse the repo's own
+// normalizeVersion (versionTokenRE/versionPrefixRE) so the test pins "shll
+// parses its own output", not a hand-rolled regex.
+//
+// Clauses 3-4 of the standard (respond within 2 seconds, no network I/O on
+// the version path) carry no in-process assertion: the path is a purely
+// local read of the ldflags-injected package var via cobra's built-in
+// version flag — there is no subprocess or I/O seam to fake. Those clauses
+// are structural; this test protects them indirectly by pinning that the
+// single-line template output comes straight from root.Version.
+func TestRootVersionFlag_VersionStandardConformance(t *testing.T) {
+	cases := []struct {
+		name          string // subtest name
+		version       string // value wired into root.Version (main.go seam)
+		wantFirstLine string // exact first non-empty stdout line
+		wantParsed    string // normalizeVersion round-trip of the output
+	}{
+		// Release builds inject the v-prefixed git tag verbatim.
+		{"stamped", "v1.2.3", "shll version v1.2.3", "v1.2.3"},
+		// Unstamped builds keep the `dev` default — the first line still
+		// satisfies the `<word> version <rest>` prefix shape (versionPrefixRE),
+		// so dev builds stay parseable, not just release builds.
+		{"dev_default", "dev", "shll version dev", "dev"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := newRootCmd()
+			root.Version = tc.version // mirrors main.go: rootCmd.Version = version
+			var stdout, stderr bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetArgs([]string{"--version"})
+
+			// Clause: MUST support --version and exit 0. A nil Execute error
+			// maps to exit 0 through translateExit (main.go).
+			if err := root.Execute(); err != nil {
+				t.Fatalf("Execute(--version) err = %v, want nil (exit 0)", err)
+			}
+
+			// Clause: version token on the first non-empty line, no banner /
+			// copyright / update-check line above it, in the RECOMMENDED
+			// canonical shape `<tool> version vX.Y.Z`.
+			firstLine := ""
+			for _, line := range strings.Split(stdout.String(), "\n") {
+				if trimmed := strings.TrimSpace(line); trimmed != "" {
+					firstLine = trimmed
+					break
+				}
+			}
+			if firstLine != tc.wantFirstLine {
+				t.Errorf("first non-empty line = %q, want %q", firstLine, tc.wantFirstLine)
+			}
+
+			// Clause: matches the published shape — shll's own parse
+			// (versionTokenRE / versionPrefixRE via normalizeVersion) extracts
+			// the version from the output.
+			if got := normalizeVersion(stdout.String()); got != tc.wantParsed {
+				t.Errorf("normalizeVersion(output) = %q, want %q", got, tc.wantParsed)
+			}
+
+			// Clause: the version is written to stdout (stdout is data);
+			// nothing lands on stderr.
+			if stderr.Len() != 0 {
+				t.Errorf("stderr = %q, want empty", stderr.String())
+			}
+		})
+	}
+}
+
 // --- legacy-name PATH-probe fallback (rk→run-kit, change 9bak) ----------------
 
 // runKitTool returns the live run-kit roster entry (which carries LegacyName "rk").
