@@ -7,4 +7,4 @@ description: "Repo-tooling for the fab-operator role — `.claude/commands/` bul
 
 | File | Description |
 |------|-------------|
-| [bulk-op-commands](bulk-op-commands.md) | The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo via `fab agent`, one slash command each) plus `bulk-shll-fab-upgrade` (mechanical `fab upgrade-repo`; agent only for migrations) and `bulk-shll-release` (direct loop, no worktree/agent/PR): session/window conventions, ask-or-skip root resolution, no operator registration, and the `.gitignore` carve-out. |
+| [bulk-op-commands](bulk-op-commands.md) | The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo via `fab agent`, one slash command each) plus `bulk-shll-fab-upgrade` (mechanical `fab upgrade-repo`; agent only for migrations) and `bulk-shll-release` (direct loop, no worktree/agent/PR): session/window conventions, ask-or-skip root resolution, operator enrollment with a non-pausing loop, and the `.gitignore` carve-out. |
