@@ -613,6 +613,14 @@ const (
 	// brew-direct migration (which skips `run-kit update`'s restart side effect).
 	// Takes the tool name. PRINT ONLY — shll never runs it.
 	migrationDaemonNoteFmt = "note: %[1]s daemon (if running) was not restarted by the brew-direct migration — run '%[1]s serve --restart' if you use it"
+	// relinkNoteFmt explains the delegation-path unlinked-keg self-heal: the probe
+	// said the formula IS brew-installed, yet delegating to the tool's own binary
+	// returned proc.ErrNotFound — the unlinked-keg pathology (state A) reached on an
+	// ALREADY-MIGRATED keg, e.g. a half-completed rename migration or a keg conflict
+	// that left the binaries unlinked (observed live 2026-07-19: run-kit formula
+	// installed, zombie rk keg alongside, neither linked). Takes the tool name.
+	// Printed AFTER a successful `brew link`, BEFORE the retried delegation.
+	relinkNoteFmt = "note: %[1]s is brew-installed but was not linked on PATH — ran 'brew link %[1]s', retrying"
 	// migrationDualRackNoteFmt flags the state-C leftover (both kegs present). Takes
 	// (legacy formula, current formula, tool name, legacy LEAF name). Detection only —
 	// shll never removes the orphan keg. It points at `shll uninstall <tool>` — the now-
@@ -634,12 +642,35 @@ const (
 // upgradeArgv so the dry-run preview renders the same command without running it
 // (single source of truth for the per-tool dispatch). stdout/stderr are threaded in
 // so migrateRunKit can print its post-check/daemon/dual-rack notes.
+//
+// UNLINKED-KEG SELF-HEAL (delegation path only). When the delegated `<tool> update`
+// itself returns proc.ErrNotFound, the probe and the delegation disagree: brew
+// reports the formula installed (probeTool gated on that), yet the binary is off
+// PATH — the same unlinked-keg pathology migrateRunKit's post-check heals, but
+// reached on an ALREADY-MIGRATED keg, so the migration gate never sees it. Heal it
+// the same way: `brew link <tool.Name>`, then retry the delegation ONCE. The guard
+// is errors.Is on the FIRST attempt only (no loop), and only on the delegation path
+// (len(t.Update) > 0) — on the brew-fallback path argv[0] is brew itself, whose
+// absence is a different failure hasBrew already vouched against, not a keg to link.
+// A failed link is surfaced to stderr and the original ErrNotFound propagates
+// unchanged (graceful degradation — Constitution V); shll never uninstalls or
+// removes kegs here.
 func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeResult) (int, error) {
 	if p.needsMigration {
 		return migrateRunKit(ctx, stdout, stderr, t)
 	}
 	argv := upgradeArgv(t, p.supportsSkipFlag, p.needsMigration)
 	code, err := proc.RunForeground(ctx, argv[0], argv[1:]...)
+	if errors.Is(err, proc.ErrNotFound) && len(t.Update) > 0 {
+		if lcode, lerr := proc.RunForeground(ctx, brewBinary, "link", t.Name); lerr != nil {
+			fmt.Fprintf(stderr, "shll update: %s: brew link failed: %v\n", t.Name, lerr)
+		} else if lcode != 0 {
+			fmt.Fprintf(stderr, "shll update: %s: brew link exited %d\n", t.Name, lcode)
+		} else {
+			fmt.Fprintf(stdout, relinkNoteFmt+"\n", t.Name)
+			code, err = proc.RunForeground(ctx, argv[0], argv[1:]...)
+		}
+	}
 	// A non-migration run-kit upgrade that ends dual-rack (state C) still surfaces
 	// the cleanup note (detection happened in probeTool).
 	if p.dualRack {
