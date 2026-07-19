@@ -8,7 +8,7 @@ Run a single per-repo operation across the shll toolkit as a batch: for each tar
 
 This is the generic spawn primitive. `/bulk-shll-fab-upgrade` is a preset over its roster and conventions — but its core move is mechanical (`fab upgrade-repo`, a binary command), and it starts an agent only when migrations are required; see its own doc. `/bulk-shll-release` is a sibling preset over the same roster that does **not** use this spawn loop — no worktree, no spawned agent, no PR — see its own doc.
 
-> **Monitoring is one-directional.** This command spawns agents and makes them discoverable; it does NOT enroll them with the fab-operator. Watching spawned agents is the operator's job, by definition — the operator sweeps every session on the server with `fab pane map --all-sessions`. This command writes no operator state (see § No operator registration).
+> **The operator keeps tracking — and keeps ticking.** Bulk skills are generally invoked from inside a fab operator session. The operator enrolls every spawned window in its monitored set (see § Operator tracking) and resumes its loop immediately after the spawn sweep — it MUST NOT pause to babysit the spawned agents; progress is observed on subsequent ticks.
 
 ## Inputs
 
@@ -45,17 +45,17 @@ Mirrors fab-operator §6's spawn sequence, **minus the operator's enrollment ste
 
    **Exactly one slash command per agent** — no `&&`-joined strings. A spawned agent reads one leading `/command` per prompt (fab-operator §6).
 
+5. **Enroll with the operator** — when running inside a fab operator session, enroll the window per fab-operator §6 enrollment: record pane/repo/session/branch in the operator state file, add the `branch_map` entry, and prefix the window name via `fab pane window-name ensure-prefix <pane> »`.
+
 ## Conventions
 
 - **One tmux session per bulk task.** Create a dedicated session (default name `bulk-<task-slug>`, where `<task-slug>` is a short kebab-case name for the op) and open every per-repo window in it. Grouping the windows as a unit keeps them visible to the operator via `fab pane map --all-sessions`.
 - **Repo-name window suffix.** Each window is named `<wt>-<repo>` (e.g. `swift-fox-hop`) so every window is self-identifying at a glance.
 
-## No operator registration
+## Operator tracking
 
-This command performs **none** of the operator's enrollment actions:
+Bulk skills generally run inside a fab operator session, and the operator MUST continue tracking the spawned windows through its normal loop rather than pausing:
 
-- It does NOT write the operator state file.
-- It does NOT add `branch_map` entries.
-- It does NOT rename windows with the operator's `»` / `›` markers.
-
-Those are the operator's own enrollment actions. Monitoring is the operator's job, one-directional; the session-per-task and repo-suffix conventions above exist purely to make the spawned agents discoverable and groupable by it.
+- **Enroll each spawned window** per fab-operator §6 enrollment (per-repo loop step 5): operator state-file entry, `branch_map` entry, `»` window prefix.
+- **Resume ticking immediately** after the spawn sweep. Do NOT block waiting on the spawned agents — completions, prompts, and failures are picked up on later ticks like any other monitored agent.
+- **Outside an operator session**, enrollment is skipped; the session-per-task and `<wt>-<repo>` conventions keep the windows discoverable via `fab pane map --all-sessions`.

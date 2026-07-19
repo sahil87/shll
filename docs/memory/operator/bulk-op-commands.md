@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo via `fab agent`, one slash command each) plus `bulk-shll-fab-upgrade` (mechanical `fab upgrade-repo`; agent only for migrations) and `bulk-shll-release` (direct loop, no worktree/agent/PR): session/window conventions, ask-or-skip root resolution, no operator registration, and the `.gitignore` carve-out."
+description: "The `.claude/commands/` bulk-orchestration slash commands — `bulk-shll-op` primitive (fresh-worktree agent per roster repo via `fab agent`, one slash command each) plus `bulk-shll-fab-upgrade` (mechanical `fab upgrade-repo`; agent only for migrations) and `bulk-shll-release` (direct loop, no worktree/agent/PR): session/window conventions, ask-or-skip root resolution, operator enrollment with a non-pausing loop, and the `.gitignore` carve-out."
 ---
 # operator/bulk-op-commands
 
@@ -35,7 +35,7 @@ Runs a single per-repo operation as a batch. Inputs:
 
 ## `bulk-shll-fab-upgrade` — fab-upgrade preset
 
-A zero-argument preset over `bulk-shll-op`'s roster and conventions whose core move is **mechanical, not agent-driven**: `fab upgrade-repo` is a binary command — no fab change is created and no pipeline runs. Per roster repo, in its `<wt>-<repo>` window of the `bulk-fab-upgrade` session: create a fresh worktree, run `fab upgrade-repo`, and branch on its console output. If "/fab-setup migrations" is **not** printed, commit/push/PR the diff directly (skipping entirely when there is no diff — the PR-skip rule). If it **is** printed, start an agent in that window via `fab agent`, run `/fab-setup migrations` in it, then ask the same agent to send the PR for the combined diff. After all repos have shipped or been skipped, the run has a tail: merge the created PRs (`gh pr merge --squash`), `git pull` each merged repo's **main worktree**, and run the binary command `fab sync` there so the pulled fab-kit redeploys its scaffolding. The session and window conventions and the no-operator-registration rule apply unchanged. This codifies the exact op that was improvised ad hoc in change 260718.
+A zero-argument preset over `bulk-shll-op`'s roster and conventions whose core move is **mechanical, not agent-driven**: `fab upgrade-repo` is a binary command — no fab change is created and no pipeline runs. Per roster repo, in its `<wt>-<repo>` window of the `bulk-fab-upgrade` session: create a fresh worktree, run `fab upgrade-repo`, and branch on its console output. If "/fab-setup migrations" is **not** printed, commit/push/PR the diff directly (skipping entirely when there is no diff — the PR-skip rule). If it **is** printed, start an agent in that window via `fab agent`, run `/fab-setup migrations` in it, then ask the same agent to send the PR for the combined diff. The run has a tail driven from the operator's monitoring loop (it starts when tracking shows every repo shipped or skipped — the loop never pauses to wait): merge the created PRs (`gh pr merge --squash`), `git pull` each merged repo's **main worktree**, and run the binary command `fab sync` there so the pulled fab-kit redeploys its scaffolding. The session/window conventions and operator tracking apply unchanged. This codifies the exact op that was improvised ad hoc in change 260718.
 
 ## `bulk-shll-release` — patch-release preset
 
@@ -54,9 +54,9 @@ The run ends with a per-repo outcome table: each repo is **new tag** (`v<x.y.z>`
 
 Before the **first** tag push, the agent computes each releasable repo's next version, presents the **repo → next-version** list (noting skips/errors), and obtains **explicit user confirmation**. A tag push publishes a release across up to 7 repos and fires CI on the tag — outward-facing and not reversible in the "delete it quietly" sense — so the gate is mandatory.
 
-## No operator registration
+## Operator tracking
 
-The commands perform **none** of the operator's enrollment actions: they write no operator state file, add no `branch_map` entries, and never rename windows with the operator's `»` / `›` markers. Those are the operator's own enrollment actions. Monitoring is the fab-operator's job and is **one-directional** — the operator sweeps every session on the server with `fab pane map --all-sessions`; spawned agents do not register back. The session-per-task and `<wt>-<repo>` window conventions exist purely to make the spawned agents discoverable and groupable by the operator.
+The bulk commands are generally invoked from inside a fab operator session, and the operator MUST keep tracking spawned windows through its normal loop instead of pausing: each spawned window is enrolled per fab-operator §6 (operator state-file entry with pane/repo/session/branch, a `branch_map` entry, and the `»` window prefix via `fab pane window-name ensure-prefix`), and the operator resumes ticking immediately after the spawn sweep — completions, prompts, and failures surface on later ticks like any other monitored agent. Outside an operator session, enrollment is skipped and the session-per-task + `<wt>-<repo>` conventions keep the windows discoverable via `fab pane map --all-sessions`. (`bulk-shll-release` spawns no windows, so there is nothing to track.)
 
 ## Conventions
 

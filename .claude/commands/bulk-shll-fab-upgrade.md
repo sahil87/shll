@@ -23,7 +23,7 @@ For each roster repo, in its own `<wt>-<repo>` window of the dedicated bulk sess
 
 ## After the per-repo runs
 
-Once every repo has either shipped a PR or been skipped (no diff):
+Driven from the operator's monitoring loop — the tail starts when tracking shows every repo has either shipped a PR or been skipped (no diff), not by pausing the loop to wait:
 
 1. **Merge the PRs** — merge each PR created by this run (`gh pr merge --squash`). Repos that produced no PR are skipped.
 2. **Pull the merged changes** — for each repo whose PR was merged, run `git pull` in the repo's **main worktree** root (resolved earlier via `hop <repo> where`) so main picks up the merge.
@@ -33,4 +33,4 @@ Once every repo has either shipped a PR or been skipped (no diff):
 
 - One dedicated tmux session for the whole run (default `bulk-fab-upgrade`).
 - `<wt>-<repo>` window names, one window per repo.
-- No operator registration — the operator monitors one-directionally via `fab pane map --all-sessions`.
+- Operator tracking — spawned windows are enrolled in the operator's monitored set and watched via its normal loop; the operator keeps ticking throughout the run (see `bulk-shll-op` § Operator tracking).
