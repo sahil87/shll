@@ -64,7 +64,7 @@ The two regexes are compiled once via `regexp.MustCompile` at package scope; the
 The install probe is a **shared helper** (lst7), so `version` is not the sole definition of "installed = runnable on PATH":
 
 - `probeToolVersion(ctx, tool) ([]byte, error)` (`src/cmd/shll/version.go`) is the **single** definition of the probe: it calls `probeVersionByName(ctx, tool.Name)` — the bounded invocation (`subCtx, cancel := context.WithTimeout(ctx, versionTimeout)`, `proc.Run(subCtx, name, "--version")`, capture transport, Constitution I) — and returns the captured output and any error. ANY error (`proc.ErrNotFound`, non-zero exit, timeout) means "not installed" — callers map that to their own representation. It carries the **legacy-name fallback** (below, 9bak).
-- `probeVersionByName(ctx, name) ([]byte, error)` (9bak) is the bounded `<name> --version` invocation, factored out so the fallback retry reuses the exact same deadline/transport. Also called directly by `migrateRunKit`'s unlinked-keg post-check ([cli/update](/cli/update.md#the-rkrun-kit-migration-guard)).
+- `probeVersionByName(ctx, name) ([]byte, error)` is the bounded `<name> --version` invocation, factored out so the fallback retry reuses the exact same deadline/transport.
 - `toolInstalled(ctx, tool) bool` (`src/cmd/shll/version.go`) layers on `probeToolVersion` and returns `err == nil`. This is the boolean install-status helper consumed by `shll list` — see [cli/list §The install probe](/cli/list.md#the-install-probe-shared-toolinstalled).
 - `toolVersion` also layers on `probeToolVersion` (mapping a non-nil error to `notInstalledLabel`, success to `normalizeVersion`).
 
@@ -76,8 +76,8 @@ When the primary `<tool.Name> --version` fails with `proc.ErrNotFound` **only** 
 
 - **`ErrNotFound` only — never a non-zero exit or timeout.** A present-but-broken `run-kit` (e.g. exits non-zero, or hangs to the deadline) must NOT silently defer to `rk`; its own error is returned, so the surface still reports it via the primary probe. Missing-binary is the only state the fallback is for.
 - **Display name is untouched.** The row/label stays `tool.Name` (`run-kit`) regardless of which probe name succeeded — the fallback affects *detection*, not display.
-- **Scope: DISPLAY surfaces only.** This PATH probe is independent of the brew-keg migration gate in [cli/update](/cli/update.md#the-rkrun-kit-migration-guard). A non-brew `rk` install is *shown* by list/version/doctor but is never *migrated* by shll (parity with today's brew-only update behavior). The two "is it there?" notions stay separate.
-- **Transitional.** A no-op once legacy `rk`-only installs die out. The `LegacyName` field is sunset-marked (see [cli/commands §the rk→run-kit rename](/cli/commands.md#the-rkrun-kit-rename--migration-fields)).
+- **Scope: DISPLAY surfaces only.** This PATH probe is a pure display-surface fallback: an `rk` install is *shown* by list/version/doctor, but shll performs no brew-formula migration anywhere (the migration guard was retired — see [cli/update §Retire the migration guard](/cli/update.md#retire-the-rkrun-kit-brew-formula-migration-guard)). Detection and migration are unrelated concerns.
+- **A retained binary-alias/display surface.** `LegacyName` is the field this fallback keys on — kept because the run-kit formula still installs `rk` as an interchangeable command alias, so a machine may legitimately have only `rk` on PATH. It is NOT tied to formula migration (see [cli/commands §the rk→run-kit rename](/cli/commands.md#the-rkrun-kit-rename)).
 
 Pinned by `version_test.go`: a run-kit visible only under the legacy `rk` binary (`run-kit --version` → `proc.ErrNotFound`, `rk --version` → a version) is reported installed with display name `run-kit`; a present-but-broken `run-kit` (non-`ErrNotFound` error) does NOT fall back.
 

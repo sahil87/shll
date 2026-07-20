@@ -90,56 +90,14 @@ func doctorFakeTrust(states map[string]doctorVersionState, ts trustState) *fakeR
 			body := `{"taps": ` + taps + `, "formulae": ` + formulae + `, "casks": [], "commands": []}`
 			return proc.Result{Stdout: []byte(body)}
 		}
-		// `brew list --formula --versions <formula>` — the rk→run-kit migration gate.
-		// Default clean migrated machine: the CURRENT run-kit formula is installed
-		// (leaf run-kit → migrated, no pending-migration WARN); the LEGACY rk formula
-		// is NOT installed (no dual-rack orphan). Dedicated migration tests use a
-		// bespoke responder (see doctorMigrationFake) to model states A/C.
+		// `brew list --formula --versions <formula>` — doctor itself no longer runs
+		// any brew list probe (the migration facts were retired with the rk→run-kit
+		// guard); respond sensibly anyway so an accidental probe cannot skew a test.
 		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
-			formula := req.Args[3]
-			if formula == formulaPrefix+"rk" {
-				return proc.Result{Err: errors.New("not installed")}
-			}
-			return proc.Result{Stdout: []byte(strings.TrimPrefix(formula, formulaPrefix) + " 1.2.3\n")}
+			return proc.Result{Stdout: []byte(strings.TrimPrefix(req.Args[3], formulaPrefix) + " 1.2.3\n")}
 		}
 		return proc.Result{}
 	}}
-}
-
-// doctorMigrationFake builds a doctorFake variant that models a run-kit migration
-// state for `shll doctor`'s pending-migration / dual-rack sub-check. legacyList and
-// currentList are the `brew list` stdout for sahil87/tap/rk and sahil87/tap/run-kit
-// respectively ("" → that formula reports not-installed). All other tools default
-// to dvOK + installed; trust defaults to the whole tap trusted. runKitOnPath drives
-// the `run-kit --version` probe (the PATH-probe fallback also tries `rk`).
-func doctorMigrationFake(legacyList, currentList string, runKitOnPath bool) *fakeRunner {
-	base := doctorFakeTrust(map[string]doctorVersionState{}, trustState{available: true, tapTrusted: true})
-	inner := base.respond
-	base.respond = func(req proc.Request) proc.Result {
-		// run-kit / rk --version probe (display PATH fallback).
-		if (req.Name == "run-kit" || req.Name == "rk") && len(req.Args) == 1 && req.Args[0] == "--version" {
-			if runKitOnPath {
-				return proc.Result{Stdout: []byte("run-kit v3.0.0\n")}
-			}
-			return proc.Result{Err: proc.ErrNotFound}
-		}
-		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
-			switch req.Args[3] {
-			case formulaPrefix + "rk":
-				if legacyList == "" {
-					return proc.Result{Err: errors.New("not installed")}
-				}
-				return proc.Result{Stdout: []byte(legacyList)}
-			case formulaPrefix + "run-kit":
-				if currentList == "" {
-					return proc.Result{Err: errors.New("not installed")}
-				}
-				return proc.Result{Stdout: []byte(currentList)}
-			}
-		}
-		return inner(req)
-	}
-	return base
 }
 
 // rcEnv returns an env func that resolves zsh and points the rc path at the given
@@ -743,132 +701,48 @@ func TestDoctor_RegisteredOnRoot(t *testing.T) {
 	}
 }
 
-// --- rk→run-kit migration WARN (change 9bak) ----------------------------------
+// --- run-kit after the migration-guard retirement (change h3f6) -----------------
 
-func TestDoctor_PendingMigrationWarns(t *testing.T) {
-	// State A: legacy `rk` keg present (leaf rk), current formula absent. doctor
-	// WARNs "pending migration" (exit unaffected) — even the unlinked-keg case
-	// (run-kit not on PATH) is a pending migration, not a FAIL.
-	f := doctorMigrationFake("rk 2.5.13\n", "", false /* run-kit not on PATH */)
-	installFakeRunner(t, f)
+func TestDoctor_LegacyOnlyMachineNoMigrationFindings(t *testing.T) {
+	// A legacy-only machine (old `rk` binary on PATH; the retired migration probes
+	// are gone) gets an ORDINARY run-kit row: the legacy-name PATH fallback still
+	// reports a version honestly, and doctor emits no migration WARN and runs no
+	// `brew list` probe of the retired legacy formula.
+	base := doctorFakeTrust(map[string]doctorVersionState{}, trustState{available: true, tapTrusted: true})
+	inner := base.respond
+	base.respond = func(req proc.Request) proc.Result {
+		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Err: proc.ErrNotFound} // new-name binary absent
+		}
+		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Stdout: []byte("rk v2.5.13\n")} // legacy binary present
+		}
+		return inner(req)
+	}
+	installFakeRunner(t, base)
 	dir := writeWiredRC(t)
 
 	var stdout, stderr bytes.Buffer
 	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
-		t.Fatalf("runDoctor err = %v, want nil (pending migration is WARN, not FAIL)", err)
+		t.Fatalf("runDoctor err = %v, want nil", err)
 	}
 	out := stdout.String()
-	if !lineHas(out, "run-kit", markerWarn) {
-		t.Fatalf("run-kit should WARN pending-migration (not FAIL):\n%s", out)
+	// No migration findings of any kind.
+	if strings.Contains(out, "pending migration") || strings.Contains(out, "leftover") {
+		t.Fatalf("doctor must emit no migration findings after the guard retirement:\n%s", out)
 	}
-	if !strings.Contains(out, "pending migration") || !strings.Contains(out, "shll update run-kit") {
-		t.Fatalf("missing pending-migration suggestion:\n%s", out)
-	}
+	// The legacy-name fallback reported a version → an ordinary non-FAIL row.
 	if lineHas(out, "run-kit", markerFail) {
-		t.Fatalf("a legacy keg is pending migration, never FAIL:\n%s", out)
+		t.Fatalf("run-kit must not FAIL when the legacy `rk` binary is on PATH (PATH fallback):\n%s", out)
 	}
-}
-
-func TestDoctor_PendingMigrationJSONFieldsHonest(t *testing.T) {
-	// State A (unlinked legacy keg): the pending-migration WARN must NOT fabricate the
-	// machine-readable probe fields. run-kit is NOT on PATH (neither `run-kit` nor the
-	// legacy `rk` binary resolve), so --json must report on_path:false / version_ok:false
-	// — the honest observed state — while the surfaced status stays WARN (pending
-	// migration dominates). CI consumers read these fields, so they must not lie.
-	f := doctorMigrationFake("rk 2.5.13\n", "", false /* run-kit not on PATH */)
-	installFakeRunner(t, f)
-	dir := writeWiredRC(t)
-
-	var stdout, stderr bytes.Buffer
-	if err := runDoctor(context.Background(), true /*json*/, rcEnv(dir), &stdout, &stderr); err != nil {
-		t.Fatalf("runDoctor(json) err = %v, want nil (pending migration is WARN)", err)
-	}
-	var results []doctorResult
-	if err := json.Unmarshal(stdout.Bytes(), &results); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	rk := resultByTool(results)["run-kit"]
-	if rk.Status != markerWarn {
-		t.Errorf("run-kit json status = %q, want WARN (pending migration)", rk.Status)
-	}
-	if rk.OnPath {
-		t.Errorf("run-kit.on_path = true, want false (unlinked legacy keg is NOT on PATH — state A)")
-	}
-	if rk.VersionOK {
-		t.Errorf("run-kit.version_ok = true, want false (no runnable binary in state A)")
-	}
-	if !strings.Contains(rk.Suggestion, "pending migration") {
-		t.Errorf("run-kit.suggestion = %q, want the pending-migration hint", rk.Suggestion)
-	}
-}
-
-func TestDoctor_PendingMigrationLinkedJSONFieldsHonest(t *testing.T) {
-	// A pending migration whose binary IS on PATH (e.g. the legacy `rk` binary still
-	// resolves) must report on_path:true / version_ok:true — again honest, not
-	// hardcoded — while still WARNing pending-migration. This proves the fields track
-	// the real probe, not a fixed value.
-	f := doctorMigrationFake("rk 2.5.13\n", "", true /* run-kit/rk on PATH */)
-	installFakeRunner(t, f)
-	dir := writeWiredRC(t)
-
-	var stdout, stderr bytes.Buffer
-	if err := runDoctor(context.Background(), true /*json*/, rcEnv(dir), &stdout, &stderr); err != nil {
-		t.Fatalf("runDoctor(json) err = %v, want nil", err)
-	}
-	var results []doctorResult
-	if err := json.Unmarshal(stdout.Bytes(), &results); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	rk := resultByTool(results)["run-kit"]
-	if rk.Status != markerWarn {
-		t.Errorf("run-kit json status = %q, want WARN (pending migration)", rk.Status)
-	}
-	if !rk.OnPath {
-		t.Errorf("run-kit.on_path = false, want true (binary resolves on PATH)")
-	}
-	if !rk.VersionOK {
-		t.Errorf("run-kit.version_ok = false, want true (binary reports a version)")
-	}
-}
-
-func TestDoctor_DualRackWarns(t *testing.T) {
-	// State C: both kegs present (current run-kit + legacy rk). doctor WARNs with the
-	// dual-rack cleanup pointer (exit unaffected); detection only.
-	f := doctorMigrationFake("rk 3.0.0\n", "run-kit 3.0.0\n", true)
-	installFakeRunner(t, f)
-	dir := writeWiredRC(t)
-
-	var stdout, stderr bytes.Buffer
-	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
-		t.Fatalf("runDoctor err = %v, want nil (dual-rack is WARN, not FAIL)", err)
-	}
-	out := stdout.String()
-	if !lineHas(out, "run-kit", markerWarn) {
-		t.Fatalf("run-kit should WARN dual-rack:\n%s", out)
-	}
-	if !strings.Contains(out, "leftover "+formulaPrefix+"rk keg") {
-		t.Fatalf("missing dual-rack cleanup suggestion:\n%s", out)
-	}
-	// The cleanup pointer MUST name the specific tool for the shll path (a bare
-	// `shll uninstall` sweeps the whole roster) and use the legacy LEAF name for the
-	// brew fallback — never the qualified legacy formula (which re-resolves to the
-	// renamed formula post-rename). Mirrors update.go's migrationDualRackNoteFmt.
-	if !strings.Contains(out, "shll uninstall run-kit") {
-		t.Fatalf("dual-rack suggestion must name the tool ('shll uninstall run-kit'), not a bare roster sweep:\n%s", out)
-	}
-	if !strings.Contains(out, "brew uninstall rk") {
-		t.Fatalf("dual-rack suggestion must use the legacy leaf name ('brew uninstall rk'):\n%s", out)
-	}
-	if strings.Contains(out, "brew uninstall "+formulaPrefix+"rk") {
-		t.Fatalf("dual-rack suggestion must NOT use the qualified legacy formula in the brew slot (re-resolution footgun):\n%s", out)
-	}
+	// The retired legacy formula is never probed (doctor runs no migration facts).
+	assertNoLegacyFormulaReference(t, base.recordedCalls())
 }
 
 func TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail(t *testing.T) {
-	// A migrated run-kit whose binary is on PATH only under the legacy `rk` name
-	// (pre-rename install) must NOT FAIL — the PATH-probe legacy fallback finds it.
-	// Current formula installed (migrated, leaf run-kit); `run-kit --version` fails
-	// ErrNotFound but `rk --version` succeeds → OK.
+	// A run-kit whose binary is on PATH only under the legacy `rk` name must NOT
+	// FAIL — the PATH-probe legacy fallback (a kept LegacyName surface) finds it:
+	// `run-kit --version` fails ErrNotFound but `rk --version` succeeds → OK.
 	base := doctorFakeTrust(map[string]doctorVersionState{}, trustState{available: true, tapTrusted: true})
 	inner := base.respond
 	base.respond = func(req proc.Request) proc.Result {

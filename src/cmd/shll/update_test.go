@@ -429,22 +429,15 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 	}
 }
 
-// allInstalledResponder models a REALISTIC fully-installed, migrated machine: every
+// allInstalledResponder models a REALISTIC fully-installed machine: every
 // `brew list --formula --versions <formula>` succeeds and emits the formula's keg
-// LEAF NAME (like real brew: `run-kit 1.0.0`, not the qualified formula), EXCEPT the
-// LEGACY run-kit formula (`sahil87/tap/rk`), which reports not-installed — a clean
-// single-rack post-rename machine has no `rk` keg. This keeps the migration gate
-// classifying run-kit as migrated (primary probe exit 0) with NO spurious dual-rack
-// note, so the golden-string tests stay stable. All non-`brew list` calls succeed
-// with empty stdout (delegated updates, upgrades, --help probes).
+// name (like real brew: `run-kit 1.0.0`, not the qualified formula). All
+// non-`brew list` calls succeed with empty stdout (delegated updates, upgrades,
+// --help probes).
 func allInstalledResponder() func(proc.Request) proc.Result {
 	return func(req proc.Request) proc.Result {
 		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
-			formula := req.Args[3]
-			if formula == formulaPrefix+"rk" {
-				return proc.Result{Err: errors.New("not installed")}
-			}
-			leaf := strings.TrimPrefix(formula, formulaPrefix)
+			leaf := strings.TrimPrefix(req.Args[3], formulaPrefix)
 			return proc.Result{Stdout: []byte(leaf + " 1.0.0\n")}
 		}
 		return proc.Result{}
@@ -455,9 +448,8 @@ func allInstalledResponder() func(proc.Request) proc.Result {
 // installed (via `brew list`), with all other requests succeeding (empty stdout).
 // shll itself is reported not-brew-installed so the self-upgrade is skipped and
 // the test stays focused on roster delegation. The `brew list` stdout emits the
-// KEG LEAF NAME (the formula's leaf, matching real brew output like `run-kit 3.0.0`,
-// not the fully-qualified formula) so the migration gate's leaf classification sees
-// realistic input — a formula listed here reports leaf == its own name.
+// keg name (matching real brew output like `run-kit 3.0.0`, not the
+// fully-qualified formula).
 func installedOnly(formulas ...string) func(proc.Request) proc.Result {
 	set := make(map[string]bool, len(formulas))
 	for _, f := range formulas {
@@ -476,11 +468,9 @@ func installedOnly(formulas ...string) func(proc.Request) proc.Result {
 }
 
 func TestUpdate_FlagSupported(t *testing.T) {
-	// run-kit is installed (migrated) and `run-kit update --help` advertises
+	// run-kit is installed and `run-kit update --help` advertises
 	// --skip-brew-update → run-kit is upgraded via `run-kit update --skip-brew-update`,
-	// NOT brew upgrade. installedOnly reports the run-kit keg present with leaf
-	// `run-kit` (its parseBrewLeaf token), so the migration gate classifies it
-	// migrated → normal delegation.
+	// NOT brew upgrade.
 	base := installedOnly(formulaPrefix + "run-kit")
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name == "run-kit" && isUpdateHelpProbe(req) {
@@ -914,10 +904,9 @@ func TestUpdate_SubsetMultipleUnknownAllReported(t *testing.T) {
 }
 
 func TestUpdate_SubsetNamedNotInstalledErrors(t *testing.T) {
-	// Only hop is installed; the user names `run-kit`, which is NOT installed AND has
-	// no legacy keg → error (distinct from the whole-roster graceful skip). Exit
-	// non-zero, nothing upgraded. installedOnly(hop) reports both sahil87/tap/run-kit
-	// and sahil87/tap/rk not-installed, so the migration gate → not installed.
+	// Only hop is installed; the user names `run-kit`, which is NOT installed →
+	// error (distinct from the whole-roster graceful skip). Exit non-zero, nothing
+	// upgraded.
 	f := &fakeRunner{respond: installedOnly(formulaPrefix + "hop")}
 	installFakeRunner(t, f)
 
@@ -1495,414 +1484,78 @@ func TestMakeBump_NormalizesVersions(t *testing.T) {
 	}
 }
 
-// --- rk→run-kit migration guard (change 9bak) ---
+// --- legacy-only machines after the migration-guard retirement (change h3f6) ---
 
-const (
-	runKitFormula       = formulaPrefix + "run-kit"
-	runKitLegacyFormula = formulaPrefix + "rk"
-)
+const runKitFormula = formulaPrefix + "run-kit"
 
-// migrationRunner is a stateful fake modeling a machine mid-migration. brewList maps
-// a formula → the `brew list` stdout it should emit (leaf + version) BEFORE the
-// migration; a formula absent from the map reports not-installed. After a
-// `brew upgrade <runKitLegacyFormula>` runs, the current formula begins reporting
-// afterList (so the digest re-query sees the migrated version).
-//
-// legacyAfterList models what `brew list <runKitLegacyFormula>` reports AFTER the
-// migration upgrade — driving migrateRunKit's POST-migration dual-rack re-probe:
-//   - "" (default) → the rename consumed the legacy keg (clean migration) → the
-//     legacy formula reports not-installed afterward → NO dual-rack note.
-//   - a `rk <ver>` line → the migration left the legacy keg behind (a dual-rack
-//     orphan, leaf `rk`) → migrateRunKit's re-probe fires the cleanup note.
-//
-// The `run-kit --version` post-check models the linked/unlinked pathology:
-//   - linkOnUpgrade=true  → the migration upgrade itself puts run-kit on PATH, so the
-//     post-check succeeds and NO `brew link` is needed (the linked case).
-//   - linkOnUpgrade=false → run-kit stays OFF PATH after the upgrade (the unlinked
-//     keg, state A) until a `brew link run-kit` runs, which flips it on. So the
-//     post-check sees ErrNotFound and `brew link run-kit` fires.
-//
-// upgradeFails makes `brew upgrade <runKitLegacyFormula>` exit non-zero (proc returns
-// (code, nil) — the failed-migration path): the migration must then run NO
-// link/daemon-note/re-probe and surface the exit code.
-//
-// Concurrency-safe (probes run in parallel).
-type migrationRunner struct {
-	mu              sync.Mutex
-	brewList        map[string]string // formula → `brew list` stdout (before migration)
-	afterList       string            // current-formula `brew list` stdout after `brew upgrade rk`
-	legacyAfterList string            // legacy-formula `brew list` stdout after migration ("" → gone)
-	linkOnUpgrade   bool              // upgrade alone links the binary (no separate brew link needed)
-	upgradeFails    bool              // `brew upgrade <legacy>` exits non-zero (failed migration)
-	migrated        bool              // set once `brew upgrade <legacy>` runs
-	runKitPath      bool              // `run-kit --version` succeeds once true
-}
-
-func (r *migrationRunner) respond(req proc.Request) proc.Result {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	switch {
-	case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version":
-		return proc.Result{Stdout: []byte("Homebrew 6.0.4\n")}
-	case req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list":
-		formula := req.Args[3]
-		if formula == runKitFormula && r.migrated && r.afterList != "" {
-			return proc.Result{Stdout: []byte(r.afterList)}
-		}
-		// After the migration, the legacy formula's `brew list` reflects the
-		// post-migration reality (legacyAfterList), not its pre-migration value — so
-		// the dual-rack re-probe sees whether the rename consumed the legacy keg.
-		if formula == runKitLegacyFormula && r.migrated {
-			if r.legacyAfterList == "" {
-				return proc.Result{Err: errors.New("not installed")}
+// assertNoLegacyFormulaReference fails the test if any recorded subprocess call
+// references the retired legacy formula `sahil87/tap/rk`. shll never probes or
+// acts on the legacy formula anymore — that is the whole point of retiring the
+// guard (brew prints a rename warning on every reference to the old name).
+func assertNoLegacyFormulaReference(t *testing.T, calls []proc.Request) {
+	t.Helper()
+	legacy := formulaPrefix + "rk"
+	for _, c := range calls {
+		for _, a := range c.Args {
+			if a == legacy {
+				t.Fatalf("subprocess call references the retired legacy formula %s: %+v", legacy, c)
 			}
-			return proc.Result{Stdout: []byte(r.legacyAfterList)}
 		}
-		if out, ok := r.brewList[formula]; ok {
-			return proc.Result{Stdout: []byte(out)}
-		}
-		return proc.Result{Err: errors.New("not installed")}
-	case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "upgrade" && req.Args[1] == runKitLegacyFormula:
-		// The brew-direct migration. A failed upgrade exits non-zero (proc returns
-		// (code, nil)) and does NOT migrate the keg. Otherwise the keg is migrated;
-		// whether run-kit is on PATH afterward depends on linkOnUpgrade (the linked
-		// vs. unlinked pathology).
-		if r.upgradeFails {
-			return proc.Result{ExitCode: 1}
-		}
-		r.migrated = true
-		if r.linkOnUpgrade {
-			r.runKitPath = true
+	}
+}
+
+func TestUpdate_LegacyOnlyMachineSkipsRunKit(t *testing.T) {
+	// A never-migrated machine (legacy `rk` keg only — invisible to shll, which
+	// probes only sahil87/tap/run-kit): whole-roster `shll update` treats run-kit
+	// as not installed and skips it gracefully (Constitution V), and NO call ever
+	// references sahil87/tap/rk.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			if req.Args[3] == formulaPrefix+"hop" {
+				return proc.Result{Stdout: []byte("hop 0.1.18\n")}
+			}
+			return proc.Result{Err: errors.New("not installed")}
 		}
 		return proc.Result{}
-	case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "link" && req.Args[1] == "run-kit":
-		// `brew link run-kit` links the unlinked keg → run-kit is now on PATH.
-		r.runKitPath = true
-		return proc.Result{}
-	case req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version":
-		if r.runKitPath {
-			return proc.Result{Stdout: []byte("run-kit 3.0.0\n")}
-		}
-		return proc.Result{Err: proc.ErrNotFound}
-	}
-	return proc.Result{}
-}
-
-func TestUpdate_MigrationStateA_UnlinkedLegacyKeg(t *testing.T) {
-	// State A: legacy keg present (leaf `rk`), UNLINKED — `run-kit --version` fails
-	// with ErrNotFound after the brew-direct upgrade, so `brew link run-kit` runs.
-	// The migration is `brew upgrade sahil87/tap/rk`; the old binary is NEVER
-	// delegated to. Digest reads before from the legacy keg, after from the new
-	// formula → `run-kit 2.5.13 → 3.0.0`.
-	r := &migrationRunner{
-		brewList:   map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		afterList:  "run-kit 3.0.0\n",
-		runKitPath: false, // unlinked until `brew link`
-	}
-	f := &fakeRunner{respond: r.respond}
+	}}
 	installFakeRunner(t, f)
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-	changelogServer(t, map[string]string{
-		"run-kit": relJSON([3]string{"v3.0.0", "run-kit 3.0", "## What's Changed\n* rename"}),
-	})
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	calls := f.recordedCalls()
-	// Brew-direct migration ran; the old binary was NOT delegated to.
-	if !invocationsContain(calls, brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatalf("expected the brew-direct migration `brew upgrade %s`, calls: %+v", runKitLegacyFormula, calls)
-	}
-	if invocationsContain(calls, "run-kit", "update") || invocationsContain(calls, "rk", "update") {
-		t.Fatal("migration must be brew-direct — never delegate to the (old) binary's update")
-	}
-	// Unlinked → `brew link run-kit` ran (post-check saw ErrNotFound).
-	if !invocationsContain(calls, brewBinary, "link", "run-kit") {
-		t.Fatalf("expected `brew link run-kit` for the unlinked-keg pathology, calls: %+v", calls)
-	}
-	out := stdout.String()
-	// Daemon-restart note is PRINTED (never executed).
-	if !strings.Contains(out, "run-kit serve --restart") {
-		t.Fatalf("out missing the daemon-restart note:\n%s", out)
-	}
-	// Clean migration: the rename consumed the legacy keg (legacyAfterList defaults
-	// to ""), so the POST-migration dual-rack re-probe finds no leftover → NO
-	// dual-rack cleanup note.
-	if strings.Contains(out, "leftover") {
-		t.Fatalf("a clean migration (legacy keg consumed) must NOT print a dual-rack note:\n%s", out)
-	}
-	// Digest renders the migration transition using the legacy before-version and
-	// the new-formula after-version.
-	if !strings.Contains(out, "run-kit 2.5.13 -> 3.0.0 (1 release)") {
-		t.Fatalf("out missing `run-kit 2.5.13 -> 3.0.0` digest transition:\n%s", out)
-	}
-}
-
-func TestUpdate_MigrationLeftoverDualRackNote(t *testing.T) {
-	// A migration that leaves the legacy keg behind (state C reached via migration):
-	// pre-migration only the legacy `rk` keg exists (→ needsMigration), and AFTER
-	// `brew upgrade sahil87/tap/rk` the legacy formula STILL reports leaf `rk`
-	// alongside the migrated run-kit keg. The POST-migration re-probe inside
-	// migrateRunKit detects the leftover and prints the one-line cleanup note. This
-	// is the note's ONLY live path — a needsMigration probe never carries dualRack.
-	r := &migrationRunner{
-		brewList:        map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		afterList:       "run-kit 3.0.0\n",
-		legacyAfterList: "rk 3.0.0\n", // legacy keg lingers after migration → dual-rack
-		linkOnUpgrade:   true,         // linked, to keep this focused on the re-probe
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-	changelogServer(t, map[string]string{})
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "leftover "+runKitLegacyFormula+" keg remains alongside "+runKitFormula) {
-		t.Fatalf("out missing the POST-migration dual-rack cleanup note:\n%s", out)
-	}
-	// Detection only — shll never removes the orphan keg.
-	if invocationsContain(f.recordedCalls(), brewBinary, "uninstall", runKitLegacyFormula) {
-		t.Fatal("post-migration dual-rack is detection-only — shll must NEVER uninstall the orphan keg")
-	}
-}
-
-func TestUpdate_MigrationFailedUpgradeSkipsPostSteps(t *testing.T) {
-	// A FAILED `brew upgrade sahil87/tap/rk` (non-zero exit; proc returns (code, nil))
-	// must abort the migration BEFORE the post-steps: NO `brew link`, NO daemon note,
-	// NO dual-rack re-probe. The failure flips the run to errSilent.
-	r := &migrationRunner{
-		brewList:     map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		upgradeFails: true,
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-
-	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"})
-	if !errors.Is(err, errSilent) {
-		t.Fatalf("runUpdate err = %v, want errSilent (failed migration)", err)
-	}
-	calls := f.recordedCalls()
-	// The upgrade WAS attempted.
-	if !invocationsContain(calls, brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatalf("expected the migration upgrade to be attempted, calls: %+v", calls)
-	}
-	// No post-steps: no `brew link run-kit`.
-	if invocationsContain(calls, brewBinary, "link", "run-kit") {
-		t.Fatal("a failed migration must NOT run `brew link run-kit`")
-	}
-	out := stdout.String()
-	// No daemon note, no dual-rack note.
-	if strings.Contains(out, "run-kit serve --restart") {
-		t.Fatalf("a failed migration must NOT print the daemon note:\n%s", out)
-	}
-	if strings.Contains(out, "leftover") {
-		t.Fatalf("a failed migration must NOT print a dual-rack note:\n%s", out)
-	}
-	// The post-check `run-kit --version` (which precedes `brew link`) must not run
-	// either — the post-steps are gated as a block on the upgrade's success.
-	if invocationsContain(calls, "run-kit", "--version") {
-		t.Fatal("a failed migration must NOT run the `run-kit --version` post-check")
-	}
-}
-
-func TestUpdate_MigrationStateA_Linked(t *testing.T) {
-	// A LINKED migration (the `brew upgrade` puts run-kit on PATH immediately) must
-	// NOT run `brew link` — the post-check succeeds, so the conditional link is
-	// skipped. Only the unlinked pathology triggers `brew link run-kit`.
-	r := &migrationRunner{
-		brewList:      map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		afterList:     "run-kit 3.0.0\n",
-		linkOnUpgrade: true, // upgrade alone links the binary
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-	changelogServer(t, map[string]string{})
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	calls := f.recordedCalls()
-	if !invocationsContain(calls, brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatal("expected the brew-direct migration upgrade")
-	}
-	if invocationsContain(calls, brewBinary, "link", "run-kit") {
-		t.Fatal("`brew link run-kit` must NOT run when the migrated binary is already on PATH")
-	}
-}
-
-func TestUpdate_MigrationStateB_AlreadyMigrated(t *testing.T) {
-	// State B: `brew list sahil87/tap/run-kit` reports leaf `run-kit` (installed via
-	// the current formula) → MIGRATED. Even though a legacy-formula probe could
-	// exit 0, exit-code alone must not gate: the current-formula probe classifies it
-	// migrated → normal delegation (`run-kit update`), NO migration action.
-	r := &migrationRunner{
-		brewList: map[string]string{
-			runKitFormula: "run-kit 3.0.0\n",
-			// state B: `brew list sahil87/tap/rk` also exits 0 via rename resolution,
-			// reporting the CURRENT leaf `run-kit` — this must NOT be read as legacy.
-			runKitLegacyFormula: "run-kit 3.0.0\n",
-		},
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	calls := f.recordedCalls()
-	// Normal delegation — NOT the migration action.
-	if !invocationsContain(calls, "run-kit", "update") {
-		t.Fatalf("state B must delegate to `run-kit update`, calls: %+v", calls)
-	}
-	if invocationsContain(calls, brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatal("state B (already migrated) must NOT run the migration `brew upgrade sahil87/tap/rk`")
-	}
-	// State B is a SINGLE migrated keg: the `sahil87/tap/rk` probe exits 0 only via
-	// rename resolution, reporting the CURRENT leaf `run-kit` — not a second rack. So
-	// dual-rack must NOT be flagged (the detection keys on the LEGACY leaf `rk`), and
-	// no leftover-keg cleanup note prints.
-	if strings.Contains(stdout.String(), "leftover") {
-		t.Fatalf("state B (single migrated keg, rename resolution) must NOT print a dual-rack note:\n%s", stdout.String())
-	}
-}
-
-func TestUpdate_MigrationStateC_DualRack(t *testing.T) {
-	// State C: BOTH kegs present. The current-formula probe reports installed (leaf
-	// run-kit) → migrated (normal delegation); the legacy-formula probe also exits 0
-	// → dual-rack detected → a one-line cleanup note is printed (detection only, no
-	// destructive action). Leaf `rk` for the legacy keg here.
-	r := &migrationRunner{
-		brewList: map[string]string{
-			runKitFormula:       "run-kit 3.0.0\n",
-			runKitLegacyFormula: "rk 3.0.0\n",
-		},
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	calls := f.recordedCalls()
-	// Migrated → normal delegation; no migration action.
-	if !invocationsContain(calls, "run-kit", "update") {
-		t.Fatalf("state C must delegate to `run-kit update`, calls: %+v", calls)
-	}
-	if invocationsContain(calls, brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatal("state C (migrated, dual-rack) must NOT run the migration upgrade")
-	}
-	// Dual-rack cleanup note printed; shll never removes the orphan keg.
-	out := stdout.String()
-	if !strings.Contains(out, "leftover "+runKitLegacyFormula+" keg remains alongside "+runKitFormula) {
-		t.Fatalf("out missing the dual-rack cleanup note:\n%s", out)
-	}
-	// The note points at `shll uninstall run-kit` (the now-supported, leaf-verified dual-
-	// rack cleanup) and gives the brew-direct alternative by the LEGACY LEAF NAME only.
-	if !strings.Contains(out, "shll uninstall run-kit") {
-		t.Errorf("dual-rack note must point at `shll uninstall run-kit`, out:\n%s", out)
-	}
-	if !strings.Contains(out, "brew uninstall rk") {
-		t.Errorf("dual-rack note's brew-direct alternative must be the leaf name `brew uninstall rk`, out:\n%s", out)
-	}
-	// It must NOT suggest the qualified old-name form — post-rename brew re-resolves
-	// `sahil87/tap/rk` → run-kit, so that would delete the good keg (the footgun).
-	if strings.Contains(out, "brew uninstall "+runKitLegacyFormula) {
-		t.Errorf("dual-rack note must NOT suggest the qualified `brew uninstall %s` (rename re-resolution deletes the good keg), out:\n%s", runKitLegacyFormula, out)
-	}
-	if invocationsContain(calls, brewBinary, "uninstall", runKitLegacyFormula) {
-		t.Fatal("dual-rack is detection-only — shll must NEVER uninstall the orphan keg")
-	}
-}
-
-func TestUpdate_MigrationWholeRosterFlowsThroughGuard(t *testing.T) {
-	// A whole-roster `shll update` on a legacy-keg machine migrates run-kit rather
-	// than silently skipping it (the graceful-degradation trap the guard fixes).
-	r := &migrationRunner{
-		brewList:  map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		afterList: "run-kit 3.0.0\n",
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-	changelogServer(t, map[string]string{})
 
 	var stdout, stderr bytes.Buffer
 	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if !invocationsContain(f.recordedCalls(), brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatal("whole-roster update must migrate a legacy-keg run-kit, not skip it")
+	calls := f.recordedCalls()
+	assertNoLegacyFormulaReference(t, calls)
+	if invocationsContain(calls, "run-kit", "update") || invocationsContain(calls, "rk", "update") {
+		t.Fatal("a legacy-only machine's run-kit is not installed — it must not be upgraded")
+	}
+	if !invocationsContain(calls, "hop", "update") {
+		t.Fatal("the installed roster tool (hop) must still be upgraded")
 	}
 }
 
-func TestUpdate_MigrationViaLegacyAliasWithNotice(t *testing.T) {
-	// `shll update rk` on a legacy-keg machine resolves the alias to run-kit, prints
-	// the rename notice, and migrates.
-	r := &migrationRunner{
-		brewList:  map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		afterList: "run-kit 3.0.0\n",
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
-	changelogServer(t, map[string]string{})
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"rk"}); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "note: rk is now run-kit") {
-		t.Fatalf("out missing the `rk is now run-kit` alias notice:\n%s", out)
-	}
-	if !invocationsContain(f.recordedCalls(), brewBinary, "upgrade", runKitLegacyFormula) {
-		t.Fatal("`shll update rk` must migrate the legacy keg via the alias")
-	}
-	// The migration also treats the legacy keg as installed — no "not installed" error.
-	if strings.Contains(stderr.String(), "not installed") {
-		t.Fatalf("legacy keg must count as installed, not error; stderr=%q", stderr.String())
-	}
-}
-
-func TestUpdate_MigrationDryRunShowsRealArgv(t *testing.T) {
-	// Dry-run previews the REAL migration argv (`brew upgrade sahil87/tap/rk`) for a
-	// legacy-keg run-kit, from the same upgradeArgv the live run uses — and performs
-	// NO write.
-	r := &migrationRunner{
-		brewList:  map[string]string{runKitLegacyFormula: "rk 2.5.13\n"},
-		afterList: "run-kit 3.0.0\n",
-	}
-	f := &fakeRunner{respond: r.respond}
-	installFakeRunner(t, f)
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "run-kit  brew upgrade "+runKitLegacyFormula) {
-		t.Fatalf("dry-run preview must show the real migration argv `brew upgrade %s`:\n%s", runKitLegacyFormula, out)
-	}
-	// No write of any kind (all writes are foreground).
-	for _, c := range f.recordedCalls() {
-		if c.Transport == proc.TransportForeground {
-			t.Errorf("migration dry-run must spawn no foreground (write) subprocess, got %+v", c)
+func TestUpdate_LegacyOnlyMachineNamedRunKitErrorsNotInstalled(t *testing.T) {
+	// Naming run-kit explicitly on a legacy-only machine errors named-but-not-
+	// installed — the same contract as any absent named tool (the guard that once
+	// counted the legacy keg as installed is retired).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")}
 		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"})
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent (named-but-not-installed)", err)
 	}
+	if !strings.Contains(stderr.String(), "run-kit: not installed") {
+		t.Fatalf("stderr missing `run-kit: not installed`: %q", stderr.String())
+	}
+	assertNoLegacyFormulaReference(t, f.recordedCalls())
 }
 
 // --- end-of-run agent-skill refresh -------------------------------------------

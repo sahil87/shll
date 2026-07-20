@@ -78,9 +78,8 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 // list/version/doctor. The fallback fires ONLY on ErrNotFound: a present-but-broken
 // `run-kit` (non-zero exit, timeout/deadline) must NOT silently defer to `rk` — its
 // own error is returned. This serves DISPLAY surfaces only; the display name stays
-// tool.Name regardless of which probe name succeeded, and the brew-keg migration
-// gate (update.go) is independent of this PATH probe. Transitional — a no-op once
-// legacy `rk`-only installs die out.
+// tool.Name regardless of which probe name succeeded. A retained LegacyName
+// surface — the run-kit formula still installs `rk` as an interchangeable alias.
 func probeToolVersion(ctx context.Context, tool Tool) ([]byte, error) {
 	out, err := probeVersionByName(ctx, tool.Name)
 	if errors.Is(err, proc.ErrNotFound) && tool.LegacyName != "" {

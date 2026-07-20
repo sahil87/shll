@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, the post-upgrade `What changed:` release digest (version capture via probeInstalledLeaf, full release bodies rendered inline via the shared `renderReleases` helper), and the transitional rk→run-kit brew-direct migration guard (keg-leaf gate + `rk` legacy alias)."
+description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, full release bodies rendered inline via the shared `renderReleases` helper), and the `rk` legacy target alias."
 ---
 # cli/update
 
@@ -10,7 +10,7 @@ Source: `src/cmd/shll/update.go`, with shared brew helpers in `src/cmd/shll/brew
 
 > **Delegation, not `brew upgrade`.** `shll update` delegates to `<tool> update` so each tool stays authoritative over its own upgrade + side effects — e.g. `run-kit update`'s daemon restart, which lives in run-kit's CLI rather than a brew post-install hook (Constitution IV — Composition, Not Replacement; Constitution III — Wrap, Don't Reinvent). Rationale: [the delegate Design Decision](#delegate-to-tool-update-not-brew-upgrade-formula) below. (cczs)
 >
-> **The one exception: a legacy-keg `run-kit` migration (9bak).** On a machine still holding the pre-rename `rk` keg, `shll update` does NOT delegate to `run-kit update` — it migrates the keg brew-direct (`brew upgrade sahil87/tap/rk`, which brew resolves through the rename map). The old binary's rename handling is version-dependent and unfixable, so delegation is unsafe there; delegation resumes on every subsequent (already-migrated) run. See [The rk→run-kit migration guard](#the-rkrun-kit-migration-guard).
+> **run-kit is a plain roster tool.** Every roster tool — run-kit included — takes the single-probe delegated-upgrade path. A never-migrated machine (legacy `rk` keg only) probes `sahil87/tap/run-kit`, finds it not installed, and skips run-kit gracefully (Constitution V); straggler migration is the manual README path (`brew uninstall rk`, then `shll install`), not a shll code path.
 
 ## Behavior contract
 
@@ -21,8 +21,8 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 2. **Instant status line.** Write `Checking installed shll tools…` to stdout (named constant `updateStatusLine`, `src/cmd/shll/update.go:20`). This is the first visible byte, printed **unconditionally** before any probing — including before the nothing-to-do short-circuit — so the user gets immediate feedback during the (now concurrent) probe phase rather than staring at a blank terminal.
 
 3. **Parallel read-only capability probes.** `probeRoster(ctx)` dispatches one goroutine per roster tool and joins on a `sync.WaitGroup`; each goroutine runs `probeTool` and writes its result into a fixed-size `[]probeResult` slice **indexed by roster position** so results stay in roster order regardless of completion order. Per tool, `probeTool` determines these facts:
-   - **Installed? + before-version + (run-kit) migration classification** — a `probeInstalledLeaf(ctx, t.Formula)` read (`brew list --formula --versions`) yields the exit-code install fact, the keg **leaf name**, AND the parsed installed version (`probeResult.beforeVersion`). This is the captured read the probe already pays for — never streamed foreground output (code-quality.md). `beforeVersion` is `""` when not installed or unparseable (suppresses only this tool's digest entry, never its upgrade). For a tool declaring a `LegacyFormula` (run-kit only), `probeTool` hands off to `probeRunKitMigration`, which classifies by leaf name and may set `needsMigration`/`dualRack` — see [The rk→run-kit migration guard](#the-rkrun-kit-migration-guard). See also [version capture](#version-capture--the-what-changed-digest).
-   - **Supports `--skip-brew-update`?** — only for installed tools that have a non-empty `Update` argv (and are NOT `needsMigration` — a migration is brew-direct, so there is nothing to delegate to): `toolSupportsSkipFlag` runs `<tool> update --help` via `proc.Run` (capture) and checks whether the output contains the literal substring `--skip-brew-update` (`strings.Contains`, never a regex — code-quality.md anti-pattern). A probe transport error is treated as "not supported" → graceful degradation to a plain `<tool> update`.
+   - **Installed? + before-version** — a `probeInstalledVersion(ctx, t.Formula)` read (`brew list --formula --versions`) yields the exit-code install fact AND the parsed installed version (`probeResult.beforeVersion`). This is the captured read the probe already pays for — never streamed foreground output (code-quality.md). `beforeVersion` is `""` when not installed or unparseable (suppresses only this tool's digest entry, never its upgrade). `probeTool` is the plain single-probe path for every tool. See also [version capture](#version-capture--the-what-changed-digest).
+   - **Supports `--skip-brew-update`?** — only for installed tools that have a non-empty `Update` argv: `toolSupportsSkipFlag` runs `<tool> update --help` via `proc.Run` (capture) and checks whether the output contains the literal substring `--skip-brew-update` (`strings.Contains`, never a regex — code-quality.md anti-pattern). A probe transport error is treated as "not supported" → graceful degradation to a plain `<tool> update`.
 
 4. **Detect shll-self brew install + before-version.** A single `probeInstalledVersion(ctx, shllFormula)` (`shllFormula = "sahil87/tap/shll"`, `src/cmd/shll/brew.go`) yields BOTH `shllInstalled` (drives whether the self-upgrade step in (7) runs) AND `beforeShll` (shll's pre-upgrade **brew-formula** version, feeding the digest — not the running process's ldflags version). (This single probe runs after `probeRoster`, not inside it — shll is intentionally not in `Roster`.)
 
@@ -32,13 +32,12 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 7. **shll self-upgrade (when brew-installed).** If step (4) reported shll itself as brew-installed, print the `shll (self)` per-tool header (see [Per-tool output separation](#per-tool-output-separation)) then run `proc.RunForeground(ctx, brewBinary, "upgrade", shllFormula)` *before* the roster loop. shll has no `update` subcommand to call on itself, so this stays a direct `brew upgrade` (not delegated). See [shll self-upgrade](#shll-self-upgrade) for rationale and edge cases. Failures here go through the same best-effort `anyFailed` path as roster failures, and contribute to the `total`/`succeeded` counts feeding the summary tail. **On success**, `shll update` re-queries `installedVersion(ctx, shllFormula)` (a cheap captured read) and records a bump against `beforeShll` if it changed — the digest input (r01z).
 
-8. **Sequential per-tool upgrade (delegated).** For each installed tool in roster order, print its per-tool header then call `upgradeTool(ctx, stdout, stderr, t, probes[i])`. On a successful (exit 0) upgrade, re-query `installedVersion(ctx, t.Formula)` and record a bump against `probes[i].beforeVersion` if it changed (the digest input, r01z). Dispatch (the migration branch first — 9bak):
-   - **`needsMigration` (legacy `rk` keg)** → the brew-direct **migration action** `migrateRunKit` instead of delegation — `brew upgrade sahil87/tap/rk` + conditional `brew link run-kit` + printed notes. See [The rk→run-kit migration guard](#the-rkrun-kit-migration-guard).
+8. **Sequential per-tool upgrade (delegated).** For each installed tool in roster order, print its per-tool header then call `upgradeTool(ctx, stdout, stderr, t, probes[i])`. On a successful (exit 0) upgrade, re-query `installedVersion(ctx, t.Formula)` and record a bump against `probes[i].beforeVersion` if it changed (the digest input, r01z). Dispatch:
    - **has `Update` argv + supports the flag** → `<tool> update --skip-brew-update` (the `Update` argv with the flag appended).
    - **has `Update` argv but no flag (version skew)** → `<tool> update` with no flag — and it does **not** fall back to `brew upgrade`. This is the retry-without-flag contract for an installed tool predating the `--skip-brew-update` convention (Constitution V — Graceful Degradation).
    - **no `Update` argv (hypothetical future tool)** → `brew upgrade <formula>` fallback (today's pre-delegation behavior, retained for tools with no `update` subcommand), via plain `proc.RunForeground`. Because all six roster tools currently expose `update`, this fallback is **presently unreachable for the roster** — it is wired for correctness and future tools.
 
-   `upgradeTool` now takes `stdout`/`stderr` (9bak) so `migrateRunKit` can print its post-check/daemon/dual-rack notes; the non-migration paths ignore the writers. Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
+   Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
 
 9. **Summary tail, then the digest.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation)), then the **"What changed:" digest** for the recorded bumps (r01z — see [version capture](#version-capture--the-what-changed-digest)), then, if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). Both the tail and the digest are presentation-only and do **not** influence the exit code.
 
@@ -53,7 +52,7 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 **Valid targets for `update`**: the six `Roster` names (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) **plus** the literal `shll`. `shll` is special — it is not in `Roster` (Constitution III — `Roster` is the sub-tool list), so the self-target name is the named constant `shllTargetToken = "shll"` (`src/cmd/shll/tools.go`). Naming `shll` engages the existing self-upgrade path (`brew upgrade sahil87/tap/shll`); see [shll self-upgrade](#shll-self-upgrade).
 
-**The legacy alias `rk` → `run-kit` (9bak).** `shll update rk` still works: `resolveTargets` resolves `rk` via the `legacyAliases` map to the canonical `run-kit` tool and reports it via its `aliased []string` return, so `runUpdate` prints a one-line `note: rk is now run-kit` (`printAliasNotices`, to stdout, before the status line). The alias is **not** advertised in the valid-targets diagnostic — `shll update foo` still lists canonical names only (`valid targets: shll, wt, idea, tu, run-kit, hop, fab-kit`, no `rk`). `shll update rk` on a legacy-keg machine resolves to `run-kit` and then migrates via the guard — the alias and the migration compose. See [cli/commands §the legacy target alias](/cli/commands.md#the-legacy-target-alias-rk--run-kit).
+**The legacy alias `rk` → `run-kit`.** `shll update rk` still works: `resolveTargets` resolves `rk` via the `legacyAliases` map to the canonical `run-kit` tool and reports it via its `aliased []string` return, so `runUpdate` prints a one-line `note: rk is now run-kit` (`printAliasNotices`, to stdout, before the status line). The alias is **not** advertised in the valid-targets diagnostic — `shll update foo` still lists canonical names only (`valid targets: shll, wt, idea, tu, run-kit, hop, fab-kit`, no `rk`). `shll update rk` resolves to the canonical `run-kit` and then follows the plain single-probe delegated-upgrade path (or the graceful skip / named `not installed` error when run-kit is absent). See [cli/commands §the legacy target alias](/cli/commands.md#the-legacy-target-alias-rk--run-kit).
 
 **Roster-order processing.** A subset is always processed in `Roster` (leaves-first) order regardless of arg order — `resolveTargets` returns the selected `Tool`s in roster order. Example: `shll update fab-kit wt` processes `wt` then `fab-kit`. When `shll` is among the targets it keeps its position as the **first** step (self-upgrade before the roster loop), exactly as in a whole-roster run — `shll update shll hop` runs `shll (self)` first, then `hop`. (Why leaves-first is output coherence, not correctness: [Leaves-first Roster order](#leaves-first-roster-order).)
 
@@ -78,11 +77,11 @@ The **"What changed:"** digest tail surfaces what a run changed — version tran
 
 ### Version capture (before + after)
 
-- **Before-version** — captured for free from the existing probe. `probeInstalledLeaf(ctx, formula)` (`brew.go`) is the **sole** `brew list --formula --versions <formula>` invocation in `cmd/shll` (9bak); it returns the exit-code install fact, the keg leaf, and the parsed version from one read. `probeInstalledVersion`/`isInstalled`/`installedVersion` are thin wrappers over it — so the identical brew read exists in exactly one place (see [Detection](#detection)). `probeTool` stores the version as `probeResult.beforeVersion` (for a migrated run-kit, the LEGACY keg's version); shll-self's `beforeShll` comes from the single `probeInstalledVersion(ctx, shllFormula)` in step (4). Never streamed foreground output (code-quality.md anti-pattern).
+- **Before-version** — captured for free from the existing probe. `probeInstalledVersion(ctx, formula)` (`brew.go`) is the **sole** `brew list --formula --versions <formula>` invocation in `cmd/shll`; it returns the exit-code install fact and the parsed version from one read. `isInstalled`/`installedVersion` are thin wrappers over it — so the identical brew read exists in exactly one place (see [Detection](#detection)). `probeTool` stores the version as `probeResult.beforeVersion`; shll-self's `beforeShll` comes from the single `probeInstalledVersion(ctx, shllFormula)` in step (4). Never streamed foreground output (code-quality.md anti-pattern).
 - **After-version** — after each **successful** (exit 0) upgrade, `installedVersion(ctx, formula)` is re-queried (a fresh cheap captured read) — for shll-self against `shllFormula`, for each roster tool against `t.Formula`. The re-query runs **only** for tools that exited 0.
 - **Multi-keg pick.** `parseBrewVersion` (`brew.go`) takes the max across `fields[1:]` of the `brew list --versions` line via `changelog.CompareVer` — a multi-keg host lists every installed version in **arbitrary** order (`tu 0.6.4 0.6.2`), so blindly taking `fields[1]` could report an oldest keg and suppress/misreport a transition. Pinned by `TestParseBrewVersion_MultiKegPicksMax`.
 
-`makeBump(tool, repo, old, new)` builds a `versionBump` **only** when both versions are known and differ (`old != "" && new != "" && old != new`) — the guard that keeps a no-op run's output byte-identical to before this change. Bumps are collected in roster order (shll first). Each `versionBump` carries `repo` (the GitHub slug — kept as a separate field for future-proofing, though since the change-9bak rk→run-kit rename every roster tool has `Name == Repo`) so the digest can fetch releases and build the compare URL. **For a migrated run-kit, `old` is the LEGACY keg's version and `new` is re-queried from the NEW formula (`t.Formula` = `sahil87/tap/run-kit`)**, so the digest renders `run-kit 2.5.13 → 3.0.0` — see [The rk→run-kit migration guard §digest](#the-rkrun-kit-migration-guard).
+`makeBump(tool, repo, old, new)` builds a `versionBump` **only** when both versions are known and differ (`old != "" && new != "" && old != new`) — the guard that keeps a no-op run's output byte-identical. Bumps are collected in roster order (shll first). Each `versionBump` carries `repo` (the GitHub slug — kept as a separate field for future-proofing, though every roster tool has `Name == Repo` today) so the digest can fetch releases and build the compare URL.
 
 ### Digest rendering (`printUpdateDigest`)
 
@@ -124,59 +123,6 @@ v0.1.18 feat: non-interactive agent support
 
 Covered end-to-end by `TestUpdate_DigestPrintsForBumpedTools` (bump → digest with inline bodies, no `Full notes:` line) and `TestUpdate_NoDigestWhenNothingBumped` (no bump → no digest).
 
-## The rk→run-kit migration guard
-
-run-kit's tap-side identity is `run-kit`; its prior name was `rk` (`formula_renames.json` maps `{"rk": "run-kit"}`, with `rk` kept as a symlink alias). shll's roster identity is `run-kit` (see [cli/commands §the rk→run-kit rename](/cli/commands.md#the-rkrun-kit-rename--migration-fields)), and `shll update` carries a **transitional guard** so a machine still on the legacy `rk` keg upgrades cleanly instead of being silently stranded (a renamed roster would make the plain probe report `sahil87/tap/run-kit` not-installed on a legacy machine — graceful degradation working against us). The guard is a no-op once legacy kegs die out; it is sunset-marked in code. (9bak)
-
-### The gate — classify by keg leaf name (`probeRunKitMigration`)
-
-The gate lives in `probeTool` and is factored into the shared `probeRunKitMigration(ctx, t, installed, leaf, before)` helper (reused verbatim by [`shll install`](/cli/install.md#legacy-keg-routing-to-migration) and [`shll doctor`](/cli/doctor.md#the-pending-migration--dual-rack-warns) — one detection path, Constitution III). It runs **only** for a tool that declares a `LegacyFormula` (run-kit today); every other tool keeps the plain single-probe behavior. It classifies by keg **leaf name** — never by exit code alone — because after the tap rename `brew list --formula --versions sahil87/tap/rk` can EXIT 0 yet report leaf `run-kit` (rename-resolution). The three branches, matching the intake's observed states:
-
-1. **Current formula (`t.Formula` = `sahil87/tap/run-kit`) installed → migrated; normal delegation.** Exit 0 on the NEW formula is authoritative — the leaf is not re-checked here (the leaf only disambiguates the *legacy*-formula probe in branch 2). If a genuine SEPARATE legacy keg is ALSO present (the legacy-formula probe reports leaf `rk`), this is **dual-rack state C**: still migrated, but `dualRack` is set so the caller surfaces a cleanup note.
-2. **Current formula NOT installed → probe `t.LegacyFormula` (`sahil87/tap/rk`) and classify by ITS leaf:**
-   - leaf == `t.LegacyName` (`rk`) → a genuine pre-rename keg → `needsMigration=true`, `beforeVersion` from the legacy keg (e.g. `2.5.13`). **This is observed state A.**
-   - leaf == `t.Name` (`run-kit`) → **observed state B**: the legacy-formula probe exited 0 but rename-resolution points at the single migrated keg → already migrated, normal delegation (NOT legacy). This is the case that proves exit-code gating is insufficient.
-3. **Neither keg present → not installed** (unchanged).
-
-`probeResult` gained two transitional fields: `needsMigration bool` (branch 2, leaf `rk`) and `dualRack bool` (branch 1, a separate legacy keg alongside the migrated one). Both are always false for a non-run-kit tool.
-
-### The migration action — `migrateRunKit` (brew-direct, success-gated)
-
-For a `needsMigration` tool, `upgradeTool` dispatches to `migrateRunKit(ctx, stdout, stderr, t)` instead of delegating. It is **always brew-direct** — never delegate to the old binary (its rename handling is version-dependent and unfixable) and never uninstall→install (that failure-window repair path is the sibling [cli/uninstall](/cli/uninstall.md) change — `shll uninstall run-kit` then `shll install`, kept as two explicit commands). Steps, **gated on the upgrade succeeding**:
-
-1. `brew upgrade <LegacyFormula>` (`brew upgrade sahil87/tap/rk`) — brew resolves the rename and migrates the keg to `run-kit`. This is the exit code that drives success/failure. A **non-success** (transport error OR non-zero exit — `proc.RunForeground` returns `(code, nil)` on a non-zero exit, so BOTH are checked) returns immediately, **skipping every post-step**: a failed migration has nothing to link, no daemon to note, and no reliable post-state to re-probe. (`TestUpdate_MigrationFailedUpgradeSkipsPostSteps`.)
-2. **Unlinked-keg post-check (state A):** if `<tool.Name> --version` STILL returns `proc.ErrNotFound` afterward (the keg migrated but is not linked), run `brew link run-kit`. Only `ErrNotFound` triggers the link (a present-but-otherwise-failing `--version` is not an unlinked keg); the probe reuses `probeVersionByName`. The link is best-effort — a link failure is surfaced to stderr but does not override the upgrade's exit code. (`TestUpdate_MigrationStateA_UnlinkedLegacyKeg` links; `TestUpdate_MigrationStateA_Linked` skips the link when already linked.)
-3. **Daemon note — PRINTED, never run** (`migrationDaemonNoteFmt`): the brew-direct path skips `run-kit update`'s post-upgrade daemon-restart side effect, so it suggests `run-kit serve --restart`. shll never executes it (Constitution III — never reimplement run-kit's own logic).
-4. **Post-migration dual-rack note** (`migrationDualRackNoteFmt`): **re-probe** the legacy formula AFTER the upgrade — if a genuine legacy keg (leaf `rk`) STILL reports installed alongside the now-migrated one, print a one-line cleanup note. shll never removes the orphan. **The note points at `shll uninstall run-kit`** (kkaj) — the now-supported, leaf-verified dual-rack cleanup (the sibling [cli/uninstall](/cli/uninstall.md) change) — **and gives the brew-direct alternative by the LEGACY LEAF NAME only (`brew uninstall rk`), NEVER the qualified `brew uninstall sahil87/tap/rk`**: post-rename brew re-resolves the qualified `rk` → `run-kit`, so a blind qualified uninstall would delete the GOOD keg (the exact footgun `shll uninstall` exists to avoid; bare `rk` targets only the orphan rack). The format takes `(t.LegacyFormula, t.Formula, t.Name, t.LegacyName)`, rendering e.g. `note: a leftover sahil87/tap/rk keg remains alongside sahil87/tap/run-kit — remove it with 'shll uninstall run-kit' (or 'brew uninstall rk')`. The dual-rack signal here is DERIVED from the post-migration re-probe, NOT the incoming `probeResult` — a `needsMigration` probe is branch 2, which never sets `dualRack` (the current formula was not-installed pre-migration, so there was no second rack to detect then). (`TestUpdate_MigrationLeftoverDualRackNote`.)
-
-A non-migration run-kit that was classified `dualRack` in branch 1 (state C reached without a migration — the tool is already on the new formula, an orphan `rk` keg lingering) surfaces the same retargeted cleanup note from `upgradeTool` directly, after its normal delegated upgrade — `shll uninstall run-kit` / `brew uninstall rk`. (`TestUpdate_MigrationStateC_DualRack` asserts the note points at `shll uninstall run-kit` + the leaf-name `brew uninstall rk` and must NOT suggest the qualified `brew uninstall sahil87/tap/rk`.)
-
-### Dry-run preview + digest for a migration
-
-- **Dry-run** — `upgradeArgv(t, supportsSkipFlag, needsMigration)` returns the PRIMARY migration argv `{brew, upgrade, sahil87/tap/rk}` for a `needsMigration` tool, so the `--dry-run` preview shows `brew upgrade sahil87/tap/rk` sourced from the **same single source of truth** the live run's first step uses — preview and run cannot drift. The conditional `brew link` + daemon/dual-rack notes are live-run-only side effects (a conditional post-check cannot be faithfully previewed), documented as such. (`TestUpdate_MigrationDryRunShowsRealArgv`.)
-- **Digest** — for a migrated run-kit, `beforeVersion` came from the legacy keg (branch 2) and the post-upgrade re-query reads `installedVersion(ctx, t.Formula)` = the NEW formula `sahil87/tap/run-kit`, so the bump renders `run-kit 2.5.13 → 3.0.0`. Release notes key off `Repo: "run-kit"` (unchanged). (`TestUpdate_MigrationStateA_UnlinkedLegacyKeg` asserts the digest transition.)
-
-### Plumbing: both whole-roster and named-subset flow through the guard
-
-The user explicitly required migration to work via **both** `shll update` (whole roster) and `shll update run-kit` (named). Since the gate marks a legacy keg `installed=true, needsMigration=true`:
-
-- **Whole-roster** `shll update` migrates run-kit in the normal roster loop. (`TestUpdate_MigrationWholeRosterFlowsThroughGuard`.)
-- **Named subset** `shll update run-kit` passes the named-but-not-installed check (the legacy keg counts as installed) and migrates rather than erroring `not installed`. `shll update rk` resolves via the [legacy alias](#positional-tool-name-args--subset-targeting) and behaves identically, printing the rename notice. (`TestUpdate_MigrationViaLegacyAliasWithNotice`.)
-
-### Migration test coverage
-
-`update_test.go` pins the states and plumbing via a run-kit-specific fake keyed on `runKitFormula`/`runKitLegacyFormula` (`= formulaPrefix + "run-kit"` / `+ "rk"`):
-
-- `TestUpdate_MigrationStateA_UnlinkedLegacyKeg` — legacy `rk` keg, `run-kit --version` ErrNotFound → `brew upgrade sahil87/tap/rk` then `brew link run-kit`; digest `run-kit 2.5.13 → 3.0.0`.
-- `TestUpdate_MigrationStateA_Linked` — legacy keg but `run-kit --version` succeeds post-upgrade → NO `brew link`.
-- `TestUpdate_MigrationStateB_AlreadyMigrated` — `brew list sahil87/tap/rk` reports leaf `run-kit` → migrated, normal `run-kit update` delegation, NO migration.
-- `TestUpdate_MigrationStateC_DualRack` — both kegs, leaf `run-kit` from the new-formula probe → migrated + dual-rack cleanup note.
-- `TestUpdate_MigrationLeftoverDualRackNote` — a migration that leaves a genuine `rk` keg behind → the post-migration re-probe emits the cleanup note.
-- `TestUpdate_MigrationFailedUpgradeSkipsPostSteps` — `brew upgrade sahil87/tap/rk` exits non-zero → no `brew link`, no daemon note (post-steps gated on success).
-- `TestUpdate_MigrationWholeRosterFlowsThroughGuard` — whole-roster `shll update` migrates a legacy run-kit.
-- `TestUpdate_MigrationViaLegacyAliasWithNotice` — `shll update rk` → alias notice + migration.
-- `TestUpdate_MigrationDryRunShowsRealArgv` — `shll update --dry-run run-kit` on a legacy machine previews `brew upgrade sahil87/tap/rk`.
-
 ## Exit codes
 
 | Condition | Exit code |
@@ -210,11 +156,11 @@ Ordering rationale: self-upgrade runs *before* the roster loop so the on-disk bi
 
 ## Detection
 
-`probeInstalledLeaf(ctx, formula)` in `src/cmd/shll/brew.go` is the single source of truth for "is this brew formula installed", for the installed version (r01z), and for the keg **leaf name** the migration gate classifies by (9bak):
+`probeInstalledVersion(ctx, formula)` in `src/cmd/shll/brew.go` is the single source of truth for "is this brew formula installed" and for the installed version (r01z):
 
-- Calls `brew list --formula --versions <formula>` via `proc.Run` (capture transport) — the **sole** such invocation in `cmd/shll` (the version- and boolean-only helpers are wrappers over it).
-- Returns `(installed bool, leaf, version string)`: `installed` is `err == nil` (`brew list --versions <formula>` exits 0 when installed, 1 when not); `leaf` is `parseBrewLeaf(stdout)` (the first whitespace field — `rk` vs `run-kit`, load-bearing for the [migration gate](#the-rkrun-kit-migration-guard)); `version` is `parseBrewVersion(stdout)` (the max keg version, `""` on any failure). The install fact still keys on the exit code; the leaf + version parses are best-effort second/third returns.
-- `probeInstalledVersion(ctx, formula) (installed, version)` is a thin wrapper (dropping the leaf); `isInstalled(ctx, formula)` wraps *that* (`installed, _ := probeInstalledVersion(...)`) so boolean-only callers (`install.go`'s non-run-kit path, the shll-self check, `changelog.go`'s no-range probe) share the one read; `installedVersion(ctx, formula)` returns just the version (see [version capture](#version-capture--the-what-changed-digest)).
+- Calls `brew list --formula --versions <formula>` via `proc.Run` (capture transport) — the **sole** such invocation in `cmd/shll` (the boolean- and version-only helpers are wrappers over it).
+- Returns `(installed bool, version string)`: `installed` is `err == nil` (`brew list --versions <formula>` exits 0 when installed, 1 when not); `version` is `parseBrewVersion(stdout)` (the max keg version, `""` on any failure). The install fact keys on the exit code; the version parse is a best-effort second return.
+- `isInstalled(ctx, formula)` wraps it (`installed, _ := probeInstalledVersion(...)`) so boolean-only callers (`install.go`'s partition, the shll-self check, `changelog.go`'s no-range probe) share the one read; `installedVersion(ctx, formula)` returns just the version (see [version capture](#version-capture--the-what-changed-digest)).
 
 Constraints (Design Decision #2):
 
@@ -371,6 +317,14 @@ This is the reason for the early short-circuit in step 5 above. The check is a l
 > *Why*: Each tool's `update` would otherwise run its own `brew update`, causing N redundant metadata refreshes. The flag lets shll do it once for the whole run.
 > *Rejected*: letting each tool refresh independently (N× latency); having shll suppress refresh by other means (no cross-tool contract).
 
+### Retire the rk→run-kit brew-formula migration guard
+
+> **Decision**: Every roster tool, run-kit included, takes the plain single-probe delegated-upgrade path — there is no legacy-keg detection, no brew-direct migration action, and no dual-rack note in `shll update`.
+> **Why**: The migration window is closed. The tap's `formula_renames.json` rename mapping is permanent by design (removing it would strand pre-rename kegs), so `brew` prints `Warning: Formula sahil87/tap/rk was renamed …` on every reference to the legacy formula — and the guard referenced it on every run (even on fully-migrated machines, where the probe existed only for dual-rack detection). `internal/proc`'s capture transport streams subprocess stderr through, so that warning landed in the user's face on every `shll update`. Retiring the guard removes both the noise and ~350 lines of transitional classification machinery at the root.
+> **Rejected**: Silencing only the probe's stderr (`proc.RunCaptured`) — keeps the dead machinery alive and still runs a pointless probe on every migrated machine. Removing the tap's rename mapping — would strand a straggler's pre-rename keg with "formula not found".
+> **Migration**: Stragglers on a legacy-`rk`-only machine follow run-kit's README manual path (`brew uninstall rk`, then `shll install`); shll no longer automates it.
+> *Introduced by*: 260720-h3f6-retire-rk-migration-guard
+
 ## Test seam
 
 All `update_test.go` tests inject a fake via `proc.Runner` (`installFakeRunner` t.Cleanup helper at `src/cmd/shll/update_test.go:53`). No real brew or sub-tool subprocess is ever spawned. The fake records every `proc.Request` so tests assert: which formulas were queried, which `--help` probes ran, which upgrades ran (delegated vs. brew-upgrade), the order of operations, the exit code, and the captured stdout/stderr writers.
@@ -404,7 +358,7 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_DryRunEmptyCase` *(6vuo)* — nothing installed → dry-run mirrors the nothing-to-do message, no preview table, no `brew update`, exit 0.
 - `TestUpdate_SubsetUnknownTargetHardErrors` *(b2vg)* — `shll update <typo>` → `errSilent`, stderr names the unknown arg and lists valid targets, and **no `brew` subprocess runs** (validated before `hasBrew`/probe).
 - `TestUpdate_SubsetMultipleUnknownAllReported` *(b2vg)* — multiple unknown args → all reported in one error.
-- `TestUpdate_SubsetNamedNotInstalledErrors` — a valid name that is not installed (`shll update run-kit` with run-kit uninstalled — neither the new nor the legacy keg present) → `shll update: run-kit: not installed`, `errSilent`, nothing upgraded (distinct from the whole-roster graceful skip). Note a legacy-keg run-kit is NOT "not installed" — the migration gate marks it `installed=true, needsMigration=true`, so `shll update run-kit`/`rk` migrates rather than erroring (see the migration tests below).
+- `TestUpdate_SubsetNamedNotInstalledErrors` — a valid name that is not installed (`shll update run-kit` with `sahil87/tap/run-kit` absent) → `shll update: run-kit: not installed`, `errSilent`, nothing upgraded (distinct from the whole-roster graceful skip). A legacy-`rk`-keg-only machine reports run-kit's current formula not installed and is treated identically — the graceful skip on a whole-roster run, this named error on `shll update run-kit`/`rk`.
 - `TestUpdate_SubsetShllSelfTargetOnly` *(b2vg)* — `shll update shll` (shll brew-installed) → only the self-upgrade runs (`brew upgrade shllFormula`), no roster tool upgraded, `M=1`.
 - `TestUpdate_SubsetShllSelfNotBrewInstalledErrors` *(b2vg)* — `shll update shll` on a dev build (shll not brew-installed) → the not-installed error for `shll`.
 - `TestUpdate_SubsetSelfFirstThenRosterOrder` *(b2vg)* — `shll update shll hop` → `shll (self)` first, then `hop`.
@@ -423,6 +377,5 @@ Per-tool output separation (y630) plus the change-6vuo `[N/M]` counter, duration
 - The hardcoded roster and the `Update` capability field: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
 - The shared `shllSelf` display descriptor (bb7r): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor). `update`'s `shll (self)` first step is the established manage-side pattern that descriptor generalizes to `list`/`doctor`/`install`; `update.go` itself is unchanged (self-upgrade stays a dedicated `brew upgrade`, not a `shllSelf` consumer).
 - Shared UI helper (`ui.go`) for the header/tail/color logic: [cli/commands](/cli/commands.md#file-layout-srccmdshll); the sibling [cli/install](/cli/install.md#per-tool-output-separation) mirrors this header/tail behavior.
-- The supported dual-rack cleanup the migration guard's note now points at: [cli/uninstall](/cli/uninstall.md#the-run-kit-dual-name-sweep) (kkaj) — `shll uninstall run-kit` probes-and-leaf-verifies before removing the orphan `rk` keg, so the guard can stay detect-and-note-only.
 - Constitution III (Wrap, Don't Reinvent) and IV (Composition, Not Replacement) — the delegation in step 8 is the direct expression of both.
 - Constitution V (Graceful Degradation) — uninstalled tools are skipped during probing; version-skew tools degrade to a flagless `<tool> update`.

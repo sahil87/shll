@@ -54,17 +54,6 @@ for that.`,
 	return cmd
 }
 
-// installTarget is one actionable tool in a `shll install` run: either a fresh
-// `brew install` (migrate=false) or a brew-direct rk→run-kit migration
-// (migrate=true). Built by the missing-partition so the install loop and the
-// dry-run preview share one classification (Constitution III — one detection path).
-// The migration action (migrateRunKit) derives its own post-migration dual-rack
-// signal, so no probe result needs carrying here.
-type installTarget struct {
-	tool    Tool
-	migrate bool
-}
-
 // noTrustFlag is the bool flag on `shll install` that skips the per-formula trust
 // step (`brew trust --formula sahil87/tap/<formula>`) before each install. Named
 // constant per code-quality.md (no magic strings).
@@ -81,10 +70,7 @@ const noTrustFlagUsage = "skip recording per-formula Homebrew trust before insta
 //   - brew missing → stderr hint, errSilent (exit 1).
 //   - For each roster tool in order, skip if already installed; else (unless
 //     noTrust) record per-formula trust via `brew trust --formula <formula>`,
-//     then run `brew install sahil87/tap/<formula>` foregrounded. A tool with a
-//     LegacyFormula whose LEGACY keg is present (run-kit on a pre-rename machine)
-//     is instead routed through the brew-direct MIGRATION action (migrateRunKit),
-//     not a blind `brew install` — reusing `shll update`'s migration gate + action.
+//     then run `brew install sahil87/tap/<formula>` foregrounded.
 //   - Best-effort across the roster: a per-tool install failure does not abort
 //     the loop. The overall exit code reflects whether any failed.
 //   - If everything is already installed, write a one-line note to stdout and
@@ -160,29 +146,10 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	// order deterministically. The probes are reads, so they run in dry-run too —
 	// only the writes are skipped. A named-but-already-installed target is filtered
 	// out here (idempotent skip).
-	//
-	// A tool with a LegacyFormula (run-kit) is classified via the SHARED migration
-	// gate (probeRunKitMigration — same detection `shll update`/`shll doctor` use):
-	//   - migrated/present → skip (idempotent)
-	//   - legacy keg present → actionable with migrate=true (brew-direct migration,
-	//     NOT a blind `brew install` that risks the observed dual-rack state)
-	//   - fully absent → actionable with migrate=false (normal `brew install`)
-	missing := make([]installTarget, 0, len(consider))
+	missing := make([]Tool, 0, len(consider))
 	for _, t := range consider {
-		if t.LegacyFormula != "" {
-			installed, leaf, before := probeInstalledLeaf(ctx, t.Formula)
-			p := probeRunKitMigration(ctx, t, installed, leaf, before)
-			switch {
-			case p.needsMigration:
-				missing = append(missing, installTarget{tool: t, migrate: true})
-			case !p.installed:
-				missing = append(missing, installTarget{tool: t})
-			}
-			// installed && !needsMigration → migrated/present: skip (idempotent).
-			continue
-		}
 		if !isInstalled(ctx, t.Formula) {
-			missing = append(missing, installTarget{tool: t})
+			missing = append(missing, t)
 		}
 	}
 
@@ -202,17 +169,11 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 
 	// Dry-run: the probes have run (reads); now preview the exact commands the real
 	// run WOULD execute and exit 0 with NO write. The preview lists only the missing
-	// subset (actionable tools), in roster order. A migrate target previews the
-	// migration argv (`brew upgrade <LegacyFormula>`) via the same upgradeArgv the
-	// live migration's first step uses, so preview and run cannot drift.
+	// subset (actionable tools), in roster order.
 	if dryRun {
 		rows := make([]previewRow, 0, len(missing))
-		for _, m := range missing {
-			cmd := argvString(brewBinary, "install", m.tool.Formula)
-			if m.migrate {
-				cmd = argvString(upgradeArgv(m.tool, false, true)...)
-			}
-			rows = append(rows, previewRow{label: m.tool.Name, cmd: cmd})
+		for _, t := range missing {
+			rows = append(rows, previewRow{label: t.Name, cmd: argvString(brewBinary, "install", t.Formula)})
 		}
 		printInstallPreview(stdout, rows)
 		return nil
@@ -240,49 +201,12 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	start := nowFunc()
 
 	anyFailed := false
-	for i, m := range missing {
-		t := m.tool
+	for i, t := range missing {
 		// Section spacing: a blank line precedes every header EXCEPT the first.
 		if i > 0 {
 			fmt.Fprintln(stdout)
 		}
 		printToolHeader(stdout, t.Name, i+1, total, color)
-
-		// Legacy-keg run-kit → run the brew-direct MIGRATION action instead of a
-		// blind `brew install` (which risks the observed dual-rack state). Reuses the
-		// exact migrateRunKit used by `shll update`. The migration's exit code drives
-		// success/failure like an install.
-		//
-		// Trust the NEW formula (sahil87/tap/run-kit) FIRST when trust is enabled —
-		// installed ≠ trusted (that inequality is doctor's trust-WARN premise, change
-		// 0854), so the legacy keg being present does not imply the renamed formula
-		// carries a trust record. The migration is `brew upgrade sahil87/tap/rk`, which
-		// resolves the rename to sahil87/tap/run-kit's sandboxed `def install`; on
-		// Homebrew 6.0+ that install is refused without a real trust record for the
-		// formula it lands on. So trust run-kit before migrating, matching the
-		// trust-then-act contract of the normal install path below (a trust failure
-		// warns + continues; the migration's own exit code is the authority).
-		if m.migrate {
-			if trustEnabled {
-				if code, terr := brewTrustFormula(ctx, t.Formula); terr != nil {
-					fmt.Fprintf(stderr, "shll install: %s: trust step failed: %v (continuing to migrate)\n", t.Name, terr)
-				} else if code != 0 {
-					fmt.Fprintf(stderr, "shll install: %s: trust step exited %d (continuing to migrate)\n", t.Name, code)
-				}
-			}
-			code, err := migrateRunKit(ctx, stdout, stderr, t)
-			if err != nil {
-				fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
-				anyFailed = true
-				continue
-			}
-			if code != 0 {
-				anyFailed = true
-				continue
-			}
-			succeeded++
-			continue
-		}
 
 		// Record per-formula trust before the install (default; --no-trust or an
 		// older brew lacking `brew trust` skips this). Homebrew 6.0 makes tap-trust
