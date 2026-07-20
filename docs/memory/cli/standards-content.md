@@ -1,18 +1,18 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command), the naming decisions (plain filenames, `skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, and the three producer-surface standards (`update`, `version`, `shell-init`) — their obligations, the naming/release fold into `update`, and the `binary`-scope choice."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command), the naming decisions (plain filenames, `skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), and `install-composition` (no inter-tool `depends_on` + runtime probing, install docs centralized on shll.ai; shll-README carve-out)."
 ---
 # cli/standards-content
 
 **Domain**: cli
 
-The toolkit-wide standards *documents* — the canonical `docs/site/standards/*.md` pages the shll repo hosts, and which `shll standards` embeds and serves. This file covers the **content and structure** of those documents: the `docs/site/standards/` directory restructure (i70w), the `skill` standard's contract, and the three producer-surface standards (`update`, `version`, `shell-init`). The **command** that reads them — its roster, embed mechanism, drift guard, and output shapes — is [cli/standards](/cli/standards.md).
+The toolkit-wide standards *documents* — the canonical `docs/site/standards/*.md` pages the shll repo hosts, and which `shll standards` embeds and serves. This file covers the **content and structure** of those documents: the `docs/site/standards/` directory restructure (i70w), the `skill` standard's contract, the three producer-surface standards (`update`, `version`, `shell-init`), and the `install-composition` standard. The **command** that reads them — its roster, embed mechanism, drift guard, and output shapes — is [cli/standards](/cli/standards.md).
 
 > Placement note: these are toolkit-wide documents, not shll-CLI behavior, but the shll repo is where their canonical source lives and where the reader command consumes them, so the memory lives beside [cli/standards](/cli/standards.md) rather than in a separate single-file domain.
 
 ## The `docs/site/standards/` restructure
 
-The seven producer-facing standards pages live in the `docs/site/standards/` subdirectory (i70w established the layout):
+The eight producer-facing standards pages live in the `docs/site/standards/` subdirectory (i70w established the layout):
 
 ```
 docs/site/
@@ -23,9 +23,10 @@ docs/site/
     ├── help-dump.md
     ├── readme-extraction.md
     ├── skill.md
-    ├── update.md        # producer-surface standard (y367)
-    ├── version.md       # producer-surface standard (y367)
-    └── shell-init.md    # producer-surface standard (y367)
+    ├── update.md               # producer-surface standard (y367)
+    ├── version.md              # producer-surface standard (y367)
+    ├── shell-init.md           # producer-surface standard (y367)
+    └── install-composition.md  # install-time composition standard (w6ay)
 ```
 
 ### Why the subdirectory
@@ -44,7 +45,7 @@ docs/site/
 
 ### docs/site closure
 
-Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill ↔ update ↔ version ↔ shell-init) all resolve inside `docs/site/standards/` with no `..` escape (readme-extraction standard, closure rule 1) — the seven files share one directory. The three producer-surface pages cross-link each other (`version` ↔ `update` on the one-string binary/formula identity; `shell-init` → `principles` for the exit-2 usage convention) and back to `principles.md`, all same-directory. Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` carries a "The contracts" section and same-directory companion links to all six companion standards; its "Consuming these standards" URLs point at `/shll/standards/…`.
+Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill ↔ update ↔ version ↔ shell-init ↔ install-composition) all resolve inside `docs/site/standards/` with no `..` escape (readme-extraction standard, closure rule 1) — the eight files share one directory. The three producer-surface pages cross-link each other (`version` ↔ `update` on the one-string binary/formula identity; `shell-init` → `principles` for the exit-2 usage convention) and back to `principles.md`, all same-directory; `install-composition` links to `principles.md` and to `update.md` (whose shll-out-of-producer-scope carve-out it mirrors), same-directory. Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` carries a "The contracts" section and same-directory companion links to all seven companion standards; its "Consuming these standards" URLs point at `/shll/standards/…`.
 
 ## The `help-dump` standard defines the optional `aliases` field
 
@@ -149,6 +150,29 @@ Binds the tools that expose shell integration — today `tu`, `hop`, `wt`; `shll
 **Rejected**: Redesigning the probes alongside standardizing them (would couple two risks and force a shll behavior change in a docs change); moving the shll-side consumer machinery into the standards (they are producer-facing — consumer machinery stays in `docs/memory/cli/`).
 *Introduced by*: `260719-y367-update-version-shell-init-standards`.
 
+## The `install-composition` standard
+
+`docs/site/standards/install-composition.md` (w6ay) is the standard for **how the toolkit composes at install time**: every tool installs as an independent tap formula, and `shll install` is the single composition point (it installs the full roster and accepts a subset). It implements principles №7 (compose, don't reinvent — sibling capability is probed, never assumed via a package edge) and №8 (graceful degradation — a missing sibling is a skip with a hint, not a crash), at scope `binary+repo`. It carries two policies:
+
+- **Policy A — no inter-tool formula dependencies (and probe at runtime).** Toolkit formulas MUST NOT declare `depends_on` on sibling toolkit formulas — a formula edge duplicates the roster knowledge `shll install` already owns and forces lockstep installs/uninstalls. Its binary half: a tool that invokes a sibling at runtime MUST probe first (`command -v <tool>` in shell/skill code, `exec.LookPath` in Go) and degrade gracefully on a missing sibling with an actionable install hint — never crash. The hint format is verbatim: `wt is not installed. Install it: brew install sahil87/tap/wt`. The page carries the precedent receipt: `fab-kit` and `hop` previously declared `depends_on` on `wt`/`idea`; those edges are removed, and the `all` meta-formula is retired in favor of `shll install`.
+- **Policy B — install documentation is centralized on shll.ai.** Per-tool READMEs and the tap README MUST NOT carry per-formula `brew install` instructions; they link to https://shll.ai (the curl bootstrap / `shll install`). The supported-vs-unsupported line is explicit: individual formula installs remain **supported** (`brew install sahil87/tap/<tool>` works, `shll install` accepts a subset) — what is unsupported is **documenting** them per-repo, which drifts (seven copies of the install dance, each chased on every install-story change).
+
+The page follows the house register (single `#` H1 `Standard: install-composition`, implements-principle line, per-policy MUST sections, closing `## Verifying conformance` checklist), staying at or under `update.md`'s length.
+
+### Design Decisions
+
+#### Scope asymmetry: Policy A binds all seven formulas, Policy B excludes shll's own README
+**Decision**: Policy A binds all **seven tap formulas** (including `shll`'s — its formula must equally avoid sibling edges) and every binary that invokes a sibling. Policy B binds the **six roster-tool repos plus the tap README** but explicitly **not** shll's own README.
+**Why**: shll's README, together with shll.ai, *is* the centralized install documentation Policy B points at — binding shll to "link to shll.ai instead" would be circular (shll is the consumer here). Policy A has no such asymmetry: a sibling formula edge is a defect regardless of which formula declares it, shll's included.
+**Rejected**: Binding shll's README under Policy B (circular); exempting shll from Policy A too (unjustified — the anti-lockstep reason applies to every formula). The carve-out mirrors `update.md`'s established shll-out-of-producer-scope phrasing.
+*Introduced by*: `260720-w6ay-install-composition-standard`.
+
+#### Filename/standard name `install-composition`, scope `binary+repo`
+**Decision**: The standard is named `install-composition` (plain hyphenated noun) at roster scope `binary+repo`.
+**Why**: The name matches the plain-filename convention (`help-dump`, `readme-extraction`) — taxonomy lives in location + the `scope` column, not a filename prefix; `install` alone would read as a per-tool subcommand surface and collide conceptually with `docs/site/install.md`. `binary+repo` reuses the pinned scope vocabulary (`TestStandardsRosterIntegrity`) — the formula-edge/README half is a repo-file obligation, the runtime-probe half a binary one — spanning both like `skill`.
+**Rejected**: A dedicated `tap` scope value (churn for one row; the tap formula is a repo-file obligation in spirit and `binary+repo` already fits); `install` as the filename (subcommand-surface / collision ambiguity).
+*Introduced by*: `260720-w6ay-install-composition-standard`.
+
 ## Cross-references
 
 - The command that ADOPTS this `skill` standard — the `shll skill` composer + shll's own `docs/site/skill.md` bundle (agst): [cli/skill](/cli/skill.md). The harness-wiring command: [cli/agent-setup](/cli/agent-setup.md).
@@ -156,4 +180,4 @@ Binds the tools that expose shell integration — today `tu`, `hop`, `wt`; `shll
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
 - The shll-side consumer machinery these three standards codify (probe-first ordering, digest, timeout, composer concatenation): [cli/update](/cli/update.md), [cli/version](/cli/version.md), [cli/shell-init](/cli/shell-init.md).
-- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill), [update](https://shll.ai/shll/standards/update), [version](https://shll.ai/shll/standards/version), [shell-init](https://shll.ai/shll/standards/shell-init).
+- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill), [update](https://shll.ai/shll/standards/update), [version](https://shll.ai/shll/standards/version), [shell-init](https://shll.ai/shll/standards/shell-init), [install-composition](https://shll.ai/shll/standards/install-composition).
