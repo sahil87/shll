@@ -72,21 +72,13 @@ type Tool struct {
 	// its Name. The field stays explicit so `shll list` never emits a dead link
 	// if a future tool's binary name and repo slug diverge again.
 	Repo string
-	// LegacyName is the tool's PRIOR binary name, used ONLY as a display-surface
-	// PATH-probe fallback: when `<Name> --version` returns proc.ErrNotFound,
-	// probeToolVersion retries `<LegacyName> --version` so a pre-rename install
-	// (whose binary is still the old name on PATH) is shown as installed by
-	// list/version/doctor. Empty for every tool except run-kit ("rk"). This is a
-	// transitional field for the rk→run-kit rename — once legacy `rk`-only installs
-	// die out it becomes a no-op fallback and can be retired.
+	// LegacyName is the tool's PRIOR binary name, retained as a binary-alias/
+	// display surface: the run-kit formula still installs `rk` as an
+	// interchangeable command alias, and when `<Name> --version` returns
+	// proc.ErrNotFound, probeToolVersion retries `<LegacyName> --version` so an
+	// install whose binary is on PATH under the old name is shown as installed by
+	// list/version/doctor. Empty for every tool except run-kit ("rk").
 	LegacyName string
-	// LegacyFormula is the tool's PRIOR fully-qualified brew formula, used ONLY by
-	// the update/install migration guard: when the current Formula is not installed
-	// but LegacyFormula's keg is present (classified by keg leaf name), the tool is
-	// a pre-rename install to be migrated brew-direct. Empty for every tool except
-	// run-kit ("sahil87/tap/rk"). Transitional — see the rk→run-kit migration guard
-	// in update.go; retire once legacy kegs die out.
-	LegacyFormula string
 }
 
 // githubOrgBase is the GitHub organization base URL for the shll toolkit.
@@ -162,7 +154,7 @@ var Roster = []Tool{
 	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees", SkillHint: "git worktrees"},
 	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal", SkillHint: "backlog ideas"},
 	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)", SkillHint: "AI token-usage tracking"},
-	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", LegacyFormula: formulaPrefix + "rk", Description: "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content (HTML, diagrams, reports, a local dev server) in a browser window, or to push a notification to their devices (run-kit)."},
+	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", Description: "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content (HTML, diagrams, reports, a local dev server) in a browser window, or to push a notification to their devices (run-kit)."},
 	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees", SkillHint: "directory/project jumping"},
 	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 }

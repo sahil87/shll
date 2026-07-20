@@ -138,43 +138,27 @@ func isInstalled(ctx context.Context, formula string) bool {
 	return installed
 }
 
-// probeInstalledLeaf is the SOLE `brew list --formula --versions <formula>`
+// probeInstalledVersion is the SOLE `brew list --formula --versions <formula>`
 // invocation in cmd/shll. It returns the exit-code install fact (installed = the
-// command exited 0 — empty stdout still counts as installed), the keg LEAF NAME
-// (the first whitespace field of the first non-empty line, e.g. `rk` from
-// `rk 2.5.13` or `run-kit` from `run-kit 3.0.0`), and the parsed version string.
+// command exited 0 — empty stdout still counts as installed) and the parsed
+// version string.
 //
-// The leaf name is load-bearing for the rk→run-kit MIGRATION GUARD: after the tap
-// rename, `brew list --formula --versions sahil87/tap/rk` can EXIT 0 yet report
-// leaf `run-kit` (rename-resolution — the migrated case), so the exit code alone
-// cannot distinguish a legacy `rk` keg from a migrated `run-kit` keg. The migration
-// gate classifies by the leaf, never by the exit code alone (see probeTool in
-// update.go). Callers that need only the boolean or the version use the thin
-// probeInstalledVersion/isInstalled/installedVersion wrappers below.
-//
-// `brew list --versions <formula>` exits 0 with `<leaf> <version...>` on stdout
+// `brew list --versions <formula>` exits 0 with `<name> <version...>` on stdout
 // when installed, and exits 1 with empty stdout when not. Any non-nil
 // captured-error is treated as "not installed" — covering both the exit-1 path and
 // the rare ErrNotFound path (brew itself missing — the caller should have checked).
 // The version is parseBrewVersion's max across kegs, "" on an empty/unexpected
 // shape (best-effort; an unknown version suppresses only a digest entry, never an
-// upgrade). One brew call powers all three facts (Constitution I — proc, not raw
-// exec; code-quality.md — never parse streamed foreground output, and split on
-// whitespace rather than a regex).
-func probeInstalledLeaf(ctx context.Context, formula string) (installed bool, leaf, version string) {
+// upgrade). One brew call powers both facts (Constitution I — proc, not raw exec;
+// code-quality.md — never parse streamed foreground output, and split on
+// whitespace rather than a regex). Callers that need only the boolean or the
+// version use the thin isInstalled/installedVersion wrappers.
+func probeInstalledVersion(ctx context.Context, formula string) (installed bool, version string) {
 	out, err := proc.Run(ctx, brewBinary, "list", "--formula", "--versions", formula)
 	if err != nil {
-		return false, "", ""
+		return false, ""
 	}
-	return true, parseBrewLeaf(string(out)), parseBrewVersion(string(out))
-}
-
-// probeInstalledVersion is a thin wrapper over probeInstalledLeaf discarding the
-// leaf, for callers that need only the install fact and version (probeTool's
-// non-migration path, changelog's no-range probe, the shll-self check).
-func probeInstalledVersion(ctx context.Context, formula string) (installed bool, version string) {
-	installed, _, version = probeInstalledLeaf(ctx, formula)
-	return installed, version
+	return true, parseBrewVersion(string(out))
 }
 
 // installedVersion returns just the parsed installed version for a formula (""
@@ -215,26 +199,4 @@ func parseBrewVersion(out string) string {
 		}
 	}
 	return max
-}
-
-// parseBrewLeaf extracts the keg LEAF NAME from `brew list --formula --versions`
-// stdout — the FIRST whitespace field of the first non-empty line (`rk` from
-// `rk 2.5.13`, `run-kit` from `run-kit 3.0.0`). Returns "" when the output is
-// empty. Whitespace split, never a regex (code-quality.md anti-pattern). The leaf
-// is the migration guard's classification key (see probeInstalledLeaf): after the
-// tap rename, `brew list sahil87/tap/rk` can exit 0 yet report leaf `run-kit`, so
-// only the leaf — not the exit code — distinguishes a legacy keg from a migrated one.
-func parseBrewLeaf(out string) string {
-	line := strings.TrimSpace(out)
-	if line == "" {
-		return ""
-	}
-	if nl := strings.IndexByte(line, '\n'); nl >= 0 {
-		line = strings.TrimSpace(line[:nl])
-	}
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[0]
 }

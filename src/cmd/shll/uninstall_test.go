@@ -26,8 +26,8 @@ func installStdinTTY(t *testing.T, tty bool) {
 // installedFormulasFake returns a fakeRunner whose `brew list --formula --versions
 // <formula>` reports installed (with a version line) exactly for the formulas in
 // `installed`, and not-installed otherwise. brew --version succeeds. brew
-// uninstall/install succeed (exit 0). The keg leaf reported for a formula is its
-// last path segment (so sahil87/tap/rk → leaf `rk`, sahil87/tap/run-kit → `run-kit`).
+// uninstall/install succeed (exit 0). The keg name reported for a formula is its
+// last path segment (so sahil87/tap/run-kit → `run-kit`).
 func installedFormulasFake(installed map[string]bool) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name != brewBinary {
@@ -307,53 +307,12 @@ func TestUninstall_DryRunPreviewNoWritesBypassesGate(t *testing.T) {
 	}
 }
 
-// --- R10 / R16: dual-rack sweep ordering, never blind old-name ---
+// --- run-kit after the migration-guard retirement (change h3f6) ---
 
-func TestUninstall_RunKitDualRackSweepOrder(t *testing.T) {
-	// Dual-rack: run-kit installed (leaf run-kit) AND a residual rk keg (leaf rk).
-	f := installedFormulasFake(map[string]bool{
-		formulaPrefix + "run-kit": true,
-		formulaPrefix + "rk":      true,
-	})
-	installFakeRunner(t, f)
-	fixedClock(t)
-
-	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUninstall err = %v, want nil", err)
-	}
-	calls := f.recordedCalls()
-	// New name first (qualified), then residual by LEGACY LEAF NAME (`rk`, not the
-	// qualified sahil87/tap/rk which brew would re-resolve through the rename).
-	newIdx, legacyIdx := -1, -1
-	for i, c := range calls {
-		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "uninstall" {
-			switch c.Args[1] {
-			case formulaPrefix + "run-kit":
-				newIdx = i
-			case "rk":
-				legacyIdx = i
-			}
-		}
-	}
-	if newIdx < 0 {
-		t.Fatalf("expected brew uninstall of the new run-kit formula, calls: %+v", calls)
-	}
-	if legacyIdx < 0 {
-		t.Fatalf("expected brew uninstall of the residual `rk` leaf keg, calls: %+v", calls)
-	}
-	if newIdx > legacyIdx {
-		t.Errorf("new formula must be uninstalled before the residual rk keg (newIdx=%d legacyIdx=%d)", newIdx, legacyIdx)
-	}
-	// Never a blind qualified old-name uninstall (`brew uninstall sahil87/tap/rk`).
-	if invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+"rk") {
-		t.Errorf("must NEVER issue a blind `brew uninstall sahil87/tap/rk` (post-rename it would delete the good keg)")
-	}
-}
-
-// --- R10: migrated machine (no residual rk) removes only the new formula ---
-
-func TestUninstall_RunKitMigratedNoResidual(t *testing.T) {
+func TestUninstall_RunKitPlainRemoval(t *testing.T) {
+	// run-kit is a plain reverse-roster target: one `brew uninstall
+	// sahil87/tap/run-kit`, and NO reference to the retired legacy formula or a
+	// residual `rk` keg (orphan cleanup is manual per run-kit's README).
 	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
 	installFakeRunner(t, f)
 	fixedClock(t)
@@ -366,33 +325,35 @@ func TestUninstall_RunKitMigratedNoResidual(t *testing.T) {
 	if !invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+"run-kit") {
 		t.Errorf("expected brew uninstall of run-kit")
 	}
-	// No residual keg → no `brew uninstall rk`.
 	if invocationsContain(calls, brewBinary, "uninstall", "rk") {
-		t.Errorf("no residual rk keg present — must not issue `brew uninstall rk`")
+		t.Errorf("run-kit is a plain target — must not issue a residual `brew uninstall rk`")
 	}
+	assertNoLegacyFormulaReference(t, calls)
 }
 
-// --- R11: legacy-only machine (only rk keg) still uninstalls run-kit ---
-
-func TestUninstall_RunKitLegacyOnlyUninstalls(t *testing.T) {
-	// Only the legacy rk keg present; current run-kit formula absent.
-	f := installedFormulasFake(map[string]bool{formulaPrefix + "rk": true})
+func TestUninstall_LegacyOnlyMachineReportsNotInstalled(t *testing.T) {
+	// A legacy-only machine (only the invisible legacy `rk` keg; the current
+	// run-kit formula absent): `shll uninstall run-kit` reports `not installed`
+	// and skips it — repair-path semantics, exit 0 — and never probes or removes
+	// the retired legacy formula.
+	f := installedFormulasFake(map[string]bool{}) // run-kit formula not installed
 	installFakeRunner(t, f)
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
 	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUninstall err = %v, want nil (a legacy keg counts as installed)", err)
+		t.Fatalf("runUninstall err = %v, want nil (named-but-absent is a success)", err)
+	}
+	if !strings.Contains(stdout.String(), "run-kit: "+notInstalledLabel) {
+		t.Errorf("expected `run-kit: not installed` skip line, stdout: %q", stdout.String())
 	}
 	calls := f.recordedCalls()
-	// The current formula is absent → no `brew uninstall sahil87/tap/run-kit`.
-	if invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+"run-kit") {
-		t.Errorf("current run-kit formula is absent — no uninstall of it expected")
+	for _, c := range calls {
+		if c.Name == brewBinary && len(c.Args) > 0 && c.Args[0] == "uninstall" {
+			t.Errorf("nothing to remove on a legacy-only machine, got %+v", c)
+		}
 	}
-	// The residual rk keg is removed by its legacy leaf name.
-	if !invocationsContain(calls, brewBinary, "uninstall", "rk") {
-		t.Errorf("expected removal of the legacy rk keg, calls: %+v", calls)
-	}
+	assertNoLegacyFormulaReference(t, calls)
 }
 
 // --- R12: shll-self uninstall brew-managed + farewell ---
@@ -619,12 +580,11 @@ func TestUninstall_ShellHintSuppressedOnFailedRemoval(t *testing.T) {
 	}
 }
 
-// --- R14 (A-019): the run-kit daemon hint names the tool from the actionable entry ---
+// --- R14 (A-019): the run-kit daemon hint fires on the roster entry's removal ---
 
 func TestUninstall_RunKitDaemonHintUsesToolName(t *testing.T) {
-	// The daemon-stop hint must name the run-kit tool via a.tool.Name, not a "run-kit"
-	// literal. On a migrated machine (run-kit removed successfully) the hint prints and
-	// names the tool.
+	// The daemon-stop hint is keyed on the run-kit roster entry by name (the
+	// runKitToolName constant) and fires when run-kit is removed successfully.
 	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
 	installFakeRunner(t, f)
 	fixedClock(t)
@@ -672,16 +632,12 @@ func TestUninstall_RunKitDaemonHintSuppressedOnFailure(t *testing.T) {
 	}
 }
 
-// --- R9 / R10 (finding 5): dual-rack --dry-run preview includes the residual `brew uninstall rk` ---
+// --- run-kit --dry-run preview is a single plain row (change h3f6) ---
 
-func TestUninstall_DryRunDualRackPreviewIncludesResidual(t *testing.T) {
-	// Dual-rack: run-kit (leaf run-kit) AND a residual rk keg (leaf rk). The dry-run
-	// preview must show BOTH the new-formula uninstall and the residual `brew uninstall rk`
-	// the live sweep would issue — not just the primary — with no write.
-	f := installedFormulasFake(map[string]bool{
-		formulaPrefix + "run-kit": true,
-		formulaPrefix + "rk":      true,
-	})
+func TestUninstall_DryRunRunKitPreviewSingleRow(t *testing.T) {
+	// The run-kit preview is one plain `brew uninstall sahil87/tap/run-kit` row —
+	// no residual `brew uninstall rk` row exists anymore — with no write.
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -690,49 +646,16 @@ func TestUninstall_DryRunDualRackPreviewIncludesResidual(t *testing.T) {
 	}
 	out := stdout.String()
 	if !strings.Contains(out, "brew uninstall "+formulaPrefix+"run-kit") {
-		t.Errorf("dual-rack preview must include the new-formula uninstall, stdout: %q", out)
+		t.Errorf("preview must include the run-kit formula uninstall, stdout: %q", out)
 	}
-	// The residual is previewed by the LEGACY LEAF NAME (`brew uninstall rk`), never the
-	// qualified `sahil87/tap/rk` (which brew would re-resolve through the rename).
-	newIdx := strings.Index(out, "brew uninstall "+formulaPrefix+"run-kit")
-	rkIdx := strings.Index(out, "brew uninstall rk")
-	if rkIdx < 0 {
-		t.Errorf("dual-rack preview must include the residual `brew uninstall rk`, stdout: %q", out)
-	}
-	if strings.Contains(out, "brew uninstall "+formulaPrefix+"rk") {
-		t.Errorf("preview must never show the qualified `brew uninstall sahil87/tap/rk`, stdout: %q", out)
-	}
-	// New formula previewed before the residual (matches the live sweep order).
-	if newIdx >= 0 && rkIdx >= 0 && newIdx > rkIdx {
-		t.Errorf("preview must list the new formula before the residual rk keg, stdout: %q", out)
+	if strings.Contains(out, "brew uninstall rk") {
+		t.Errorf("preview must not show a residual `brew uninstall rk` row, stdout: %q", out)
 	}
 	// No writes — dry-run.
 	for _, c := range f.recordedCalls() {
 		if c.Name == brewBinary && len(c.Args) > 0 && c.Args[0] == "uninstall" {
 			t.Errorf("dry-run must issue no brew uninstall, got %+v", c)
 		}
-	}
-}
-
-// --- R9 / R11 (finding 5): legacy-only --dry-run preview shows only `brew uninstall rk` ---
-
-func TestUninstall_DryRunLegacyOnlyPreviewShowsResidualOnly(t *testing.T) {
-	// Legacy-only machine (only the rk keg). The preview must show `brew uninstall rk`
-	// and NOT a spurious `brew uninstall sahil87/tap/run-kit` (the live run issues only
-	// the residual removal).
-	f := installedFormulasFake(map[string]bool{formulaPrefix + "rk": true})
-	installFakeRunner(t, f)
-
-	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, true, false, []string{"run-kit"}); err != nil {
-		t.Fatalf("runUninstall err = %v, want nil", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "brew uninstall rk") {
-		t.Errorf("legacy-only preview must show `brew uninstall rk`, stdout: %q", out)
-	}
-	if strings.Contains(out, "brew uninstall "+formulaPrefix+"run-kit") {
-		t.Errorf("legacy-only preview must NOT show a spurious new-formula uninstall, stdout: %q", out)
 	}
 }
 

@@ -103,20 +103,7 @@ type probeResult struct {
 	// `brew list --formula --versions` read the install probe runs (never from
 	// streamed foreground output — code-quality.md). "" when not installed or the
 	// version could not be parsed. Feeds the post-upgrade "What changed:" digest.
-	// For a needsMigration tool this is the LEGACY keg's version (e.g. 2.5.13), so
-	// the digest renders `run-kit 2.5.13 → 3.0.0` after migration.
 	beforeVersion string
-	// needsMigration marks a tool whose CURRENT formula is not installed but whose
-	// LEGACY keg IS present (classified by keg leaf name — see probeTool). Such a
-	// tool is upgraded via the brew-direct MIGRATION ACTION (migrateRunKit) instead
-	// of delegating to `<tool> update`. Transitional for the rk→run-kit rename —
-	// once legacy kegs die out this is always false and the guard is a cheap no-op.
-	needsMigration bool
-	// dualRack marks the observed "leftover" state where BOTH the current and legacy
-	// kegs are installed (state C from the intake). The tool is migrated/present
-	// (not needsMigration), but a one-line cleanup note is surfaced. Detection only —
-	// shll never acts on the orphan (cleanup belongs to `shll uninstall` / manual brew).
-	dualRack bool
 }
 
 // runUpdate is the implementation seam for `shll update`. Extracted from the
@@ -213,10 +200,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		// results for selected tools still carry their true install status (only
 		// non-selected tools get zeroed, below). Check every selected target (incl.
 		// shll-self) before any brew write, and report all missing targets at once
-		// in roster order for a better one-shot fix. A LEGACY-KEG run-kit counts as
-		// installed here (probeTool set installed=true, needsMigration=true), so
-		// `shll update run-kit`/`shll update rk` on a legacy machine MIGRATES rather
-		// than erroring "not installed" — the explicit user requirement.
+		// in roster order for a better one-shot fix.
 		var missingNamed []string
 		if selfSelected && !shllInstalled {
 			missingNamed = append(missingNamed, shllTargetToken)
@@ -268,7 +252,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 			if !probes[i].installed {
 				continue
 			}
-			rows = append(rows, previewRow{label: t.Name, cmd: argvString(upgradeArgv(t, probes[i].supportsSkipFlag, probes[i].needsMigration)...)})
+			rows = append(rows, previewRow{label: t.Name, cmd: argvString(upgradeArgv(t, probes[i].supportsSkipFlag)...)})
 		}
 		printUpdatePreview(stdout, rows)
 		// The real run ends with the conditional agent-skill refresh; preview it
@@ -375,8 +359,6 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 	// Sequentially upgrade each installed roster tool in roster order (Design
 	// Decision #3 — brew lock + interleaved foreground output mean upgrades stay
 	// serial). Per-tool dispatch (upgradeTool):
-	//   - needsMigration (legacy rk keg) → the brew-direct migration action
-	//     (`brew upgrade sahil87/tap/rk` + conditional `brew link run-kit` + notes)
 	//   - has Update argv + supports the flag → `<tool> update --skip-brew-update`
 	//   - has Update argv but no flag (version skew) → `<tool> update` (no flag)
 	//   - no Update argv (hypothetical future tool) → `brew upgrade <formula>`
@@ -400,10 +382,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		}
 		succeeded++
 		// Re-query the new version (a cheap captured read) and record a bump when
-		// it actually changed from the pre-upgrade probe value. For a migrated
-		// run-kit, beforeVersion is the LEGACY keg's version (from probeTool) and the
-		// re-query reads the NEW formula (t.Formula is sahil87/tap/run-kit after the
-		// rename), so the digest renders `run-kit 2.5.13 → 3.0.0`.
+		// it actually changed from the pre-upgrade probe value.
 		if b, ok := makeBump(t.Name, t.Repo, probes[i].beforeVersion, installedVersion(ctx, t.Formula)); ok {
 			bumps = append(bumps, b)
 		}
@@ -498,39 +477,15 @@ func probeRoster(ctx context.Context) []probeResult {
 }
 
 // probeTool performs the read-only capability probes for a single tool: install
-// status (with the rk→run-kit migration gate), plus `--skip-brew-update` support
-// for installed tools that have an Update argv. The help probe is skipped for
-// uninstalled tools, tools with no Update argv, and tools needing migration (there
-// is nothing to delegate to — the migration is brew-direct).
-//
-// MIGRATION GATE (classify by keg LEAF NAME, never the LEGACY probe's exit code
-// alone). For a tool that declares a LegacyFormula (only run-kit today):
-//  1. Current formula (t.Formula) installed → migrated; normal delegation. Exit 0 on
-//     the NEW formula means it is installed as the new formula, so no leaf check is
-//     needed here (the leaf is `run-kit` when parseable; an exit-0-but-empty stdout
-//     — a test edge, never real brew — is still the migrated formula). If the legacy
-//     keg is ALSO present → dual-rack state C: still migrated, flag dualRack so the
-//     caller surfaces a cleanup note.
-//  2. Current formula NOT installed → probe LegacyFormula. Here the leaf is
-//     LOAD-BEARING: after the tap rename, `brew list sahil87/tap/rk` can EXIT 0 yet
-//     report leaf `run-kit` (rename-resolution — observed state B, which is MIGRATED,
-//     not legacy). So classify by ITS leaf: leaf == t.LegacyName (`rk`) → a genuine
-//     pre-rename keg → needsMigration, beforeVersion from the legacy keg; leaf ==
-//     t.Name (`run-kit`, state B) → already migrated, normal delegation.
-//  3. Neither → not installed.
-//
-// Tools with no LegacyFormula keep the plain single-probe behavior.
+// status, plus `--skip-brew-update` support for installed tools that have an
+// Update argv. The help probe is skipped for uninstalled tools and tools with no
+// Update argv.
 func probeTool(ctx context.Context, t Tool) probeResult {
 	// One `brew list --formula --versions` read yields the exit-code install fact
-	// (empty stdout with exit 0 still counts as installed), the keg leaf name, and
-	// the before-version. The before-version is best-effort: "" means "unknown" and
-	// suppresses only this tool's digest entry, never its upgrade.
-	installed, leaf, before := probeInstalledLeaf(ctx, t.Formula)
-
-	if t.LegacyFormula != "" {
-		return probeRunKitMigration(ctx, t, installed, leaf, before)
-	}
-
+	// (empty stdout with exit 0 still counts as installed) and the before-version.
+	// The before-version is best-effort: "" means "unknown" and suppresses only
+	// this tool's digest entry, never its upgrade.
+	installed, before := probeInstalledVersion(ctx, t.Formula)
 	if !installed {
 		return probeResult{}
 	}
@@ -539,57 +494,6 @@ func probeTool(ctx context.Context, t Tool) probeResult {
 		res.supportsSkipFlag = toolSupportsSkipFlag(ctx, t)
 	}
 	return res
-}
-
-// probeRunKitMigration is the migration gate for a tool that declares a
-// LegacyFormula (run-kit). It takes the already-run current-formula probe result
-// (installed/leaf/before — leaf is unused on this branch, see the note in
-// probeTool) and returns the classified probeResult. Split out so `shll install`
-// and `shll doctor` reuse the SAME detection path (Constitution III — one source of
-// truth for the classification). See probeTool for the branch semantics.
-func probeRunKitMigration(ctx context.Context, t Tool, installed bool, _ /*leaf*/, before string) probeResult {
-	// Branch 1: current (renamed) formula installed → migrated. Exit 0 on the new
-	// formula is authoritative here — the leaf is not re-checked (it disambiguates
-	// only the LEGACY-formula probe in branch 2, where rename-resolution can make an
-	// `rk`-formula probe report leaf `run-kit`).
-	if installed {
-		res := probeResult{installed: true, beforeVersion: before}
-		// Dual-rack (state C): a genuine SEPARATE legacy keg is ALSO present. The
-		// legacy-formula probe must report the LEGACY leaf (`rk`) to count — an
-		// `sahil87/tap/rk` probe that exits 0 reporting leaf `run-kit` is just
-		// rename-resolution pointing at the same single migrated keg (state B), NOT a
-		// second rack. Keying dual-rack on the leaf avoids that false positive.
-		// Detection is read-only; shll never acts on the orphan (cleanup is manual /
-		// `shll uninstall`).
-		if legacyInstalled, legacyLeaf, _ := probeInstalledLeaf(ctx, t.LegacyFormula); legacyInstalled && legacyLeaf == t.LegacyName {
-			res.dualRack = true
-		}
-		if len(t.Update) > 0 {
-			res.supportsSkipFlag = toolSupportsSkipFlag(ctx, t)
-		}
-		return res
-	}
-
-	// Branch 2: current formula not installed → probe the legacy formula and
-	// classify by ITS leaf (never the exit code alone — state B exits 0 yet reports
-	// leaf `run-kit`).
-	legacyInstalled, legacyLeaf, legacyBefore := probeInstalledLeaf(ctx, t.LegacyFormula)
-	if legacyInstalled && legacyLeaf == t.LegacyName {
-		// Genuine legacy keg (leaf `rk`) → needs migration; before-version from it.
-		return probeResult{installed: true, needsMigration: true, beforeVersion: legacyBefore}
-	}
-	if legacyInstalled && legacyLeaf == t.Name {
-		// State B: the legacy-formula probe exits 0 and reports the CURRENT leaf
-		// (rename resolution) → already migrated; normal delegation.
-		res := probeResult{installed: true, beforeVersion: legacyBefore}
-		if len(t.Update) > 0 {
-			res.supportsSkipFlag = toolSupportsSkipFlag(ctx, t)
-		}
-		return res
-	}
-
-	// Branch 3: neither keg present → not installed.
-	return probeResult{}
 }
 
 // toolSupportsSkipFlag reports whether `<tool> update --help` advertises the
@@ -605,50 +509,27 @@ func toolSupportsSkipFlag(ctx context.Context, t Tool) bool {
 	return strings.Contains(string(out), skipBrewUpdateFlag)
 }
 
-// Migration notes — named per code-quality.md (no magic strings). Printed to the
-// user during a run-kit migration; the daemon note is PRINTED, never executed
-// (Constitution III — shll never reimplements run-kit's own post-upgrade logic).
-const (
-	// migrationDaemonNoteFmt suggests restarting the run-kit daemon after a
-	// brew-direct migration (which skips `run-kit update`'s restart side effect).
-	// Takes the tool name. PRINT ONLY — shll never runs it.
-	migrationDaemonNoteFmt = "note: %[1]s daemon (if running) was not restarted by the brew-direct migration — run '%[1]s serve --restart' if you use it"
-	// relinkNoteFmt explains the delegation-path unlinked-keg self-heal: the probe
-	// said the formula IS brew-installed, yet delegating to the tool's own binary
-	// returned proc.ErrNotFound — the unlinked-keg pathology (state A) reached on an
-	// ALREADY-MIGRATED keg, e.g. a half-completed rename migration or a keg conflict
-	// that left the binaries unlinked (observed live 2026-07-19: run-kit formula
-	// installed, zombie rk keg alongside, neither linked). Takes the tool name.
-	// Printed AFTER a successful `brew link`, BEFORE the retried delegation.
-	relinkNoteFmt = "note: %[1]s is brew-installed but was not linked on PATH — ran 'brew link %[1]s', retrying"
-	// migrationDualRackNoteFmt flags the state-C leftover (both kegs present). Takes
-	// (legacy formula, current formula, tool name, legacy LEAF name). Detection only —
-	// shll never removes the orphan keg. It points at `shll uninstall <tool>` — the now-
-	// supported dual-rack cleanup (the sibling `shll uninstall` change), which probes-and-
-	// leaf-verifies before removing — as the primary fix. The brew-direct alternative is
-	// given by the LEGACY LEAF NAME (`brew uninstall rk`), NEVER the qualified old-name
-	// `brew uninstall sahil87/tap/rk`: post-rename brew re-resolves the qualified `rk` →
-	// `run-kit` and a blind qualified uninstall would delete the GOOD keg (the exact
-	// footgun `shll uninstall` exists to avoid). Bare `rk` targets only the orphan rack.
-	migrationDualRackNoteFmt = "note: a leftover %s keg remains alongside %s — remove it with 'shll uninstall %s' (or 'brew uninstall %s')"
-)
+// relinkNoteFmt explains the delegation-path unlinked-keg self-heal: the probe
+// said the formula IS brew-installed, yet delegating to the tool's own binary
+// returned proc.ErrNotFound — the unlinked-keg pathology, e.g. a keg conflict
+// that left the binaries unlinked (observed live 2026-07-19). Takes the tool
+// name. Printed AFTER a successful `brew link`, BEFORE the retried delegation.
+// Named per code-quality.md (no magic strings).
+const relinkNoteFmt = "note: %[1]s is brew-installed but was not linked on PATH — ran 'brew link %[1]s', retrying"
 
-// upgradeTool upgrades a single installed roster tool, foregrounded. For a tool
-// flagged needsMigration it runs the brew-direct MIGRATION ACTION (migrateRunKit)
-// instead of delegating. Otherwise it delegates to the tool's own `update`
-// subcommand when it has an Update argv (appending `--skip-brew-update` when
-// supported), and falls back to `brew upgrade <formula>` for a tool with no Update
-// argv. The exact argv for the non-migration + primary-migration path is built by
-// upgradeArgv so the dry-run preview renders the same command without running it
-// (single source of truth for the per-tool dispatch). stdout/stderr are threaded in
-// so migrateRunKit can print its post-check/daemon/dual-rack notes.
+// upgradeTool upgrades a single installed roster tool, foregrounded. It
+// delegates to the tool's own `update` subcommand when it has an Update argv
+// (appending `--skip-brew-update` when supported), and falls back to
+// `brew upgrade <formula>` for a tool with no Update argv. The exact argv is
+// built by upgradeArgv so the dry-run preview renders the same command without
+// running it (single source of truth for the per-tool dispatch). stdout/stderr
+// are threaded in so the self-heal below can print its relink note.
 //
 // UNLINKED-KEG SELF-HEAL (delegation path only). When the delegated `<tool> update`
 // itself returns proc.ErrNotFound, the probe and the delegation disagree: brew
 // reports the formula installed (probeTool gated on that), yet the binary is off
-// PATH — the same unlinked-keg pathology migrateRunKit's post-check heals, but
-// reached on an ALREADY-MIGRATED keg, so the migration gate never sees it. Heal it
-// the same way: `brew link <tool.Name>`, then retry the delegation ONCE. The guard
+// PATH — the unlinked-keg pathology (e.g. a keg conflict that left the binaries
+// unlinked). Heal it: `brew link <tool.Name>`, then retry the delegation ONCE. The guard
 // is errors.Is on the FIRST attempt only (no loop), and only on the delegation path
 // (len(t.Update) > 0) — on the brew-fallback path argv[0] is brew itself, whose
 // absence is a different failure hasBrew already vouched against, not a keg to link.
@@ -656,10 +537,7 @@ const (
 // unchanged (graceful degradation — Constitution V); shll never uninstalls or
 // removes kegs here.
 func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeResult) (int, error) {
-	if p.needsMigration {
-		return migrateRunKit(ctx, stdout, stderr, t)
-	}
-	argv := upgradeArgv(t, p.supportsSkipFlag, p.needsMigration)
+	argv := upgradeArgv(t, p.supportsSkipFlag)
 	code, err := proc.RunForeground(ctx, argv[0], argv[1:]...)
 	if errors.Is(err, proc.ErrNotFound) && len(t.Update) > 0 {
 		if lcode, lerr := proc.RunForeground(ctx, brewBinary, "link", t.Name); lerr != nil {
@@ -671,91 +549,18 @@ func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeR
 			code, err = proc.RunForeground(ctx, argv[0], argv[1:]...)
 		}
 	}
-	// A non-migration run-kit upgrade that ends dual-rack (state C) still surfaces
-	// the cleanup note (detection happened in probeTool).
-	if p.dualRack {
-		fmt.Fprintf(stdout, migrationDualRackNoteFmt+"\n", t.LegacyFormula, t.Formula, t.Name, t.LegacyName)
-	}
 	return code, err
-}
-
-// migrateRunKit performs the brew-direct rk→run-kit migration for a legacy-keg
-// tool. It NEVER delegates to the old binary (its rename handling is
-// version-dependent and unfixable) and NEVER uninstall→installs (that failure-window
-// repair path is the sibling `shll uninstall` change). Steps:
-//  1. `brew upgrade <LegacyFormula>` — brew resolves the rename and migrates the keg
-//     to the new formula. This is the exit code that drives success/failure; a
-//     NON-SUCCESS upgrade (transport error OR non-zero exit — proc.RunForeground
-//     returns (code, nil) on a non-zero exit, so the code must be checked) returns
-//     immediately WITHOUT the post-steps, since a failed migration has nothing to
-//     link, no daemon to note, and no reliable post-state to re-probe.
-//  2. Post-check: if `<tool> --version` STILL returns proc.ErrNotFound (the
-//     unlinked-keg pathology, observed state A), run `brew link <tool.Name>`.
-//  3. PRINT (never run) a daemon-restart note — the brew-direct path skips
-//     `run-kit update`'s post-upgrade restart side effect (Constitution III).
-//  4. RE-PROBE the legacy formula: if a genuine legacy keg (leaf == t.LegacyName,
-//     e.g. `rk`) STILL reports installed alongside the now-migrated new formula, the
-//     migration left a dual-rack orphan (state C reached via a migration rather than
-//     pre-existing) → PRINT a one-line cleanup note; shll never removes the orphan.
-//     The dual-rack signal is DERIVED here from a post-migration probe, NOT from the
-//     incoming probeResult: a `needsMigration` probe is branch 2 of
-//     probeRunKitMigration, which never sets dualRack (the current formula was
-//     not-installed pre-migration, so there was no second rack to detect then).
-//
-// step 2's link is best-effort (a link failure is surfaced to stderr but does not
-// override the upgrade's exit code — the upgrade is what determines whether the tool
-// migrated). Transitional — retire once legacy kegs die out.
-func migrateRunKit(ctx context.Context, stdout, stderr io.Writer, t Tool) (int, error) {
-	// proc.RunForeground returns (code, nil) on a non-zero exit — only exec-time
-	// failures set err — so a failed migration is either err != nil OR code != 0.
-	// Either way, return before the post-steps: there is no keg to link, no daemon
-	// to note, and no trustworthy post-state to re-probe for a dual-rack orphan.
-	code, err := proc.RunForeground(ctx, brewBinary, "upgrade", t.LegacyFormula)
-	if err != nil || code != 0 {
-		return code, err
-	}
-
-	// Post-check: on the unlinked-keg pathology (state A), the binary is still not
-	// on PATH after the upgrade → link it. Only proc.ErrNotFound triggers the link
-	// (a present-but-otherwise-failing --version is not an unlinked keg).
-	if _, verr := probeVersionByName(ctx, t.Name); errors.Is(verr, proc.ErrNotFound) {
-		if lcode, lerr := proc.RunForeground(ctx, brewBinary, "link", t.Name); lerr != nil {
-			fmt.Fprintf(stderr, "shll update: %s: brew link failed: %v\n", t.Name, lerr)
-		} else if lcode != 0 {
-			fmt.Fprintf(stderr, "shll update: %s: brew link exited %d\n", t.Name, lcode)
-		}
-	}
-
-	// Daemon-restart note — printed, never executed (Constitution III).
-	fmt.Fprintf(stdout, migrationDaemonNoteFmt+"\n", t.Name)
-
-	// Dual-rack cleanup note if the migration left a genuine legacy keg (leaf
-	// t.LegacyName, e.g. `rk`) lingering alongside the now-migrated one. Detected by
-	// RE-PROBING the legacy formula post-migration — keyed on the LEGACY leaf so a
-	// `sahil87/tap/rk` probe that exits 0 reporting leaf `run-kit` (rename resolution
-	// pointing at the single migrated keg) is NOT a false dual-rack positive.
-	if legacyInstalled, legacyLeaf, _ := probeInstalledLeaf(ctx, t.LegacyFormula); legacyInstalled && legacyLeaf == t.LegacyName {
-		fmt.Fprintf(stdout, migrationDualRackNoteFmt+"\n", t.LegacyFormula, t.Formula, t.Name, t.LegacyName)
-	}
-
-	return code, nil
 }
 
 // upgradeArgv returns the exact argv `shll update` would run for an installed roster
 // tool, per the same dispatch upgradeTool uses:
-//   - needsMigration → the PRIMARY migration command `brew upgrade <LegacyFormula>`
-//     (the conditional `brew link` + daemon/dual-rack notes are live-run side
-//     effects, not previewable — migrateRunKit owns them)
 //   - has Update argv + supports the flag → `<tool> update --skip-brew-update`
 //   - has Update argv, no flag (version skew) → `<tool> update`
 //   - no Update argv (hypothetical future tool) → `brew upgrade <formula>`
 //
 // It is the single source of truth shared by the live upgrade (upgradeTool) and the
 // dry-run preview, so the preview can never drift from what the run would do.
-func upgradeArgv(t Tool, supportsSkipFlag, needsMigration bool) []string {
-	if needsMigration {
-		return []string{brewBinary, "upgrade", t.LegacyFormula}
-	}
+func upgradeArgv(t Tool, supportsSkipFlag bool) []string {
 	if len(t.Update) == 0 {
 		return []string{brewBinary, "upgrade", t.Formula}
 	}
