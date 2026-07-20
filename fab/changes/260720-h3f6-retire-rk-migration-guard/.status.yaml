@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 13
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-07-20T07:56:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-20T08:00:55Z"}
     hydrate: {started_at: "2026-07-20T08:00:55Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-20T08:18:16Z"}
     ship: {started_at: "2026-07-20T08:18:16Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-20T08:20:16Z"}
-    review-pr: {started_at: "2026-07-20T08:20:16Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-07-20T08:20:16Z", driver: git-pr, iterations: 1, completed_at: "2026-07-20T08:26:29Z"}
 prs:
     - https://github.com/sahil87/shll/pull/71
 true_impact:
@@ -53,4 +53,4 @@ true_impact:
     computed_at_stage: ship
 summary: 'Retire the rk→run-kit migration guard: update/install/doctor/uninstall drop LegacyFormula + all keyed machinery (probeRunKitMigration, migrateRunKit, resolveMigrationFacts, uninstallRunKit, the leaf parser); run-kit is a plain roster tool; LegacyName stays as the binary-alias/display surface; the uninstall daemon-stop hint is re-keyed on runKitToolName.'
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-07-20T08:20:16Z
+last_updated: 2026-07-20T08:26:29Z
