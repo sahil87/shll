@@ -102,6 +102,20 @@ Pass one or more tool names to scope the run to a subset (valid targets: `shll`,
 
 Each tool gets a `[N/M]` progress header, and a timing summary tail (`Done — N of M tools succeeded in <dur>.`) closes the run. After the tail, a compact **"What changed:"** digest lists the release-note titles for every tool that actually bumped, followed by a copy-pasteable `shll changelog` command for the full notes.
 
+### `shll check-updates` — is anything outdated? (read-only)
+
+```sh
+shll check-updates                     # human table: installed → latest per tool
+shll check-updates --json --released   # machine contract (what run-kit's daemon runs)
+shll check-updates --github            # compare against GitHub release tags instead
+```
+
+The toolkit's single update-*check* surface: for shll itself plus every roster tool, it reports the installed version vs the latest available — and never updates anything (that's `shll update`'s job). Two mutually exclusive backends: `--released` (the default) fetches [shll.ai/versions.json](https://shll.ai/versions.json), the roster + notify-policy authority, once per run; `--github` reads each tool's latest GitHub release tag instead (no notify policy in that backend). Installed versions come from Homebrew, so brew must be present.
+
+The human output is a `shll version`-style aligned table — `shll  0.1.5 → 0.1.6  update available (notable)`, `wt  0.1.3  up to date`, `idea  not installed`. The `(notable)` marker means the pending bump crosses the tool's notify threshold from the manifest (`patch` = any bump is notable; `minor` = only minor-or-higher bumps; `never` = none).
+
+`--json` emits a stable machine contract — `{"schema": 1, "source": "released", "tools": [{"name", "formula", "installed", "latest", "notify", "update_available", "notable"}]}` — with a row only for tools where both versions resolved (not-installed or unresolvable tools are omitted; `--github` rows omit `notify`/`notable` since no policy source exists there). The contract evolves additively — consumers tolerate unknown fields. Exit codes: 0 when the check ran (pending updates don't change it — verdicts live in the output), 1 when the check itself failed (manifest unreachable, brew missing), 2 on a usage error; a `--github` per-tool fetch failure degrades just that tool and still exits 0.
+
 ### `shll changelog` — release notes for the toolkit
 
 ```sh
@@ -264,6 +278,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 |----------------|------------------------|
 | `shll install` | `brew trust --formula sahil87/tap/<formula>` then `brew install sahil87/tap/<formula>` per missing tool (`--no-trust` skips the trust step) |
 | `shll update` | `brew update --quiet` once, self-upgrade, then each installed tool's own `update` (delegated; `brew upgrade` fallback only when a tool has no `update`) |
+| `shll check-updates` | fetches `shll.ai/versions.json` (or GitHub releases with `--github`), joins against `brew list --versions`, reports pending updates — read-only |
 | `shll changelog` | fetches each tool's GitHub releases (public API), filters to the requested version range, renders the notes |
 | `shll shell-init zsh` | concatenates the stdout of each installed tool's `<tool> shell-init zsh` |
 | `shll version` | invokes `<tool> --version` per tool, formats as a table |

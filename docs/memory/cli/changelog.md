@@ -35,7 +35,7 @@ shll changelog tu@0.6.2..0.6.4 hop@0.1.16..0.1.18   # multiple (this is what `sh
 `resolveChangelog` resolves every spec **concurrently** — one goroutine per spec, results indexed by position to preserve spec/roster order (mirroring `FetchAll`/`probeRoster`). Each spec makes at most one brew read + one GitHub fetch:
 
 - **Explicit range** (`tool@old..new`) — never consults brew; normalizes both bounds (`NormalizeVer`) and calls `changelog.FetchRange` with `(old, new]`. Works regardless of install state (`TestChangelog_ExplicitRangeWorksUninstalled`).
-- **No-range** (bare-command sweep or a `tool`-only spec) — the range is `installed-version → latest-release`. The installed anchor comes from brew (`installedVersion` → `brew list --formula --versions`, via `internal/proc`); the latest comes from a single `changelog.LatestTag` fetch whose returned release list is then **filtered locally** via `changelog.ReleasesInRange` (one GET per repo, never a second fetch — `TestChangelog_NoRangeSingleFetchPerRepo` asserts GET count == 1).
+- **No-range** (bare-command sweep or a `tool`-only spec) — the range is `installed-version → latest-release`. The installed anchor comes from brew (`installedVersion` → `brew list --formula --versions`, via `internal/proc`); the latest comes from the shared [internal/versions](/internal/versions.md) resolver seam (`versions.LatestGitHub`, a thin delegation to `changelog.LatestTag`) whose returned release list is then **filtered locally** via `changelog.ReleasesInRange` (one GET per repo, never a second fetch — the seam passes the release list through unchanged, so `TestChangelog_NoRangeSingleFetchPerRepo` still asserts GET count == 1). Consuming the seam rather than `changelog.LatestTag` directly leaves changelog's CLI surface, output, and single-GET no-range contract unchanged (puxw).
 
 ### The bare sweep (no args)
 
@@ -91,6 +91,7 @@ The changelog surface's own Unicode framing degrades on a non-TTY / `NO_COLOR` s
 ## Cross-references
 
 - Release fetch/filter/degradation package: [internal/changelog](/internal/changelog.md).
+- The shared "latest version per tool" resolver seam the no-range anchor consumes (`versions.LatestGitHub`, single-GET preserved): [internal/versions](/internal/versions.md); its sibling command surface: [cli/check-updates](/cli/check-updates.md).
 - Shared version transitions + the `shll update` "What changed:" digest that renders inline release notes: [cli/update §"What changed:" digest](/cli/update.md#version-capture--the-what-changed-digest). Both surfaces share the `internal/changelog` fetch/filter code **and** one release rendering (`renderReleases`, 13k3); the digest adds a tool-name-bearing transition line above the shared release blocks.
 - Root wiring + the subcommand surface: [cli/commands](/cli/commands.md#cobra-root).
 - Shared `ui.go` framing (`printToolHeader`, color gating, glyph degrade): [cli/commands §shared UI helper](/cli/commands.md#shared-ui-helper-uigo).

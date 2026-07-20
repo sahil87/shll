@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sahil87/shll/internal/changelog"
+	"github.com/sahil87/shll/internal/versions"
 )
 
 // specToolSep separates a tool name from its explicit version range in a
@@ -341,7 +342,11 @@ func resolveOneSpec(ctx context.Context, s changelogSpec, bare bool) resolvedCha
 	}
 	installed = changelog.NormalizeVer(installed)
 
-	latest, rels, err := changelog.LatestTag(ctx, repo)
+	// The latest anchor comes from the shared resolver seam (internal/versions),
+	// which delegates to changelog.LatestTag and passes the fetched release list
+	// through — preserving the one-GET-per-repo contract (the list is filtered
+	// locally below, never re-fetched).
+	latest, rels, err := versions.LatestGitHub(ctx, repo)
 	if err != nil {
 		// Fetch failed for a no-range spec: the latest version is UNKNOWN, so there
 		// is no genuine range to show. Emit an explicit "unavailable" notice pointing

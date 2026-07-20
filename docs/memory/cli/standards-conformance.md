@@ -57,7 +57,7 @@ Two audit items were determined **conformant as-is** — recorded so a future au
 
 The audit deferred `skill` (no `shll skill` subcommand existed then; the standard's phased per-repo adoption makes a tool without one "not yet in violation" — principle №10's bundle obligation is a SHOULD; tracked in backlog `[agst]`). The deferral is resolved (agst) — both the `shll skill` composer and shll's *own* `skill`-standard adoption:
 
-- shll ships `shll skill` (the runtime tree lists twelve commands including `skill` and `agent-setup`).
+- shll ships `shll skill` (the runtime tree lists thirteen commands including `skill` and `agent-setup`).
 - shll's own bundle is authored at `docs/site/skill.md` (≤150 lines), embedded via the same sync + drift-guard mechanism `shll standards` uses (committed `src/cmd/shll/skill/skill.md` + the extended `scripts/sync-standards.sh` + `TestSkillEmbedMatchesCanonical`), and served by `shll skill shll` in-process byte-identical.
 - This satisfies principle №10's bundle obligation at scope `binary+repo` for shll. See [cli/skill](/cli/skill.md) for the composer and the self-bundle embed, and [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-agent-setup-skills-placement-not-context-aggregation) for the `shll agent-setup` piece that also landed.
 
