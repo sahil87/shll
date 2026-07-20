@@ -1,0 +1,14 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-20T05:45:34Z"}
+{"args":"Consolidate shll check-updates backend flags: replace mutually-exclusive --released/--github bools with a single enum-valued --source flag (released|github, default released); clean break, no deprecated aliases; unknown value = usage error exit 2 via run seam; --json contract untouched","cmd":"fab-new","event":"command","ts":"2026-07-20T05:45:34Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-20T05:47:48Z"}
+{"delta":"+0.0","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-20T05:48:11Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-07-20T05:49:06Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-20T05:50:25Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-20T05:50:31Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-20T05:51:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-20T05:57:19Z"}
+{"cmd":"_review","event":"command","ts":"2026-07-20T05:57:51Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-20T06:00:27Z"}
+{"event":"review","result":"passed","ts":"2026-07-20T06:00:27Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-20T06:04:24Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-20T06:07:00Z"}

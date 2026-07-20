@@ -96,7 +96,7 @@ func TestCheckUpdates_ReleasedHappyPathTable(t *testing.T) {
 	installFakeRunner(t, checkUpdatesBrewFake(happyBrew()))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, false, false, false); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, false); err != nil {
 		t.Fatalf("runCheckUpdates err = %v, want nil", err)
 	}
 	if stderr.Len() != 0 {
@@ -140,7 +140,7 @@ func TestCheckUpdates_JSONContractReleased(t *testing.T) {
 	installFakeRunner(t, checkUpdatesBrewFake(happyBrew()))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, true, false, true); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, true); err != nil {
 		t.Fatalf("runCheckUpdates err = %v, want nil", err)
 	}
 	raw := stdout.String()
@@ -205,11 +205,11 @@ func TestCheckUpdates_GithubJSONOmitsNotifyNotable(t *testing.T) {
 		"shll": relJSON([3]string{"v0.1.6", "s6", "b"}),
 		"wt":   relJSON([3]string{"v0.1.3", "w3", "b"}),
 	})
-	checkUpdatesManifestGuard(t) // --github must never fetch the manifest
+	checkUpdatesManifestGuard(t) // the github backend must never fetch the manifest
 	installFakeRunner(t, checkUpdatesBrewFake(happyBrew()))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, false, true, true); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceGithub, true); err != nil {
 		t.Fatalf("runCheckUpdates err = %v, want nil", err)
 	}
 	raw := stdout.String()
@@ -229,7 +229,7 @@ func TestCheckUpdates_GithubJSONOmitsNotifyNotable(t *testing.T) {
 		t.Errorf("shll update_available = false, want true (0.1.5 -> 0.1.6)")
 	}
 	if strings.Contains(raw, `"notify"`) || strings.Contains(raw, `"notable"`) {
-		t.Errorf("--github rows must omit the notify/notable keys entirely:\n%s", raw)
+		t.Errorf("github rows must omit the notify/notable keys entirely:\n%s", raw)
 	}
 }
 
@@ -247,7 +247,7 @@ func TestCheckUpdates_GithubPerToolFailureDegrades(t *testing.T) {
 	}))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, false, true, false); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceGithub, false); err != nil {
 		t.Fatalf("runCheckUpdates err = %v, want nil (per-tool degradation)", err)
 	}
 	out := stdout.String()
@@ -261,7 +261,7 @@ func TestCheckUpdates_GithubPerToolFailureDegrades(t *testing.T) {
 
 	// And the JSON run omits the failed row.
 	stdout.Reset()
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, false, true, true); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceGithub, true); err != nil {
 		t.Fatalf("runCheckUpdates (json) err = %v", err)
 	}
 	var report checkUpdatesReport
@@ -273,19 +273,22 @@ func TestCheckUpdates_GithubPerToolFailureDegrades(t *testing.T) {
 	}
 }
 
-func TestCheckUpdates_BothBackendFlagsUsageError(t *testing.T) {
+func TestCheckUpdates_UnknownSourceValueUsageError(t *testing.T) {
 	checkUpdatesManifestGuard(t)
 	f := checkUpdatesBrewFake(nil)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runCheckUpdates(context.Background(), &stdout, &stderr, true, true, false)
+	err := runCheckUpdates(context.Background(), &stdout, &stderr, "bogus", false)
 	var ec *errExitCode
 	if !errors.As(err, &ec) || ec.code != usageExitCode {
 		t.Fatalf("err = %v, want errExitCode{code: %d}", err, usageExitCode)
 	}
-	if !strings.Contains(ec.msg, "--released") || !strings.Contains(ec.msg, "--github") {
-		t.Errorf("msg = %q, want both flag names", ec.msg)
+	if !strings.Contains(ec.msg, `"bogus"`) {
+		t.Errorf("msg = %q, want the offending value named", ec.msg)
+	}
+	if !strings.Contains(ec.msg, sourceReleased) || !strings.Contains(ec.msg, sourceGithub) {
+		t.Errorf("msg = %q, want the valid set named (%s, %s)", ec.msg, sourceReleased, sourceGithub)
 	}
 	// The usage error fires before any brew or network access.
 	if calls := f.recordedCalls(); len(calls) != 0 {
@@ -301,7 +304,7 @@ func TestCheckUpdates_ManifestFetchFailureExit1(t *testing.T) {
 	installFakeRunner(t, checkUpdatesBrewFake(happyBrew()))
 
 	var stdout, stderr bytes.Buffer
-	err := runCheckUpdates(context.Background(), &stdout, &stderr, true, false, true)
+	err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, true)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent (whole check fails — one fetch)", err)
 	}
@@ -318,7 +321,7 @@ func TestCheckUpdates_UnsupportedSchemaFailsCheck(t *testing.T) {
 	installFakeRunner(t, checkUpdatesBrewFake(happyBrew()))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, true, false, false); !errors.Is(err, errSilent) {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, false); !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent (unsupported manifest schema)", err)
 	}
 	if stderr.Len() == 0 {
@@ -333,7 +336,7 @@ func TestCheckUpdates_BrewMissingHint(t *testing.T) {
 	}})
 
 	var stdout, stderr bytes.Buffer
-	err := runCheckUpdates(context.Background(), &stdout, &stderr, false, false, false)
+	err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, false)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
@@ -352,7 +355,7 @@ func TestCheckUpdates_NotInManifestRow(t *testing.T) {
 	installFakeRunner(t, checkUpdatesBrewFake(happyBrew()))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, true, false, false); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, false); err != nil {
 		t.Fatalf("runCheckUpdates err = %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
@@ -361,7 +364,7 @@ func TestCheckUpdates_NotInManifestRow(t *testing.T) {
 	}
 
 	stdout.Reset()
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, true, false, true); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, true); err != nil {
 		t.Fatalf("runCheckUpdates (json) err = %v", err)
 	}
 	var report checkUpdatesReport
@@ -380,7 +383,7 @@ func TestCheckUpdates_EmptyResolvedSetEmitsEmptyArray(t *testing.T) {
 	installFakeRunner(t, checkUpdatesBrewFake(nil))
 
 	var stdout, stderr bytes.Buffer
-	if err := runCheckUpdates(context.Background(), &stdout, &stderr, true, false, true); err != nil {
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, true); err != nil {
 		t.Fatalf("runCheckUpdates err = %v", err)
 	}
 	if !strings.Contains(stdout.String(), `"tools": []`) {

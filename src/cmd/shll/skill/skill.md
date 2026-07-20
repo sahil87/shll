@@ -19,7 +19,7 @@ One line each, keyed to the subcommand:
 
 - `shll install [tool...]` — `brew install` every missing roster tool (trust-then-install); idempotent. `--dry-run` previews; `--no-trust` skips trust.
 - `shll update [tool...]` — `brew update` once, self-upgrade, then delegate to each installed tool's own `update`; ends by re-running `shll agent-setup` when a placement exists. `--dry-run` previews.
-- `shll check-updates` — read-only "is anything outdated?" check: installed vs latest for shll + every tool. `--released` (default, shll.ai versions manifest with notify policy) or `--github` (release tags); `--json` for the machine contract. Never updates.
+- `shll check-updates` — read-only "is anything outdated?" check: installed vs latest for shll + every tool. `--source released` (default, shll.ai versions manifest with notify policy) or `--source github` (release tags); `--json` for the machine contract. Never updates.
 - `shll uninstall [tool...]` — remove roster tools via brew, reverse order with shll-self last; confirm-gated (`--yes` skips, non-TTY refuses), `--dry-run` previews.
 - `shll changelog [tool[@old..new]...]` — GitHub release notes; no range = installed→latest ("what would an update bring?").
 - `shll shell-init <shell>` — emit one eval-safe shell-init blob composing every installed tool's shell-init. Stdout is meant to be `eval`'d.
