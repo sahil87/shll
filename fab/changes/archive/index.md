@@ -1,0 +1,41 @@
+# Archive Index
+
+- **260720-puxw-check-updates-command** — Add `shll check-updates` — the toolkit's single update-check surface
+- **260719-y367-update-version-shell-init-standards** — Update, Version, and Shell-Init Toolkit Standards
+- **260719-hh4t-bulk-op-operator-commands** — Bulk-Op Operator Commands
+- **260719-5ys1-version-standard-conformance** — Version Standard Conformance
+- **260718-whd7-help-dump-emit-aliases** — Help-Dump Emits Command Aliases
+- **260718-tp2s-skill-topic-passthrough** — Skill Topic Passthrough
+- **260718-pv7t-proactive-trigger-vocabulary** — Proactive-Capability Trigger Vocabulary
+- **260718-fw9d-skill-standard-landed-design-note** — Skill standard — landed-design note for `shll agent-setup`
+- **260718-agst-agent-setup-skill-commands** — Add `shll agent-setup` + `shll skill`
+- **260717-vo8c-standards-reader-command** — shll standards — agent-facing reader for the toolkit's binding standards
+- **260717-qas0-constitution-toolkit-standards** — Constitution Toolkit Standards Article
+- **260717-i70w-standards-dir-skill-contract** — Standards directory restructure + the `<tool> skill` contract standard
+- **260717-3sss-toolkit-standards-conformance** — Toolkit Standards Conformance
+- **260716-93r2-install-next-steps-nudge** — Post-install "Next steps" nudge in `shll install`
+- **260715-m1zt-install-bootstrap-one-liner** — Copy-paste installer one-liner — `scripts/install.sh` served at shll.ai/install
+- **260709-kkaj-shll-uninstall-command** — shll uninstall Command
+- **260709-9bak-run-kit-rename-migration-guard** — run-kit Rename + Migration Guard
+- **260704-13k3-digest-inline-notes-colored-headers** — Colored Headers + Inline Changelog Bodies in Update Digest
+- **260703-r01z-changelog-command-update-digest** — Changelog command + update release digest
+- **260626-0854-tap-trust-dx** — Tap-trust DX for Homebrew 6.0
+- **260613-38a6-brew-trust-sandbox-workaround** — Linux brew-trust sandbox workaround (HOMEBREW_NO_REQUIRE_TAP_TRUST)
+- **260609-oghj-readme-clarity-pass** — README clarity pass — dedupe trust-tap, orient outsiders
+- **260609-lst7-list-toolkit-roster** — `shll list` — toolkit roster command
+- **260609-d0ct-doctor-verify-install** — shll doctor — verify toolkit install + wiring
+- **260609-bb7r-shll-self-display-uniform** — Uniform shll-self representation across inspect/manage commands
+- **260608-xgc0-shll-ai-readme-contract** — Conform repo to shll.ai README-extraction contract
+- **260604-b2vg-update-install-tool-args** — Per-tool targeting for `update` and `install`
+- **260604-6vuo-update-install-polish-dry-run** — Output polish + --dry-run for shll update and install
+- **260603-7huv-teardown-shllai-push** — Teardown shll.ai push wiring (shll.ai now pulls)
+- **260602-ri3h-shell-setup-rename** — Rename shell-setup command (shell-install becomes back-compat alias)
+- **260602-ep4z-help-dump-cli-tree** — Help-Dump CLI Tree → shll.ai Command Reference
+- **260601-y630-per-tool-output-separation** — Per-Tool Output Separation for shll update/install/shell-init
+- **260601-l6lo-shell-install-trust-tap** — shell-install --trust-tap (Homebrew tap-trust resolution)
+- **260601-auvj-reorder-roster-leaves-first** — Reorder Roster to Leaves-First Dependency Order
+- **260531-cczs-delegate-update-to-tools** — Delegate `shll update` to per-tool `update` subcommands
+- **260510-vul4-shell-install-rc** — Add `shll shell-install` rc-file installer
+- **260509-tn8v-roster-shellinit-refresh** — Roster Shell-Init Refresh
+- **260509-6hx0-normalize-version-output** — Normalize shll version output
+- **260508-kvan-scaffold-cli** — Scaffold shll CLI
