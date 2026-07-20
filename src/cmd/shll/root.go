@@ -13,6 +13,7 @@ Subcommands:
   shll doctor                 verify every shll tool is installed, runnable, and wired (read-only)
   shll install                brew install every shll tool that isn't already installed
   shll update                 brew update + brew upgrade for shll and every installed shll tool
+  shll check-updates          check which shll tools have updates available (read-only)
   shll uninstall              brew uninstall shll tools (a clean-slate repair path)
   shll changelog              show release notes for shll tools (what an update would bring)
   shll shell-init <shell>     emit a single eval-safe shell-init blob for all installed tools
@@ -47,6 +48,7 @@ func newRootCmd() *cobra.Command {
 		newDoctorCmd(),
 		newInstallCmd(),
 		newUpdateCmd(),
+		newCheckUpdatesCmd(),
 		newUninstallCmd(),
 		newChangelogCmd(),
 		newShellInitCmd(),

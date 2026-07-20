@@ -201,6 +201,28 @@ func CompareVer(a, b string) int { return compareVer(a, b) }
 // `v`-prefixed spec).
 func NormalizeVer(s string) string { return normalizeVer(s) }
 
+// FirstDiffComponent returns the index of the first dot-separated component at
+// which a and b differ numerically (0 = major, 1 = minor, 2+ = patch), after
+// NormalizeVer, or -1 when the versions compare equal. Exported so the notify-
+// threshold policy in internal/versions can classify a pending bump (major vs
+// minor vs patch) without re-implementing this package's version-component
+// parsing rules (missing trailing components are 0; only a component's leading
+// integer run is read).
+func FirstDiffComponent(a, b string) int {
+	ap := strings.Split(normalizeVer(a), ".")
+	bp := strings.Split(normalizeVer(b), ".")
+	n := len(ap)
+	if len(bp) > n {
+		n = len(bp)
+	}
+	for i := 0; i < n; i++ {
+		if verComponent(ap, i) != verComponent(bp, i) {
+			return i
+		}
+	}
+	return -1
+}
+
 // ReleasesInRange filters an already-fetched release list to (old, new], newest
 // first — the same filter FetchRange applies internally, exported so a caller
 // that fetched once (via LatestTag) can range-filter the returned list WITHOUT a

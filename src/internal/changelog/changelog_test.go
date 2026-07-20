@@ -114,6 +114,27 @@ func TestFetchRange_UnavailableVsEmpty(t *testing.T) {
 	}
 }
 
+func TestFirstDiffComponent(t *testing.T) {
+	type c struct {
+		a, b string
+		want int
+	}
+	for _, tc := range []c{
+		{"3.8.1", "3.8.2", 2},   // patch bump
+		{"3.8.1", "3.9.0", 1},   // minor bump
+		{"3.8.1", "4.0.0", 0},   // major bump
+		{"0.6.4", "0.6.4", -1},  // equal
+		{"0.6", "0.6.0", -1},    // missing components treated as 0
+		{"v0.1.5", "0.1.6", 2},  // v prefix normalized
+		{"0.6.4_1", "0.6.5", 2}, // brew revision suffix stripped
+		{"1.2.3", "1.2.3.1", 3}, // fourth component
+	} {
+		if got := FirstDiffComponent(tc.a, tc.b); got != tc.want {
+			t.Errorf("FirstDiffComponent(%q, %q) = %d, want %d", tc.a, tc.b, got, tc.want)
+		}
+	}
+}
+
 func TestNormalizeVer(t *testing.T) {
 	cases := map[string]string{
 		"v0.6.4":   "0.6.4",

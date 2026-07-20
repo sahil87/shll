@@ -42,6 +42,7 @@ The fetch targets `GET {baseURL}/repos/sahil87/{repo}/releases?per_page=100`, un
 | `ReleasesInRange(rels, old, new) []Release` | filter an already-fetched list to `(old, new]` newest-first, WITHOUT a network call (see § LatestTag single-fetch) |
 | `CompareVer(a, b) int` | exported numeric version compare (−1/0/+1); lets `cmd` decide "installed ≥ latest" without re-implementing the rules |
 | `NormalizeVer(s) string` | exported normalize (strip `v` + `_N`); lets `cmd` render ONE normalized form on both sides of a transition |
+| `FirstDiffComponent(a, b) int` | index of the first dot-component where the versions differ numerically (0 = major, 1 = minor, ≥2 = patch) after `NormalizeVer`, or −1 when equal; lets [internal/versions](/internal/versions.md)'s notify-threshold policy classify a bump (major/minor/patch) without re-implementing this package's version-component parsing |
 | `CompareURL(repo, old, new) string` | browser "Full Changelog" compare link `github.com/sahil87/{repo}/compare/v{old}...v{new}` (tags always v-prefixed via `vTag`) |
 | `ReleasesURL(repo) string` | browser releases page `github.com/sahil87/{repo}/releases` (up-to-date notice / fallback anchor) |
 
@@ -60,6 +61,8 @@ The fetch targets `GET {baseURL}/repos/sahil87/{repo}/releases?per_page=100`, un
 ## LatestTag single-fetch contract
 
 `LatestTag(ctx, repo)` returns `(newestTag, allReleases, err)` — it fetches **once** and returns the release list too, so a caller resolving a no-range `shll changelog tool` (installed → latest) does NOT re-fetch: it takes `latest`, then range-filters the returned `[]Release` locally via `ReleasesInRange`. This is the "one GET per repo, not two" contract (r01z). An empty release set returns `("", nil, nil)` — a successful fetch with no releases, not an error. Covered by `TestLatestTag`; the single-GET guarantee is asserted cross-package by `TestChangelog_NoRangeSingleFetchPerRepo`.
+
+Both `LatestTag` consumers — the no-range `shll changelog` anchor and the `shll check-updates --github` backend — reach it through the [internal/versions](/internal/versions.md) resolver seam (`versions.LatestGitHub` is a thin delegation that returns the release list unchanged), so the single-fetch contract holds identically for both. (puxw)
 
 ## Degradation contract (Constitution V)
 
@@ -80,6 +83,7 @@ The Constitution-I-style boundary — `net/http` confined to this package exactl
 ## Cross-references
 
 - Command surface consuming this package: [cli/changelog](/cli/changelog.md) (full output) and [cli/update](/cli/update.md#version-capture--the-what-changed-digest) (the "What changed:" digest) — both surfaces share one release rendering (`renderReleases`, 13k3); the digest adds a tool-name-bearing transition line above the shared release blocks.
+- The resolver seam that consumes `LatestTag` (via `LatestGitHub`) and maps `FirstDiffComponent` under notify policy: [internal/versions](/internal/versions.md); its command surface: [cli/check-updates](/cli/check-updates.md).
 - Subprocess isolation sibling (the pattern this mirrors): [internal/proc](/internal/proc.md).
 - The repo-slug footgun that `RangeReq.Repo` / `CompareURL` avoid re-open-coding: [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster).
 - Constitution I (net/http isolated in an internal package), II (stateless — every call re-fetches, no caching), V (any fetch failure degrades to a typed `Unavailable` Result).
