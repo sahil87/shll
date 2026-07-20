@@ -69,7 +69,12 @@ const (
 //     there — honest omission over invented defaults). Notable is a *bool so
 //     the released form emits an explicit "notable": false while the github
 //     form omits the key — a plain bool with omitempty would wrongly drop the
-//     false value everywhere.
+//     false value everywhere. Notify stays string,omitempty BY DESIGN: in the
+//     edge case of an empty manifest notify value the key is omitted from the
+//     released row too (honest omission again — "" is not a policy) while
+//     notable stays present, computed treating empty/unknown as minor
+//     (versions.Notable). Consumers distinguish backends via the envelope's
+//     source field, never by per-row key presence.
 //   - Versions are the normalized forms (v prefix + brew _N revision stripped)
 //     so both sides share one comparable shape.
 //
