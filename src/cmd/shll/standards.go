@@ -121,6 +121,13 @@ var standardsRoster = []standard{
 		SourcePath:  "docs/site/standards/shell-init.md",
 		EmbedName:   "shell-init.md",
 	},
+	{
+		Name:        "install-composition",
+		Description: "No sibling `depends_on` between toolkit formulas; probe siblings at runtime; install docs centralized on shll.ai",
+		Scope:       "binary+repo",
+		SourcePath:  "docs/site/standards/install-composition.md",
+		EmbedName:   "install-composition.md",
+	},
 }
 
 // standardJSONItem is one roster row as emitted by `shll standards --json`. Field
