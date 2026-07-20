@@ -44,7 +44,7 @@ Cuts a patch release of every roster repo via each repo's `just release` recipe 
 Because `just release` writes no tracked files and opens no PR, this preset is a **direct sequential per-repo loop** run by the invoking agent — not the `bulk-shll-op` spawn loop. No worktree, no spawned agent, no PR. Per roster repo, in order:
 
 1. Resolve the main-worktree root; run the release from the repo root itself.
-2. Verify releasable: working tree clean (`git status --porcelain` empty) and local `main` not behind `origin/main` (via `git fetch origin`). On any failure, record an **error** for the repo and move on.
+2. Verify releasable: working tree clean (`git status --porcelain` empty), on `main`, at `origin/main` (via `git fetch origin`). A merely **stale** `main` (clean, strictly behind) is pulled up to date with `git pull --ff-only` and proceeds; a dirty tree, off-`main` checkout, or diverged/ahead `main` records an **error** for the repo and moves on.
 3. **Skip repos with no new commits since the last tag** — if `git describe --tags --exact-match HEAD` succeeds (HEAD already carries the latest tag), record a **skip**. This is the release-only-if-changed analogue of the primitive's PR-skip rule; a zero-commit release is pointless.
 4. Run `just release` (patch) in the repo root; record the **new tag**.
 
