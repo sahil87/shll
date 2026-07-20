@@ -15,15 +15,15 @@ import (
 	"github.com/sahil87/shll/internal/versions"
 )
 
-// Backend flag names for `shll check-updates`. The two backends are mutually
-// exclusive; running with neither behaves as --released. The GitHub backend is
-// deliberately named --github, NOT --homebrew: its source is GitHub releases,
-// not brew. Named constants per code-quality.md (no magic strings).
+// The backend selector flag for `shll check-updates`. One enum-valued flag —
+// valid values are the envelope source constants (sourceReleased/sourceGithub)
+// below, so flag name, flag value, and the --json envelope's `source` field
+// share one vocabulary. The github backend is deliberately named github, NOT
+// homebrew: its source is GitHub releases, not brew. Named constants per
+// code-quality.md (no magic strings).
 const (
-	releasedFlag      = "released"
-	releasedFlagUsage = "resolve latest versions from the shll.ai versions manifest (the default)"
-	githubFlag        = "github"
-	githubFlagUsage   = "resolve latest versions from GitHub releases (no notify policy)"
+	sourceFlag      = "source"
+	sourceFlagUsage = "update-check backend: released (shll.ai versions manifest + notify policy; the default) or github (release tags, no notify policy)"
 )
 
 // checkUpdatesJSONFlagUsage is the --json usage string for `shll check-updates`
@@ -36,15 +36,17 @@ const checkUpdatesJSONFlagUsage = "emit the machine contract as JSON (for script
 const checkUpdatesSchema = 1
 
 // The `source` values emitted in the --json envelope, naming which backend
-// produced the data. Named constants per code-quality.md.
+// produced the data — doubling as the --source flag's valid enum values (one
+// vocabulary, zero new value constants). Named constants per code-quality.md.
 const (
 	sourceReleased = "released"
 	sourceGithub   = "github"
 )
 
-// bothBackendsErrMsg is the usage-error diagnostic for passing both backend
-// flags. Exits usageExitCode (2) via errExitCode.
-const bothBackendsErrMsg = "shll check-updates: --released and --github are mutually exclusive"
+// invalidSourceErrFmt is the usage-error diagnostic for an unknown --source
+// value: names the offending value and the valid set. Exits usageExitCode (2)
+// via errExitCode.
+const invalidSourceErrFmt = "shll check-updates: invalid --source value %q (valid: %s, %s)"
 
 // Human-output status labels (the third table column). notInstalledLabel
 // (version.go) is reused for the not-installed rows. Named constants per
@@ -53,19 +55,20 @@ const (
 	checkStatusUpToDate      = "up to date"
 	checkStatusUpdate        = "update available"
 	checkStatusNotableSuffix = " (notable)"
-	checkStatusUnavailable   = "unavailable"     // --github: per-tool fetch failed
-	checkStatusNotInManifest = "not in manifest" // --released: name absent from the manifest
+	checkStatusUnavailable   = "unavailable"     // github backend: per-tool fetch failed
+	checkStatusNotInManifest = "not in manifest" // released backend: name absent from the manifest
 )
 
 // checkUpdateItem is one row of the `--json` machine contract. Field rules:
 //
 //   - A row is emitted only when BOTH installed and latest resolve (the
 //     unresolvable-row rule): a tool that is not installed, missing from the
-//     manifest (--released), or whose fetch failed (--github) is omitted from
-//     tools[] — an absent row never matches for consumers. Human output still
-//     reports those tools (Constitution V), so nothing is hidden from humans.
-//   - Notify/Notable are present on --released rows (the manifest is the policy
-//     authority) and omitted entirely on --github rows (no policy source exists
+//     manifest (released backend), or whose fetch failed (github backend) is
+//     omitted from tools[] — an absent row never matches for consumers. Human
+//     output still reports those tools (Constitution V), so nothing is hidden
+//     from humans.
+//   - Notify/Notable are present on released rows (the manifest is the policy
+//     authority) and omitted entirely on github rows (no policy source exists
 //     there — honest omission over invented defaults). Notable is a *bool so
 //     the released form emits an explicit "notable": false while the github
 //     form omits the key — a plain bool with omitempty would wrongly drop the
@@ -118,9 +121,9 @@ type checkUpdateRow struct {
 	formulaLeaf string
 	installed   string // "" = not installed (brew probe)
 	latest      string // "" = unresolved (not in manifest / fetch failed)
-	notify      string // --released only: the manifest's raw notify value
-	inManifest  bool   // --released: name present in the manifest
-	fetchFailed bool   // --github: the per-tool releases fetch failed
+	notify      string // released backend only: the manifest's raw notify value
+	inManifest  bool   // released backend: name present in the manifest
+	fetchFailed bool   // github backend: the per-tool releases fetch failed
 }
 
 func newCheckUpdatesCmd() *cobra.Command {
@@ -131,32 +134,30 @@ func newCheckUpdatesCmd() *cobra.Command {
 for shll itself plus every roster tool. Read-only: nothing is upgraded, installed,
 or written. To apply updates, run ` + "`shll update`" + `.
 
-Two backends, mutually exclusive:
+One backend, selected by --source:
 
-  --released   latest versions + notify policy from https://shll.ai/versions.json
-               (the default when no backend flag is given)
-  --github     latest release tag per tool from the GitHub API (unauthenticated;
-               no notify policy in this backend)
+  --source released   latest versions + notify policy from https://shll.ai/versions.json
+                      (the default when the flag is omitted)
+  --source github     latest release tag per tool from the GitHub API (unauthenticated;
+                      no notify policy in this backend)
 
-  shll check-updates                     human table: installed → latest per tool
-  shll check-updates --json --released   machine contract (what run-kit's daemon runs)
-  shll check-updates --github            compare against GitHub release tags
+  shll check-updates                          human table: installed → latest per tool
+  shll check-updates --json                   machine contract (what run-kit's daemon runs)
+  shll check-updates --source github          compare against GitHub release tags
 
 Installed versions are read from Homebrew, so brew must be present. Exit codes:
 0 when the check ran (whether or not updates are pending — verdicts live in the
 output), 1 when the check itself failed (manifest unreachable, brew missing),
-2 on a usage error. A --github per-tool fetch failure degrades that tool only
-(omitted from --json, noted in the table) and the run still exits 0.`,
+2 on a usage error. A github-backend per-tool fetch failure degrades that tool
+only (omitted from --json, noted in the table) and the run still exits 0.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			released, _ := cmd.Flags().GetBool(releasedFlag)
-			github, _ := cmd.Flags().GetBool(githubFlag)
+			source, _ := cmd.Flags().GetString(sourceFlag)
 			jsonOut, _ := cmd.Flags().GetBool(jsonFlag)
-			return runCheckUpdates(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), released, github, jsonOut)
+			return runCheckUpdates(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), source, jsonOut)
 		},
 	}
-	cmd.Flags().Bool(releasedFlag, false, releasedFlagUsage)
-	cmd.Flags().Bool(githubFlag, false, githubFlagUsage)
+	cmd.Flags().String(sourceFlag, sourceReleased, sourceFlagUsage)
 	cmd.Flags().Bool(jsonFlag, false, checkUpdatesJSONFlagUsage)
 	return cmd
 }
@@ -166,25 +167,22 @@ output), 1 when the check itself failed (manifest unreachable, brew missing),
 // directly with bytes.Buffer writers, a fake proc.Runner, and the
 // internal/versions + internal/changelog transport seams.
 //
-// Flow: validate the backend flags (both → usage error, exit 2), gate on brew
-// (the installed anchors are brew reads — brewMissingHint + errSilent when
-// absent, exactly like changelog's no-range forms), fetch the manifest once
-// for --released (its failure fails the whole check: one fetch, exit 1),
-// resolve every target concurrently (brew probe + per-tool GitHub fetch for
-// --github, indexed by position so output stays shll-first roster order), then
-// render the human table or the --json machine contract. --github per-tool
+// Flow: validate the --source value (unknown → usage error, exit 2, before
+// ANY brew or network access), gate on brew (the installed anchors are brew
+// reads — brewMissingHint + errSilent when absent, exactly like changelog's
+// no-range forms), fetch the manifest once for the released backend (its
+// failure fails the whole check: one fetch, exit 1), resolve every target
+// concurrently (brew probe + per-tool GitHub fetch on the github backend,
+// indexed by position so output stays shll-first roster order), then render
+// the human table or the --json machine contract. github-backend per-tool
 // fetch failures degrade per-tool and never change the exit code
 // (Constitution V — the changelog degradation precedent).
-func runCheckUpdates(ctx context.Context, stdout, stderr io.Writer, released, github, jsonOut bool) error {
+func runCheckUpdates(ctx context.Context, stdout, stderr io.Writer, source string, jsonOut bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if released && github {
-		return &errExitCode{code: usageExitCode, msg: bothBackendsErrMsg}
-	}
-	source := sourceReleased
-	if github {
-		source = sourceGithub
+	if source != sourceReleased && source != sourceGithub {
+		return &errExitCode{code: usageExitCode, msg: fmt.Sprintf(invalidSourceErrFmt, source, sourceReleased, sourceGithub)}
 	}
 
 	// The installed anchors are brew reads (shll-self included), so brew must be
@@ -194,9 +192,9 @@ func runCheckUpdates(ctx context.Context, stdout, stderr io.Writer, released, gi
 		return errSilent
 	}
 
-	// --released: exactly one manifest GET per invocation (Constitution II — no
-	// caching). It is the single latest+policy source, so its failure fails the
-	// whole check (unlike --github's per-tool degradation).
+	// Released backend: exactly one manifest GET per invocation (Constitution
+	// II — no caching). It is the single latest+policy source, so its failure
+	// fails the whole check (unlike the github backend's per-tool degradation).
 	var manifest versions.Manifest
 	if source == sourceReleased {
 		m, err := versions.FetchManifest(ctx)
@@ -242,8 +240,8 @@ func checkUpdateTargets() []checkTarget {
 // resolveCheckUpdates resolves every target CONCURRENTLY (one goroutine per
 // target, results indexed by position so output order stays shll-first roster
 // order — the resolveChangelog/probeInstalled pattern). Each goroutine makes
-// one brew read (the installed anchor) plus, on the --github backend, one
-// GitHub releases fetch; the --released backend looks its target up in the
+// one brew read (the installed anchor) plus, on the github backend, one
+// GitHub releases fetch; the released backend looks its target up in the
 // already-fetched manifest with no further network access.
 func resolveCheckUpdates(ctx context.Context, targets []checkTarget, source string, manifest versions.Manifest) []checkUpdateRow {
 	rows := make([]checkUpdateRow, len(targets))
@@ -260,7 +258,7 @@ func resolveCheckUpdates(ctx context.Context, targets []checkTarget, source stri
 }
 
 // resolveOneTarget resolves a single target (see resolveCheckUpdates): the
-// brew-installed anchor, then the backend's latest (+ notify for --released).
+// brew-installed anchor, then the backend's latest (+ notify on released).
 // All versions are normalized (v prefix + brew _N revision stripped) so both
 // sides share one comparable form.
 func resolveOneTarget(ctx context.Context, tgt checkTarget, source string, manifest versions.Manifest) checkUpdateRow {
@@ -319,7 +317,7 @@ func writeCheckUpdatesJSON(w io.Writer, rows []checkUpdateRow, source string) er
 		}
 		if source == sourceReleased {
 			// The manifest is the policy authority: echo its raw notify value and
-			// emit an EXPLICIT notable (including false). --github rows carry
+			// emit an EXPLICIT notable (including false). github rows carry
 			// neither key — no policy source exists in that backend.
 			item.Notify = r.notify
 			notable := versions.Notable(r.notify, r.installed, r.latest)
@@ -345,8 +343,8 @@ func writeCheckUpdatesJSON(w io.Writer, rows []checkUpdateRow, source string) er
 // self-labeling aggregation (the version precedent). The transition arrow
 // ASCII-degrades on a non-TTY/NO_COLOR stream via the shared arrow helper.
 // Unresolved rows still render (Constitution V — nothing hidden from humans):
-// not installed, unavailable (--github fetch failure), not in manifest
-// (--released).
+// not installed, unavailable (github-backend fetch failure), not in manifest
+// (released backend).
 func writeCheckUpdatesTable(w io.Writer, rows []checkUpdateRow, source string, color bool) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, r := range rows {
@@ -359,7 +357,7 @@ func writeCheckUpdatesTable(w io.Writer, rows []checkUpdateRow, source string, c
 // checkUpdateCells derives one row's version and status cells. An
 // update-available row shows the `installed → latest` transition (arrow
 // degrades to `->` off-TTY) with the notable suffix when the pending bump
-// crosses the tool's notify threshold (--released only — --github has no
+// crosses the tool's notify threshold (released backend only — github has no
 // policy). Unresolved rows show what IS known: `not installed` in the version
 // column (per the intake sketch), or the installed version with an
 // unavailable / not-in-manifest note.

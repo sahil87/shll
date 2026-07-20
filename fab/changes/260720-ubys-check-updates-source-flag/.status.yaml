@@ -1,0 +1,55 @@
+id: ubys
+name: 260720-ubys-check-updates-source-flag
+created: 2026-07-20T05:45:34Z
+created_by: Sahil Ahuja
+change_type: refactor
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 7
+    acceptance_count: 12
+    acceptance_completed: 12
+confidence:
+    certain: 7
+    confident: 2
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 80.0
+        reversibility: 85.6
+        competence: 91.1
+        disambiguation: 87.8
+stage_metrics:
+    intake: {started_at: "2026-07-20T05:45:34Z", driver: fab-new, iterations: 1, completed_at: "2026-07-20T05:50:31Z"}
+    apply: {started_at: "2026-07-20T05:50:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-20T05:57:19Z"}
+    review: {started_at: "2026-07-20T05:57:19Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-20T06:00:27Z"}
+    hydrate: {started_at: "2026-07-20T06:00:27Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-20T06:04:24Z"}
+    ship: {started_at: "2026-07-20T06:04:24Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-20T06:04:24Z"
+    computed_at_stage: hydrate
+summary: check-updates backend selector is now the --source released|github enum flag (replacing the --released/--github bool pair)
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-20T06:04:24Z
