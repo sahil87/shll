@@ -1,0 +1,13 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-20T07:29:56Z"}
+{"args":"Conform shll's install documentation to the install-composition standard, Policy B — README slims to curl bootstrap + shll.ai pointer; docs/site install pages curated as the canonical destination","cmd":"fab-new","event":"command","ts":"2026-07-20T07:29:56Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-20T07:32:23Z"}
+{"delta":"+0.0","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-07-20T07:32:45Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-20T07:34:01Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-20T07:34:08Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-20T07:38:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-20T07:41:10Z"}
+{"event":"review","result":"passed","ts":"2026-07-20T07:41:10Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-20T07:44:33Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-20T07:47:11Z"}
+{"cmd":"git-pr-review","event":"command","ts":"2026-07-20T07:48:58Z"}
+{"event":"review","result":"passed","ts":"2026-07-20T07:56:54Z"}
