@@ -394,9 +394,17 @@ func TestRosterSkillHints(t *testing.T) {
 
 // TestRosterProactiveHint pins the ProactiveHint contract, which — unlike SkillHint —
 // is optional-by-design: it is populated ONLY on run-kit (the sprawl guard) and rendered
-// as an additional sentence AFTER the tool clauses and BEFORE the two-step pointer. It
+// as additional sentence(s) AFTER the tool clauses and BEFORE the two-step pointer. It
 // gets its own test rather than extending TestRosterSkillHints (which enforces an
 // every-tool required field).
+//
+// Beyond the dynamic verbatim-containment check, it pins the hint's two load-bearing
+// functions as fragment containment checks, so a future rewording cannot silently drop
+// either: (a) the proxy trigger vocabulary ("to proxy a local http port" — matches
+// requests that name proxying/dev servers) and (b) the skill-shadowing
+// counter-instruction ("before opening any file or local port in a browser, read" —
+// fires when a competing skill's local `open`/`xdg-open` delivery step is about to run,
+// routing the agent to `shll skill run-kit` for the proxied-iframe recipe instead).
 func TestRosterProactiveHint(t *testing.T) {
 	// Exactly run-kit carries a ProactiveHint; every other tool leaves it empty
 	// (the sprawl guard — only agent-proactive capabilities earn description space).
@@ -416,9 +424,21 @@ func TestRosterProactiveHint(t *testing.T) {
 	}
 	desc := agentSkillDescription()
 
-	// The run-kit ProactiveHint sentence appears verbatim in the rendered description …
+	// The run-kit ProactiveHint sentence(s) appear verbatim in the rendered description …
 	if !strings.Contains(desc, rk.ProactiveHint) {
 		t.Errorf("description must contain run-kit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
+	}
+	// … carrying both load-bearing functions — the proxy trigger vocabulary and the
+	// skill-shadowing counter-instruction — pinned as independent fragments so a future
+	// rewording cannot silently drop either (the verbatim check above is dynamic and
+	// would pass mechanically with any Roster value).
+	for _, fragment := range []string{
+		"to proxy a local http port",                               // (a) proxy trigger vocabulary
+		"before opening any file or local port in a browser, read", // (b) shadowing counter-instruction
+	} {
+		if !strings.Contains(desc, fragment) {
+			t.Errorf("description must contain the load-bearing fragment %q, got: %s", fragment, desc)
+		}
 	}
 	// … positioned AFTER the tool clauses and BEFORE the two-step pointer. Anchor
 	// the "after clauses" check on the END of the LAST rendered clause (not the start

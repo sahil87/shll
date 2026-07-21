@@ -1,0 +1,54 @@
+id: xv71
+name: 260721-xv71-runkit-proactivehint-proxy-vocab
+created: 2026-07-21T19:04:20Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 4
+    acceptance_count: 8
+    acceptance_completed: 8
+confidence:
+    certain: 5
+    confident: 3
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 82.5
+        reversibility: 86.9
+        competence: 86.9
+        disambiguation: 81.3
+stage_metrics:
+    intake: {started_at: "2026-07-21T19:04:20Z", driver: fab-new, iterations: 1, completed_at: "2026-07-21T19:08:46Z"}
+    apply: {started_at: "2026-07-21T19:08:46Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-21T19:13:24Z"}
+    review: {started_at: "2026-07-21T19:13:24Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-21T19:16:34Z"}
+    hydrate: {started_at: "2026-07-21T19:16:34Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-21T19:20:54Z"}
+    ship: {started_at: "2026-07-21T19:20:54Z", driver: fab-fff, iterations: 1}
+prs: []
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-07-21T19:20:54Z"
+    computed_at_stage: hydrate
+summary: 'Extend run-kit ProactiveHint to a two-sentence value: proxy-port trigger vocabulary plus a skill-shadowing counter-instruction routing agents to shll skill run-kit before opening local files/ports'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-21T19:20:54Z
