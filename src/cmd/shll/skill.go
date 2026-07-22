@@ -76,10 +76,13 @@ const skillTopicTimeoutFmt = "shll skill: %s skill %s timed out or was killed �
 // skillArgv returns the argv of the tool's skill-bundle invocation: the roster
 // Skill override when set (fab-kit → {"fab", "skill"} — its `skill` subcommand
 // lives on the `fab` router binary), else the default {Name, skillSubcommand}.
-// Single-sourced here so neither passthrough open-codes the argv composition.
+// Always a FRESH slice — the override branch copies tool.Skill so no caller can
+// mutate the shared Roster entry through the returned argv (the same aliasing
+// concern writeSkillTopic guards its topic append against). Single-sourced here
+// so neither passthrough open-codes the argv composition.
 func skillArgv(tool Tool) []string {
 	if len(tool.Skill) > 0 {
-		return tool.Skill
+		return append([]string(nil), tool.Skill...)
 	}
 	return []string{tool.Name, skillSubcommand}
 }
@@ -259,8 +262,9 @@ func writeSkillTopic(ctx context.Context, stdout, stderr io.Writer, name, topic 
 
 	// Resolve the skill argv from the roster (fab-kit → `fab skill <topic>`;
 	// default `<tool.Name> skill <topic>`). The topic is appended onto a COPY of
-	// the resolved tail — never `append(argv[1:], topic)` directly, which could
-	// alias into Tool.Skill's backing array and mutate the roster.
+	// the resolved tail — never `append(argv[1:], topic)` directly. skillArgv
+	// already returns a fresh slice, but the explicit copy keeps this call site
+	// safe on its own terms, independent of that guarantee.
 	argv := skillArgv(tool)
 	args := append(append([]string(nil), argv[1:]...), topic)
 	subCtx, cancel := context.WithTimeout(ctx, skillProbeTimeout)

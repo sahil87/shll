@@ -290,6 +290,13 @@ func TestSkillArgv_DefaultAndOverride(t *testing.T) {
 	if got := skillArgv(fk); len(got) != 2 || got[0] != "fab" || got[1] != skillSubcommand {
 		t.Errorf("skillArgv(fab-kit) = %v, want [fab %s] (roster override)", got, skillSubcommand)
 	}
+	// Defensive copy: mutating the returned argv must not write through to the
+	// shared Roster entry's Skill slice (skillArgv copies on the override branch).
+	got := skillArgv(fk)
+	got[0] = "mutated"
+	if fresh := skillArgv(fk); fresh[0] != "fab" {
+		t.Errorf("skillArgv must return a defensive copy — roster Skill entry mutated to %v", fresh)
+	}
 }
 
 func TestSkill_Passthrough_FabKitOverrideInvokesFabSkill(t *testing.T) {
