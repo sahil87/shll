@@ -53,10 +53,12 @@ const skillHintLine = "Run 'shll skill <tool>' for that tool's full agent skill 
 // is empty). Takes the requested topic name. Named per code-quality.md (no magic strings).
 const skillNoTopicsFmt = "shll skill: shll ships no topic pages (unknown topic %q)"
 
-// skillUnsupportedFmt is the one-line stderr notice for a valid tool whose installed
-// version predates `skill` (the `<tool> skill` subprocess exits non-zero). Takes the
-// tool name. Operational (exit 1), not usage.
-const skillUnsupportedFmt = "shll skill: %s does not support 'skill' yet — run 'shll update'"
+// skillUnsupportedFmt is the one-line stderr notice for a valid tool whose skill
+// invocation ran to completion but exited non-zero — most likely an installed
+// version predating `skill`. Hedged rather than imperative (the tool may already be
+// current, in which case updating changes nothing), and the update suggestion is
+// scoped to the one tool. Takes the tool name twice. Operational (exit 1), not usage.
+const skillUnsupportedFmt = "shll skill: %s does not support 'skill' — its installed version may predate it (try 'shll update %s')"
 
 // skillNotInstalledFmt is the one-line stderr notice for a valid tool that is not on
 // PATH (proc.ErrNotFound). Takes the tool name. Operational (exit 1).
@@ -70,6 +72,20 @@ const skillNotInstalledFmt = "shll skill: %s is not installed — run 'shll inst
 // case is treated as operational (exit 1) with a curated notice instead. Takes the tool
 // name then the topic. Named per code-quality.md (no magic strings).
 const skillTopicTimeoutFmt = "shll skill: %s skill %s timed out or was killed — re-run, and check the tool if it persists"
+
+// skillArgv returns the argv of the tool's skill-bundle invocation: the roster
+// Skill override when set (fab-kit → {"fab", "skill"} — its `skill` subcommand
+// lives on the `fab` router binary), else the default {Name, skillSubcommand}.
+// Always a FRESH slice — the override branch copies tool.Skill so no caller can
+// mutate the shared Roster entry through the returned argv (the same aliasing
+// concern writeSkillTopic guards its topic append against). Single-sourced here
+// so neither passthrough open-codes the argv composition.
+func skillArgv(tool Tool) []string {
+	if len(tool.Skill) > 0 {
+		return append([]string(nil), tool.Skill...)
+	}
+	return []string{tool.Name, skillSubcommand}
+}
 
 func newSkillCmd() *cobra.Command {
 	return &cobra.Command{
@@ -151,7 +167,8 @@ func writeSkillGlossary(ctx context.Context, stdout io.Writer) error {
 //   - unknown name → actionable stderr diagnostic + errExitCode{code: 2} (usage).
 //   - `shll` self → serve the embedded bundle in-process, byte-identical (a subprocess
 //     self-invocation would recurse into the composer).
-//   - a Roster tool → invoke `<tool> skill` via proc.RunCaptured (bounded), stream its
+//   - a Roster tool → invoke its resolved skill argv (skillArgv: the roster Skill
+//     override, else `<tool.Name> skill`) via proc.RunCaptured (bounded), stream its
 //     stdout byte-identical on success; on ErrNotFound / non-zero exit write ONE
 //     stderr notice + errSilent (exit 1), suppressing the child's own raw stderr.
 func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string) error {
@@ -172,9 +189,13 @@ func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string
 		return &errExitCode{code: usageExitCode, msg: fmt.Sprintf("shll skill: unknown tool %q (valid: %s)", name, validTargets(true))}
 	}
 
+	// Resolve the skill argv from the roster (fab-kit → `fab skill`; default
+	// `<tool.Name> skill`). Notices below keep printing tool.Name — the
+	// user-facing name is the roster name regardless of which binary serves it.
+	argv := skillArgv(tool)
 	subCtx, cancel := context.WithTimeout(ctx, skillProbeTimeout)
 	defer cancel()
-	out, _, code, err := proc.RunCaptured(subCtx, tool.Name, skillSubcommand)
+	out, _, code, err := proc.RunCaptured(subCtx, argv[0], argv[1:]...)
 	if errors.Is(err, proc.ErrNotFound) {
 		// Not on PATH — operational, exit 1. One line; the tool's own error (if any)
 		// is captured (not passed through) so only this notice reaches the user.
@@ -187,10 +208,11 @@ func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string
 		return errSilent
 	}
 	if code != 0 {
-		// Ran to completion but failed — the installed version predates `skill`
-		// (unknown-command), so it exited non-zero. Its captured stderr is suppressed
-		// in favor of this single actionable notice.
-		fmt.Fprintf(stderr, skillUnsupportedFmt+"\n", tool.Name)
+		// Ran to completion but failed — most likely the installed version predates
+		// `skill` (unknown-command), so it exited non-zero. Its captured stderr is
+		// suppressed in favor of this single hedged notice (tool name twice: once
+		// naming the tool, once scoping the update suggestion to it).
+		fmt.Fprintf(stderr, skillUnsupportedFmt+"\n", tool.Name, tool.Name)
 		return errSilent
 	}
 	// Success — byte-identical passthrough of the tool's stdout (no framing, no
@@ -203,7 +225,8 @@ func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string
 }
 
 // writeSkillTopic serves one of a tool's topic pages via a byte-identical
-// `<tool> skill <topic>` passthrough. Tool-arg resolution mirrors writeSkillBundle
+// `<tool> skill <topic>` passthrough (argv resolved by skillArgv, so fab-kit's
+// topics route through `fab skill <topic>`). Tool-arg resolution mirrors writeSkillBundle
 // (legacy alias → shll self-token → roster → unknown), but its FAILURE classification
 // deliberately DIVERGES for a child that RAN TO COMPLETION with a positive exit code:
 // it propagates the child's own stderr and exit code verbatim (the `skill` standard's
@@ -237,9 +260,16 @@ func writeSkillTopic(ctx context.Context, stdout, stderr io.Writer, name, topic 
 		return &errExitCode{code: usageExitCode, msg: fmt.Sprintf("shll skill: unknown tool %q (valid: %s)", name, validTargets(true))}
 	}
 
+	// Resolve the skill argv from the roster (fab-kit → `fab skill <topic>`;
+	// default `<tool.Name> skill <topic>`). The topic is appended onto a COPY of
+	// the resolved tail — never `append(argv[1:], topic)` directly. skillArgv
+	// already returns a fresh slice, but the explicit copy keeps this call site
+	// safe on its own terms, independent of that guarantee.
+	argv := skillArgv(tool)
+	args := append(append([]string(nil), argv[1:]...), topic)
 	subCtx, cancel := context.WithTimeout(ctx, skillProbeTimeout)
 	defer cancel()
-	out, childErr, code, err := proc.RunCaptured(subCtx, tool.Name, skillSubcommand, topic)
+	out, childErr, code, err := proc.RunCaptured(subCtx, argv[0], args...)
 	if errors.Is(err, proc.ErrNotFound) {
 		// Not on PATH — operational, exit 1. Classified BEFORE the exit-code question
 		// (there is no usable child exit code), so it keeps the curated one-line notice.

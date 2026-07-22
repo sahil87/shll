@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll skill [tool] [topic]` — the runtime skill-bundle composer: bare form is an installed-only, shll-first glossary; `shll skill <tool>` streams `<tool> skill` byte-identical via proc.RunCaptured (rk→run-kit alias, child stderr suppressed); `shll skill <tool> <topic>` passes `<tool> skill <topic>` through, propagating the child's stderr + exit code on failure; `shll skill shll` serves the embedded self-bundle in-process. Bundle authored at docs/site/skill.md, sync/embed/drift-guarded."
+description: "`shll skill [tool] [topic]` — the skill-bundle composer: bare form is an installed-only, shll-first glossary; `shll skill <tool>` streams `<tool> skill` byte-identical via proc.RunCaptured (rk→run-kit alias, child stderr suppressed); `shll skill <tool> <topic>` passes the topic through, propagating the child's stderr/exit code on failure; `shll skill shll` serves the embedded self-bundle in-process. Invocation argv resolved via the roster Skill override (skillArgv; fab-kit → `fab skill`)."
 ---
 # cli/skill
 
@@ -21,6 +21,24 @@ Source: `src/cmd/shll/skill.go` (+ `skill_test.go`). (agst)
 Three or more args stays a cobra usage error (exit 2 via the shared `errExitCode`/`isUsageError` wrap) — the arg-count contract is `>2 → usage error`. A single arg is resolved as a *tool name* (a topic without a tool is indistinguishable from a tool and stays one — an unknown one-arg name is the existing usage exit 2 with the valid-tools list). No grammar ambiguity is introduced by the second arg (tp2s).
 
 The bare form is deliberately **not** a dump of every bundle. Concatenating 7 × ~150-line bundles into agent context would violate toolkit principle №9 (the same rule that caps a single bundle at ≤150 lines); the two-step "list, then per-tool on demand" is the context-economy contract, decided in backlog `[agst]`. A large-scope tool's core bundle lists its own topic pages, and the third shape reaches them through the same front door (backlog `[tp2s]`).
+
+## The skill-argv override (fab-kit → `fab skill`)
+
+Both passthroughs resolve the tool's skill-bundle invocation through one helper rather than hardcoding `{tool.Name, skillSubcommand}`:
+
+```go
+// skillArgv returns the roster Skill override when set, else the default.
+func skillArgv(tool Tool) []string {
+	if len(tool.Skill) > 0 {
+		return tool.Skill
+	}
+	return []string{tool.Name, skillSubcommand}
+}
+```
+
+The `Tool` struct carries a `Skill []string` argv-override field (alongside `ShellInit`/`Update` — see [cli/commands §the Tool struct](/cli/commands.md#hardcoded-tool-roster)). An empty slice means the default `{Name, "skill"}`; only a tool whose skill surface diverges from its roster `Name` populates it. **Exactly one roster entry populates it — fab-kit → `{"fab", "skill"}`**, because fab-kit serves its skill bundle on the `fab` router binary, not the `fab-kit` binary (the `skill` standard's own topic-page example is `fab skill dispatch`). So `shll skill fab-kit` invokes `fab skill`, never a literal `fab-kit skill`, and `shll skill fab-kit <topic>` invokes `fab skill <topic>`.
+
+The default is derivable from `Name` + `skillSubcommand`, so only the exception is stated (ShellInit's "empty means no divergence" semantics, not Update's "all entries populate") — see the [exception-only population Design Decision](#design-decision-exception-only-skill-population). Resolution is skill-only: `toolInstalled`'s bare-glossary PATH probe still runs on `tool.Name` (`fab-kit --version`) — installedness is a different question from skill argv, and the fab-kit formula ships both binaries — and `update`/`install`/`version`/`list`/`doctor` are untouched (they key off `Name`/`Formula`/`Update`).
 
 ## Bare `shll skill` — the installed-only glossary
 
@@ -53,19 +71,22 @@ Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <to
 
 ### The byte-identical passthrough (`proc.RunCaptured`)
 
-For a Roster tool, skill invokes `<tool> skill` through the **capture-all** transport under a bounded context:
+For a Roster tool, skill resolves the invocation argv via `skillArgv(tool)` (the roster `Skill` override when set — fab-kit → `fab skill` — else the default `{tool.Name, skillSubcommand}`; see [the skill-argv override](#the-skill-argv-override-fab-kit--fab-skill)) and invokes it through the **capture-all** transport under a bounded context:
 
 ```go
+argv := skillArgv(tool)                                       // fab-kit → {"fab","skill"}, else {Name,"skill"}
 subCtx, cancel := context.WithTimeout(ctx, skillProbeTimeout) // 2s, mirroring version's probe bound
-out, _, code, err := proc.RunCaptured(subCtx, tool.Name, skillSubcommand) // skillSubcommand = "skill"
+out, _, code, err := proc.RunCaptured(subCtx, argv[0], argv[1:]...)
 ```
 
 `proc.RunCaptured` buffers **both** the child's stdout and stderr and returns its exit code, passing *neither* stream through (see [internal/proc §RunCaptured / TransportCaptureAll](/internal/proc.md#runcaptured--transportcaptureall)). That is exactly what skill needs: **stream captured stdout byte-identical on success, suppress captured stderr on failure** so only shll's own one-line notice reaches the user. The classification (invoke-and-classify — no separate `--help`-substring probe, because `skill` either prints or errors):
 
-- **`errors.Is(err, proc.ErrNotFound)`** (not on PATH) → one stderr line `skillNotInstalledFmt` (`shll skill: %s is not installed — run 'shll install %s'`) + `errSilent` (exit 1). Operational, not usage.
+- **`errors.Is(err, proc.ErrNotFound)`** (not on PATH) → one stderr line `skillNotInstalledFmt` (`shll skill: %s is not installed — run 'shll install %s'`, tool name twice) + `errSilent` (exit 1). Operational, not usage.
 - **`err != nil`** (pre-start I/O failure, no usable exit code) → `shll skill: %s: %v` + `errSilent` (exit 1).
-- **`code != 0`** (ran to completion but failed — the installed version predates `skill`, so the unknown-command exits non-zero) → `skillUnsupportedFmt` (`shll skill: %s does not support 'skill' yet — run 'shll update'`) + `errSilent` (exit 1). The child's captured stderr is suppressed in favor of this one actionable notice.
+- **`code != 0`** (ran to completion but failed — most likely the installed version predates `skill`, so the unknown-command exits non-zero) → `skillUnsupportedFmt` (`shll skill: %s does not support 'skill' — its installed version may predate it (try 'shll update %s')`, tool name twice) + `errSilent` (exit 1). The notice is **hedged, not imperative**: the tool may already be current (in which case updating changes nothing), so it names the likely cause without promising the remedy and scopes the update suggestion to the one tool. The child's captured stderr is suppressed in favor of this one notice.
 - **`code == 0`** → `stdout.Write(out)` — byte-identical passthrough, no framing, no rendering (stdout is data per the standard's invocation contract). A write error is `errSilent`.
+
+Notices print `tool.Name` (the user-facing roster name) regardless of which binary the resolved argv actually invokes — a fab-kit failure still reads `fab-kit`, never `fab`.
 
 This degradation is what lets the composer ship **while zero leaf tools implement `skill`**: every `shll skill <tool>` today hits the not-installed or unsupported path with a clean notice, and starts passing through the moment a tool's `skill` subcommand lands (the per-repo standards waves).
 
@@ -78,12 +99,16 @@ The composer grammar collides with the standard's bare-form contract (`shll skil
 
 ## `shll skill <tool> <topic>` — a topic page (verbatim passthrough)
 
-`writeSkillTopic(ctx, stdout, stderr, name, topic)` serves one of a tool's topic pages. **Tool-arg resolution mirrors `writeSkillBundle` exactly** — legacy alias (`rk`→`run-kit`, so `shll skill rk <topic>` invokes `run-kit skill <topic>`, never a literal `rk`) → `shll` self-token → roster lookup → unknown name → `errExitCode{code: usageExitCode, msg: "shll skill: unknown tool %q (valid: %s)"}` (exit 2, `validTargets(true)`, no subprocess). For a Roster tool it invokes `<tool> skill <topic>` through the same capture-all transport under the same `skillProbeTimeout` (2s):
+`writeSkillTopic(ctx, stdout, stderr, name, topic)` serves one of a tool's topic pages. **Tool-arg resolution mirrors `writeSkillBundle` exactly** — legacy alias (`rk`→`run-kit`, so `shll skill rk <topic>` invokes `run-kit skill <topic>`, never a literal `rk`) → `shll` self-token → roster lookup → unknown name → `errExitCode{code: usageExitCode, msg: "shll skill: unknown tool %q (valid: %s)"}` (exit 2, `validTargets(true)`, no subprocess). For a Roster tool it resolves the same `skillArgv(tool)` (so fab-kit's topics route through `fab skill <topic>`) and appends the topic, then invokes through the same capture-all transport under the same `skillProbeTimeout` (2s):
 
 ```go
+argv := skillArgv(tool)
+args := append(append([]string(nil), argv[1:]...), topic) // copy-then-append — never alias into Tool.Skill
 subCtx, cancel := context.WithTimeout(ctx, skillProbeTimeout)
-out, childErr, code, err := proc.RunCaptured(subCtx, tool.Name, skillSubcommand, topic)
+out, childErr, code, err := proc.RunCaptured(subCtx, argv[0], args...)
 ```
+
+The final args are built by **copying** the resolved tail before appending the topic (`append(append([]string(nil), argv[1:]...), topic)`), never `append(argv[1:], topic)` directly — the latter could alias into fab-kit's roster `Skill` backing array and mutate the shared roster slice. The roster `Skill` stays byte-equal `{"fab", "skill"}` after any topic invocation.
 
 **What diverges is the failure classification.** Where the one-arg form *suppresses* the child's stderr and *rewraps* every non-zero exit into a curated `skillUnsupportedFmt` notice at exit 1, the two-arg form *propagates* — because the `skill` standard's unknown-topic contract ("non-zero exit with the valid topics on stderr") must survive the composer unmodified. The classification (order matters — first match wins):
 
@@ -117,7 +142,7 @@ The bundle's `shll agent-setup` capability line describes **skills placement** (
 
 ## Named constants (code-quality.md — no magic strings)
 
-All in `skill.go`: `skillEmbedPath` (`"skill/skill.md"`), `skillSubcommand` (`"skill"` — the subcommand shll invokes on each tool), `skillProbeTimeout` (2s, mirroring `versionTimeout`), `skillHintLine`, `skillUnsupportedFmt`, `skillNotInstalledFmt`, `skillNoTopicsFmt` (the `shll skill shll <topic>` no-topics stderr line), and `skillTopicTimeoutFmt` (the two-arg deadline/kill exit-1 notice).
+All in `skill.go`: `skillEmbedPath` (`"skill/skill.md"`), `skillSubcommand` (`"skill"` — the subcommand shll invokes on each tool, and the default `skillArgv` tail), `skillProbeTimeout` (2s, mirroring `versionTimeout`), `skillHintLine`, `skillUnsupportedFmt` (`"shll skill: %s does not support 'skill' — its installed version may predate it (try 'shll update %s')"` — hedged, takes the tool name **twice**; the `writeSkillBundle` call site passes `tool.Name, tool.Name`), `skillNotInstalledFmt`, `skillNoTopicsFmt` (the `shll skill shll <topic>` no-topics stderr line), and `skillTopicTimeoutFmt` (the two-arg deadline/kill exit-1 notice).
 
 ## Constitution VII justification
 
@@ -125,7 +150,29 @@ All in `skill.go`: `skillEmbedPath` (`"skill/skill.md"`), `skillSubcommand` (`"s
 
 ## Test seam
 
-`skill_test.go` drives `runSkill` with `bytes.Buffer` writers and a fake `proc.Runner` (the shared install-fake pattern — see [internal/proc §test seam](/internal/proc.md#test-seam-runner)). One-arg + bare coverage: bare glossary (installed-only, shll-first, no brew, hint, no bundle concat), byte-identical passthrough asserting the capture-all transport is used, `rk`→`run-kit` alias resolution, `shll skill shll` in-process embed (no subprocess), not-installed/unsupported → one-line stderr + exit 1 with the child's raw stderr suppressed, unknown name → usage exit 2 with no subprocess. Two-arg (topic) coverage: the passthrough happy path (fake asserts the exact `<tool> skill <topic>` argv via `TransportCaptureAll`, stdout byte-identical, stderr empty, exit 0); unknown-topic propagation (child exits 2 with valid-topics stderr → shll's stderr carries the child bytes verbatim, shll's exit mirrors the child); the timed-out/killed child (fake returns `code -1`, nil err → one curated `skillTopicTimeoutFmt` line, exit 1, no negative code leaked); the 3-args-→-usage-exit-2 arg-count contract (drives real cobra); topic-form + not-on-PATH → `skillNotInstalledFmt` exit 1; `shll skill shll <topic>` → in-process error, exit 2, no subprocess; `shll skill rk <topic>` → alias resolves to `run-kit skill <topic>`. Plus `TestSkillEmbedMatchesCanonical` (drift) and the ≤150-line budget.
+`skill_test.go` drives `runSkill` with `bytes.Buffer` writers and a fake `proc.Runner` (the shared install-fake pattern — see [internal/proc §test seam](/internal/proc.md#test-seam-runner)). One-arg + bare coverage: bare glossary (installed-only, shll-first, no brew, hint, no bundle concat), byte-identical passthrough asserting the capture-all transport is used, `rk`→`run-kit` alias resolution, `shll skill shll` in-process embed (no subprocess), not-installed/unsupported → one-line stderr + exit 1 with the child's raw stderr suppressed, unknown name → usage exit 2 with no subprocess. Argv-override coverage: `TestSkillArgv_DefaultAndOverride` pins both resolver branches directly (a non-override tool like `wt` → `{"wt", "skill"}`, fab-kit → `{"fab", "skill"}`); `TestSkill_Passthrough_FabKitOverrideInvokesFabSkill` asserts `shll skill fab-kit` records exactly `fab skill` (never a literal `fab-kit skill`) with stdout byte-identical; `TestSkillTopic_FabKitOverrideInvokesFabSkillTopic` asserts `shll skill fab-kit <topic>` records exactly `fab skill <topic>` and that fab-kit's roster `Skill` slice is unmutated afterward (the copy-then-append aliasing guard). Two-arg (topic) coverage: the passthrough happy path (fake asserts the exact `<tool> skill <topic>` argv via `TransportCaptureAll`, stdout byte-identical, stderr empty, exit 0); unknown-topic propagation (child exits 2 with valid-topics stderr → shll's stderr carries the child bytes verbatim, shll's exit mirrors the child); the timed-out/killed child (fake returns `code -1`, nil err → one curated `skillTopicTimeoutFmt` line, exit 1, no negative code leaked); the 3-args-→-usage-exit-2 arg-count contract (drives real cobra); topic-form + not-on-PATH → `skillNotInstalledFmt` exit 1; `shll skill shll <topic>` → in-process error, exit 2, no subprocess; `shll skill rk <topic>` → alias resolves to `run-kit skill <topic>`. The softened `skillUnsupportedFmt` wording (and its doubled tool-name arg) is asserted in the unsupported-path test. Plus `TestSkillEmbedMatchesCanonical` (drift) and the ≤150-line budget.
+
+## Design Decisions
+
+### Design Decision: exception-only Skill population
+
+**Decision**: Only fab-kit populates the roster `Skill` argv-override field; every other tool derives the default `{Name, skillSubcommand}` from `skillArgv`.
+**Why**: The default is derivable from `Name` + `skillSubcommand`, so stating only the exception (ShellInit's "empty means no divergence" semantics) avoids six redundant slices carrying no information.
+**Rejected**: Populating all entries (Update-style "all entries populate") — adds noise with no signal, and a wrong copy-paste in a redundant slice would be a new bug surface.
+*Introduced by*: 260722-ktk5-skill-argv-override
+
+### Design Decision: a roster argv override, not a `skill.go` branch
+
+**Decision**: fab-kit's divergent skill binary is expressed as roster data (`Skill: {"fab", "skill"}`) resolved by `skillArgv`, not a `name == "fab-kit"` branch inside the dispatch logic.
+**Why**: The `Tool` struct already solves "this tool's invocation differs from `{Name, subcommand}`" twice — `ShellInit` and `Update` are per-tool argv slices — so a third argv-override field keeps the roster the single source of truth (Constitution III) and adds no per-tool special-casing to `skill.go`.
+**Rejected**: (a) hardcoding a `name == "fab-kit"` branch in `skill.go` — bespoke per-tool logic outside the roster that would drift; (b) renaming the roster entry to `fab` — `fab-kit` is the formula leaf, the binary the install probe checks, and the user-facing name across `list`/`version`/`update`, so a skill-only concern would ripple through every command.
+*Introduced by*: 260722-ktk5-skill-argv-override
+
+### Design Decision: verbatim topic propagation is unchanged by the override
+
+**Decision**: The topic form still propagates a completed child's stderr and exit code verbatim; the argv override only swaps *which binary* is invoked, not the failure classification.
+**Why**: The `skill` standard's unknown-topic contract ("non-zero exit with the valid topics on stderr") must survive the composer unmodified; fab-kit routing through `fab` does not change that requirement.
+*Introduced by*: 260722-ktk5-skill-argv-override
 
 ## Cross-references
 

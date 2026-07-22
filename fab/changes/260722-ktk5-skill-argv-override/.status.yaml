@@ -1,0 +1,57 @@
+id: ktk5
+name: 260722-ktk5-skill-argv-override
+created: 2026-07-22T11:16:32Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 9
+    acceptance_count: 15
+    acceptance_completed: 15
+confidence:
+    certain: 4
+    confident: 1
+    tentative: 0
+    unresolved: 0
+    score: 4.8
+    fuzzy: true
+    dimensions:
+        signal: 72.0
+        reversibility: 89.0
+        competence: 86.0
+        disambiguation: 75.0
+stage_metrics:
+    intake: {started_at: "2026-07-22T11:16:32Z", driver: fab-new, iterations: 1, completed_at: "2026-07-22T11:20:45Z"}
+    apply: {started_at: "2026-07-22T11:20:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T11:26:41Z"}
+    review: {started_at: "2026-07-22T11:26:41Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T11:29:03Z"}
+    hydrate: {started_at: "2026-07-22T11:29:03Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T11:34:14Z"}
+    ship: {started_at: "2026-07-22T11:34:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T11:35:53Z"}
+    review-pr: {started_at: "2026-07-22T11:35:53Z", driver: git-pr, iterations: 1, completed_at: "2026-07-22T11:45:01Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/73
+change_type_source: explicit
+true_impact:
+    added: 550
+    deleted: 27
+    net: 523
+    excluding:
+        added: 162
+        deleted: 13
+        net: 149
+    tests:
+        added: 117
+        deleted: 0
+        net: 117
+    computed_at: "2026-07-22T11:35:53Z"
+    computed_at_stage: ship
+summary: Add a Tool.Skill roster argv override (fab-kit → fab skill), resolved via skillArgv in both skill passthroughs, and soften skillUnsupportedFmt
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-22T11:45:01Z

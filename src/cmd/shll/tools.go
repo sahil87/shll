@@ -44,6 +44,12 @@ type Tool struct {
 	// update` falls back to `brew upgrade <formula>` for it. Every current
 	// roster tool ships an `update`, so all entries populate this field.
 	Update []string
+	// Skill is the argv of the tool's skill-bundle invocation (e.g. {"fab",
+	// "skill"} for fab-kit, whose `skill` subcommand lives on the `fab` router
+	// binary rather than the `fab-kit` binary). An empty slice means the
+	// default `{Name, "skill"}` — only tools whose skill surface diverges from
+	// their roster Name populate this field.
+	Skill []string
 	// Description is a one-line, human-readable summary of what the tool does,
 	// printed by `shll list`. Single-sourced here so the roster cannot drift
 	// from the managed set (Constitution III — Tool Roster Source of Truth).
@@ -156,7 +162,7 @@ var Roster = []Tool{
 	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)", SkillHint: "AI token-usage tracking"},
 	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", Description: "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content (HTML, diagrams, reports, a local dev server) in a browser window, to proxy a local http port to the user's browser, or to push a notification to their devices (run-kit). The user may be viewing this session remotely through run-kit's web dashboard, where `open`/`xdg-open` and localhost URLs never reach them — before opening any file or local port in a browser, read `shll skill run-kit` for the proxied-iframe recipe."},
 	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees", SkillHint: "directory/project jumping"},
-	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
+	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Skill: []string{"fab", "skill"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 }
 
 // shllTargetToken is the literal positional argument that selects shll itself as

@@ -1,0 +1,13 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-07-22T11:16:32Z"}
+{"args":"shll skill fab-kit probes 'fab-kit skill' but the bundle lives on the 'fab' router binary — add a per-tool skill argv override on the roster Tool struct (like Update/ShellInit), e.g. {fab, skill} for fab-kit, and cover the topic passthrough too. Also soften skillUnsupportedFmt.","cmd":"fab-new","event":"command","ts":"2026-07-22T11:16:32Z"}
+{"delta":"+4.8","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-07-22T11:18:37Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-07-22T11:20:45Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-07-22T11:20:45Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-07-22T11:21:42Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-07-22T11:26:41Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-07-22T11:29:03Z"}
+{"event":"review","result":"passed","ts":"2026-07-22T11:29:03Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-07-22T11:34:14Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-07-22T11:35:53Z"}
+{"cmd":"git-pr-review","event":"command","ts":"2026-07-22T11:37:26Z"}
+{"event":"review","result":"passed","ts":"2026-07-22T11:45:01Z"}
