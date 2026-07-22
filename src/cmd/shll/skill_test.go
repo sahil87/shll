@@ -251,12 +251,129 @@ func TestSkill_Unsupported_SuppressesChildStderrExit1(t *testing.T) {
 	if !strings.Contains(diag, "wt") || !strings.Contains(diag, "does not support 'skill'") {
 		t.Errorf("stderr should be the one-line unsupported notice, got %q", diag)
 	}
+	// The softened wording: hedged (the version MAY predate skill — no bare
+	// imperative), with the update suggestion scoped to the one tool (the doubled
+	// tool-name arg lands in `shll update wt`).
+	if !strings.Contains(diag, "may predate") {
+		t.Errorf("notice must hedge (\"may predate\"), not assert updating as the fix, got %q", diag)
+	}
+	if !strings.Contains(diag, "'shll update wt'") {
+		t.Errorf("notice must scope the update suggestion to the tool ('shll update wt'), got %q", diag)
+	}
 	// The child's own error text must NOT leak.
 	if strings.Contains(diag, "unknown command") {
 		t.Errorf("child's raw stderr must be suppressed, got %q", diag)
 	}
 	if strings.Count(strings.TrimRight(diag, "\n"), "\n") != 0 {
 		t.Errorf("notice must be exactly one line, got %q", diag)
+	}
+}
+
+// --- Roster Skill argv override (fab-kit → `fab skill`) ----------------------
+
+// TestSkillArgv_DefaultAndOverride pins both resolver branches directly: a tool
+// with no Skill override composes {Name, skillSubcommand}; fab-kit's roster entry
+// carries the {"fab", "skill"} override (its `skill` lives on the `fab` router
+// binary, not the `fab-kit` binary).
+func TestSkillArgv_DefaultAndOverride(t *testing.T) {
+	wt, ok := rosterTool("wt")
+	if !ok {
+		t.Fatalf("wt missing from Roster")
+	}
+	if got := skillArgv(wt); len(got) != 2 || got[0] != "wt" || got[1] != skillSubcommand {
+		t.Errorf("skillArgv(wt) = %v, want [wt %s] (default branch)", got, skillSubcommand)
+	}
+	fk, ok := rosterTool("fab-kit")
+	if !ok {
+		t.Fatalf("fab-kit missing from Roster")
+	}
+	if got := skillArgv(fk); len(got) != 2 || got[0] != "fab" || got[1] != skillSubcommand {
+		t.Errorf("skillArgv(fab-kit) = %v, want [fab %s] (roster override)", got, skillSubcommand)
+	}
+}
+
+func TestSkill_Passthrough_FabKitOverrideInvokesFabSkill(t *testing.T) {
+	bundle := "# fab-kit skill\n\nWhen to reach for fab …\n"
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "fab" && len(req.Args) == 1 && req.Args[0] == skillSubcommand {
+			return proc.Result{Stdout: []byte(bundle), ExitCode: 0}
+		}
+		// The override must NOT invoke a literal `fab-kit skill` — fab-kit's
+		// bundle lives on the `fab` router binary.
+		if req.Name == "fab-kit" {
+			t.Errorf("fab-kit's Skill override must invoke `fab`, not `fab-kit`: %+v", req)
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runSkill(context.Background(), &stdout, &stderr, []string{"fab-kit"}); err != nil {
+		t.Fatalf("runSkill(fab-kit) err = %v", err)
+	}
+	if stdout.String() != bundle {
+		t.Errorf("stdout = %q, want byte-identical %q", stdout.String(), bundle)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must be empty on success, got %q", stderr.String())
+	}
+	// The invocation must be exactly `fab skill`, via the capture-all transport.
+	var found bool
+	for _, c := range f.recordedCalls() {
+		if c.Name == "fab" && len(c.Args) == 1 && c.Args[0] == skillSubcommand {
+			found = true
+			if c.Transport != proc.TransportCaptureAll {
+				t.Errorf("override passthrough transport = %v, want TransportCaptureAll", c.Transport)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected a `fab skill` invocation, calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestSkillTopic_FabKitOverrideInvokesFabSkillTopic(t *testing.T) {
+	page := "# fab skill: dispatch\n\nHow fab dispatch works …\n"
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "fab" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "dispatch" {
+			return proc.Result{Stdout: []byte(page), ExitCode: 0}
+		}
+		// The override must NOT invoke a literal `fab-kit skill dispatch`.
+		if req.Name == "fab-kit" {
+			t.Errorf("fab-kit's Skill override must invoke `fab`, not `fab-kit`: %+v", req)
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runSkill(context.Background(), &stdout, &stderr, []string{"fab-kit", "dispatch"}); err != nil {
+		t.Fatalf("runSkill(fab-kit dispatch) err = %v", err)
+	}
+	if stdout.String() != page {
+		t.Errorf("stdout = %q, want byte-identical %q", stdout.String(), page)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must be empty on success, got %q", stderr.String())
+	}
+	// The invocation must be exactly `fab skill dispatch`.
+	var found bool
+	for _, c := range f.recordedCalls() {
+		if c.Name == "fab" && len(c.Args) == 2 && c.Args[0] == skillSubcommand && c.Args[1] == "dispatch" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a `fab skill dispatch` invocation, calls: %+v", f.recordedCalls())
+	}
+	// Appending the topic must not have aliased into the roster's Skill backing
+	// array — fab-kit's entry stays exactly {"fab", "skill"}.
+	fk, ok := rosterTool("fab-kit")
+	if !ok {
+		t.Fatalf("fab-kit missing from Roster")
+	}
+	if len(fk.Skill) != 2 || fk.Skill[0] != "fab" || fk.Skill[1] != skillSubcommand {
+		t.Errorf("roster Skill slice mutated by the topic append: %v, want [fab %s]", fk.Skill, skillSubcommand)
 	}
 }
 
