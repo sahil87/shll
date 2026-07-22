@@ -400,7 +400,7 @@ func TestRosterSkillHints(t *testing.T) {
 //
 // Beyond the dynamic verbatim-containment check, it pins the hint's three load-bearing
 // functions as fragment containment checks, so a future rewording cannot silently drop
-// any: (a) the proxy trigger vocabulary ("to proxy a local http port" — matches
+// any of: (a) the proxy trigger vocabulary ("to proxy a local http port" — matches
 // requests that name proxying/dev servers), (b) the skill-shadowing
 // counter-instruction ("before opening any file or local port in a browser, read" —
 // fires when a competing skill's local `open`/`xdg-open` delivery step is about to run,
