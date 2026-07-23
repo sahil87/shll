@@ -1,0 +1,57 @@
+id: e09x
+name: 260722-e09x-runkit-proactivehint-artifact-vocab
+created: 2026-07-22T17:47:21Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 3
+    acceptance_count: 8
+    acceptance_completed: 8
+confidence:
+    certain: 6
+    confident: 2
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 81.9
+        reversibility: 88.1
+        competence: 86.3
+        disambiguation: 81.9
+stage_metrics:
+    intake: {started_at: "2026-07-22T17:47:21Z", driver: fab-new, iterations: 1, completed_at: "2026-07-22T17:51:13Z"}
+    apply: {started_at: "2026-07-22T17:51:13Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T17:55:14Z"}
+    review: {started_at: "2026-07-22T17:55:14Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T17:58:08Z"}
+    hydrate: {started_at: "2026-07-22T17:58:08Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T18:01:45Z"}
+    ship: {started_at: "2026-07-22T18:01:45Z", driver: fab-fff, iterations: 1, completed_at: "2026-07-22T18:03:31Z"}
+    review-pr: {started_at: "2026-07-22T18:03:31Z", driver: git-pr, iterations: 1, completed_at: "2026-07-22T18:11:16Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/74
+change_type_source: explicit
+true_impact:
+    added: 276
+    deleted: 19
+    net: 257
+    excluding:
+        added: 14
+        deleted: 9
+        net: 5
+    tests:
+        added: 13
+        deleted: 8
+        net: 5
+    computed_at: "2026-07-22T18:03:31Z"
+    computed_at_stage: ship
+summary: 'Extend run-kit ProactiveHint with function c: a hosted-artifact counter-instruction (Artifact-tool publishing), pinned by TestRosterProactiveHint fragment ''publishing an artifact'''
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-07-22T18:11:16Z

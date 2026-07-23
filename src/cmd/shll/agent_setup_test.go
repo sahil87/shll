@@ -398,13 +398,16 @@ func TestRosterSkillHints(t *testing.T) {
 // gets its own test rather than extending TestRosterSkillHints (which enforces an
 // every-tool required field).
 //
-// Beyond the dynamic verbatim-containment check, it pins the hint's two load-bearing
+// Beyond the dynamic verbatim-containment check, it pins the hint's three load-bearing
 // functions as fragment containment checks, so a future rewording cannot silently drop
-// either: (a) the proxy trigger vocabulary ("to proxy a local http port" — matches
-// requests that name proxying/dev servers) and (b) the skill-shadowing
+// any of: (a) the proxy trigger vocabulary ("to proxy a local http port" — matches
+// requests that name proxying/dev servers), (b) the skill-shadowing
 // counter-instruction ("before opening any file or local port in a browser, read" —
 // fires when a competing skill's local `open`/`xdg-open` delivery step is about to run,
-// routing the agent to `shll skill run-kit` for the proxied-iframe recipe instead).
+// routing the agent to `shll skill run-kit` for the proxied-iframe recipe instead), and
+// (c) the hosted-artifact counter-instruction ("publishing an artifact" — fires when an
+// Artifact-style hosted-publishing delivery step, which opens no file and touches no
+// local port, is about to route visuals off the run-kit dashboard).
 func TestRosterProactiveHint(t *testing.T) {
 	// Exactly run-kit carries a ProactiveHint; every other tool leaves it empty
 	// (the sprawl guard — only agent-proactive capabilities earn description space).
@@ -428,13 +431,15 @@ func TestRosterProactiveHint(t *testing.T) {
 	if !strings.Contains(desc, rk.ProactiveHint) {
 		t.Errorf("description must contain run-kit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
 	}
-	// … carrying both load-bearing functions — the proxy trigger vocabulary and the
-	// skill-shadowing counter-instruction — pinned as independent fragments so a future
-	// rewording cannot silently drop either (the verbatim check above is dynamic and
-	// would pass mechanically with any Roster value).
+	// … carrying all three load-bearing functions — the proxy trigger vocabulary, the
+	// skill-shadowing counter-instruction, and the hosted-artifact counter-instruction —
+	// pinned as independent fragments so a future rewording cannot silently drop any
+	// (the verbatim check above is dynamic and would pass mechanically with any Roster
+	// value).
 	for _, fragment := range []string{
 		"to proxy a local http port",                               // (a) proxy trigger vocabulary
 		"before opening any file or local port in a browser, read", // (b) shadowing counter-instruction
+		"publishing an artifact",                                   // (c) hosted-artifact counter-instruction
 	} {
 		if !strings.Contains(desc, fragment) {
 			t.Errorf("description must contain the load-bearing fragment %q, got: %s", fragment, desc)
