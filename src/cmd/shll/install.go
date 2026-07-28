@@ -293,12 +293,6 @@ const (
 	agentSetupNudgeFmt = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
 )
 
-// runKitToolName is the run-kit binary name, invoked by agent_setup.go's
-// delegateRunKitAgentSetup as the subprocess target for the `run-kit agent-setup`
-// delegation (Constitution III/IV — compose, don't absorb). Named per code-quality.md
-// (no magic strings).
-const runKitToolName = "run-kit"
-
 // printNextSteps writes the post-install "Next steps" nudge block to stdout (change
 // 93r2; agent-setup graduation change agst):
 //

@@ -121,6 +121,12 @@ var skillTargetRelDirs = []string{
 // (refreshPlacedAgentSkills). Named per code-quality.md (no magic strings).
 const agentSetupSub = "agent-setup"
 
+// runKitToolName is the run-kit binary name — the subprocess target for
+// delegateRunKitAgentSetup's `run-kit agent-setup` delegation (Constitution III/IV —
+// compose, don't absorb), and matched against Roster entry names by uninstall.go's
+// daemon-stop hint. Named per code-quality.md (no magic strings).
+const runKitToolName = "run-kit"
+
 func newAgentSetupCmd() *cobra.Command {
 	var (
 		printMode     bool
