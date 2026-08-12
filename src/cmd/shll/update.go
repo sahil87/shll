@@ -517,6 +517,13 @@ func toolSupportsSkipFlag(ctx context.Context, t Tool) bool {
 // Named per code-quality.md (no magic strings).
 const relinkNoteFmt = "note: %[1]s is brew-installed but was not linked on PATH — ran 'brew link %[1]s', retrying"
 
+// fallbackNoteFmt announces the delegation-failure brew fallback: the tool's own
+// `update` failed (%s carries the exit code or error), so shll falls back to a
+// direct `brew upgrade <formula>`. Printed to stdout BEFORE the fallback runs so
+// the delegated failure stays visible even when the fallback rescues the tool.
+// Named per code-quality.md (no magic strings).
+const fallbackNoteFmt = "note: %s's own update failed (%s) — falling back to 'brew upgrade %s'"
+
 // upgradeTool upgrades a single installed roster tool, foregrounded. It
 // delegates to the tool's own `update` subcommand when it has an Update argv
 // (appending `--skip-brew-update` when supported), and falls back to
@@ -533,9 +540,22 @@ const relinkNoteFmt = "note: %[1]s is brew-installed but was not linked on PATH 
 // is errors.Is on the FIRST attempt only (no loop), and only on the delegation path
 // (len(t.Update) > 0) — on the brew-fallback path argv[0] is brew itself, whose
 // absence is a different failure hasBrew already vouched against, not a keg to link.
-// A failed link is surfaced to stderr and the original ErrNotFound propagates
-// unchanged (graceful degradation — Constitution V); shll never uninstalls or
-// removes kegs here.
+// A failed link is surfaced to stderr (graceful degradation — Constitution V);
+// shll never uninstalls or removes kegs here.
+//
+// DELEGATION-FAILURE BREW FALLBACK (delegation path only). When the delegated
+// `<tool> update` still fails after the relink heal has had its chance — any
+// failure: non-zero exit or a transport error (a binary too broken to exec) —
+// fall back ONCE to `brew upgrade <formula>`, announced via fallbackNoteFmt.
+// The live case: idea ≤ 0.1.2 armed a 120s deadline around its own brew child
+// and SIGKILLed it on slow-brew machines, so its own `update` could never
+// complete — a self-update catch-22 only an outside upgrade breaks. shll's brew
+// call carries NO deadline (the update standard's brew-safety clause), so it
+// survives arbitrarily slow brew runs. A fallback upgrade skips the tool's own
+// post-upgrade side effects for this one run — an accepted rescue-path
+// trade-off; the next delegated run restores normal composition. The fallback
+// never applies to the no-Update-argv path, whose primary command already IS
+// `brew upgrade`.
 func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeResult) (int, error) {
 	argv := upgradeArgv(t, p.supportsSkipFlag)
 	code, err := proc.RunForeground(ctx, argv[0], argv[1:]...)
@@ -548,6 +568,14 @@ func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeR
 			fmt.Fprintf(stdout, relinkNoteFmt+"\n", t.Name)
 			code, err = proc.RunForeground(ctx, argv[0], argv[1:]...)
 		}
+	}
+	if (err != nil || code != 0) && len(t.Update) > 0 {
+		detail := fmt.Sprintf("exit code %d", code)
+		if err != nil {
+			detail = err.Error()
+		}
+		fmt.Fprintf(stdout, fallbackNoteFmt+"\n", t.Name, detail, t.Formula)
+		code, err = proc.RunForeground(ctx, brewBinary, "upgrade", t.Formula)
 	}
 	return code, err
 }
