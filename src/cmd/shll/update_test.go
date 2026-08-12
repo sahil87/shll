@@ -1943,6 +1943,31 @@ func TestUpdate_DelegatedFailureFallbackAlsoFails(t *testing.T) {
 	}
 }
 
+func TestUpgradeTool_NoFallbackOnCanceledContext(t *testing.T) {
+	// A canceled context reports the RUN's failure, not the tool's — the
+	// fallback must not fire (no misleading note, no doomed brew upgrade
+	// attempt on the same dead ctx).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{ExitCode: -1} // the signal-kill sentinel a cancellation yields
+	}}
+	installFakeRunner(t, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var stdout, stderr bytes.Buffer
+	tool := Tool{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}}
+	code, err := upgradeTool(ctx, &stdout, &stderr, tool, probeResult{installed: true})
+	if err == nil && code == 0 {
+		t.Fatal("expected the canceled delegation to remain a failure")
+	}
+	if invocationsContain(f.recordedCalls(), brewBinary, "upgrade", tool.Formula) {
+		t.Fatal("fallback brew upgrade must not fire on a canceled context")
+	}
+	if strings.Contains(stdout.String(), "falling back") {
+		t.Fatalf("fallback note must not print on a canceled context:\n%s", stdout.String())
+	}
+}
+
 func TestUpdate_NoArgvFailureNoDoubleBrewUpgrade(t *testing.T) {
 	// A tool with no Update argv whose primary `brew upgrade` fails must NOT get
 	// a second brew upgrade — the fallback exists for the delegation path only

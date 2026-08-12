@@ -569,7 +569,10 @@ func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeR
 			code, err = proc.RunForeground(ctx, argv[0], argv[1:]...)
 		}
 	}
-	if (err != nil || code != 0) && len(t.Update) > 0 {
+	// ctx.Err() guard: a canceled/deadline-exceeded context reports the RUN's
+	// failure, not the tool's — a fallback there would print a misleading note
+	// and attempt a brew upgrade doomed by the same dead ctx.
+	if (err != nil || code != 0) && len(t.Update) > 0 && ctx.Err() == nil {
 		detail := fmt.Sprintf("exit code %d", code)
 		if err != nil {
 			detail = err.Error()
