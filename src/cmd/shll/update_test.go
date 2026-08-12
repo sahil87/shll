@@ -391,13 +391,17 @@ func TestUpdate_BrewUpdateFails(t *testing.T) {
 
 func TestUpdate_OneUpgradeFails(t *testing.T) {
 	// All installed (including shll itself); the first roster tool's delegated
-	// `update` fails; the rest must still be attempted. Exit non-zero overall.
+	// `update` fails AND its brew fallback fails; the rest must still be
+	// attempted. Exit non-zero overall.
 	first := Roster[0]
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		// Fail only the first roster entry's delegated update (not its --help
-		// probe). Self-upgrade (brew upgrade shll) and the rest of the roster
-		// succeed.
-		if req.Name == first.Update[0] && len(req.Args) == 1 && req.Args[0] == first.Update[1] {
+		// Fail the first roster entry's delegated update (not its --help probe)
+		// and its fallback `brew upgrade <formula>`, so the tool genuinely fails.
+		// Self-upgrade (brew upgrade shll) and the rest of the roster succeed.
+		switch {
+		case req.Name == first.Update[0] && len(req.Args) == 1 && req.Args[0] == first.Update[1]:
+			return proc.Result{ExitCode: 1}
+		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == first.Formula:
 			return proc.Result{ExitCode: 1}
 		}
 		return proc.Result{}
@@ -423,9 +427,11 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 			gotUpgrades++
 		}
 	}
-	want := len(Roster) + 1 // +1 for the shll self-upgrade (brew upgrade)
+	// +1 for the shll self-upgrade (brew upgrade), +1 for roster[0]'s failed
+	// delegation triggering its one fallback brew upgrade.
+	want := len(Roster) + 2
 	if gotUpgrades != want {
-		t.Fatalf("upgrade attempts = %d, want %d (self + roster, must continue through failure)", gotUpgrades, want)
+		t.Fatalf("upgrade attempts = %d, want %d (self + roster + one fallback, must continue through failure)", gotUpgrades, want)
 	}
 }
 
@@ -659,12 +665,16 @@ func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
 
 func TestUpdate_PartialFailureTail(t *testing.T) {
 	// hop and wt installed (shll itself not brew-installed via installedOnly, so
-	// it is excluded from the count → total = 2). hop's delegated update fails,
-	// wt succeeds → the partial-failure tail form with counts 1 succeeded,
-	// 1 failed. Exit stays errSilent (unchanged).
+	// it is excluded from the count → total = 2). hop's delegated update fails
+	// and so does its fallback brew upgrade, wt succeeds → the partial-failure
+	// tail form with counts 1 succeeded, 1 failed. Exit stays errSilent
+	// (unchanged).
 	base := installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "hop" && req.Transport == proc.TransportForeground {
+		switch {
+		case req.Name == "hop" && req.Transport == proc.TransportForeground:
+			return proc.Result{ExitCode: 1}
+		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == formulaPrefix+"hop":
 			return proc.Result{ExitCode: 1}
 		}
 		return base(req)
@@ -1823,12 +1833,17 @@ func TestUpdate_DelegationUnlinkedKegSelfHeal(t *testing.T) {
 	if !strings.Contains(stdout.String(), "brew link run-kit") {
 		t.Fatalf("stdout missing the relink note:\n%s", stdout.String())
 	}
+	// The healed retry succeeded, so the delegation-failure fallback must NOT fire.
+	if invocationsContain(calls, brewBinary, "upgrade", runKitFormula) {
+		t.Fatal("no fallback brew upgrade after a successful self-heal retry")
+	}
 }
 
 func TestUpdate_DelegationUnlinkedKegLinkFails(t *testing.T) {
-	// The degraded branch: `brew link` exits non-zero → NO retry, the original
-	// ErrNotFound propagates (errSilent), the link failure is surfaced on stderr,
-	// and the relink note does NOT print.
+	// The degraded relink branch: `brew link` exits non-zero → NO retry, the link
+	// failure is surfaced on stderr, the relink note does NOT print — and the
+	// delegation-failure fallback then rescues the tool with a direct
+	// `brew upgrade` (which relinks the keg as a side effect).
 	r := &unlinkedDelegationRunner{linkFails: true}
 	f := &fakeRunner{respond: r.respond}
 	installFakeRunner(t, f)
@@ -1836,8 +1851,8 @@ func TestUpdate_DelegationUnlinkedKegLinkFails(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, []string{"run-kit"})
-	if !errors.Is(err, errSilent) {
-		t.Fatalf("runUpdate err = %v, want errSilent (failed link must not mask the failure)", err)
+	if err != nil {
+		t.Fatalf("runUpdate err = %v, want nil (the brew fallback should rescue the run)", err)
 	}
 	calls := f.recordedCalls()
 	if got := countInvocations(calls, "run-kit", "update"); got != 1 {
@@ -1848,5 +1863,138 @@ func TestUpdate_DelegationUnlinkedKegLinkFails(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "retrying") {
 		t.Fatalf("the relink note must NOT print when the link failed:\n%s", stdout.String())
+	}
+	if !invocationsContain(calls, brewBinary, "upgrade", runKitFormula) {
+		t.Fatalf("expected the fallback `brew upgrade %s` after the failed heal, calls: %+v", runKitFormula, calls)
+	}
+	if !strings.Contains(stdout.String(), "falling back to 'brew upgrade "+runKitFormula+"'") {
+		t.Fatalf("stdout missing the fallback note:\n%s", stdout.String())
+	}
+}
+
+// --- delegation-failure brew fallback ---
+
+func TestUpdate_DelegatedFailureBrewFallbackRescues(t *testing.T) {
+	// The live idea ≤ 0.1.2 catch-22: the tool's own `update` dies (its internal
+	// 120s deadline SIGKILLed its brew child), so shll falls back ONCE to a direct
+	// `brew upgrade <formula>` — which carries no deadline — and the run succeeds.
+	base := installedOnly(formulaPrefix + "idea")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "idea" && len(req.Args) == 1 && req.Args[0] == "update" {
+			return proc.Result{ExitCode: 1}
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil (the fallback should rescue the run)", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"idea") {
+		t.Fatalf("expected fallback `brew upgrade %sidea`, calls: %+v", formulaPrefix, calls)
+	}
+	// The fallback must FOLLOW the failed delegation (rescue on evidence, never
+	// preemptively).
+	delegated, fallback := -1, -1
+	for i, c := range calls {
+		if c.Name == "idea" && len(c.Args) == 1 && c.Args[0] == "update" && delegated == -1 {
+			delegated = i
+		}
+		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "upgrade" && c.Args[1] == formulaPrefix+"idea" {
+			fallback = i
+		}
+	}
+	if fallback < delegated {
+		t.Fatalf("fallback at call %d must FOLLOW the failed delegation at call %d", fallback, delegated)
+	}
+	if !strings.Contains(stdout.String(), "falling back to 'brew upgrade "+formulaPrefix+"idea'") {
+		t.Fatalf("stdout missing the fallback note:\n%s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "exit code 1") {
+		t.Fatalf("the fallback note must carry the delegated failure detail:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_DelegatedFailureFallbackAlsoFails(t *testing.T) {
+	// Both the delegation and the fallback fail → the tool is reported failed,
+	// the run exits non-zero, and exactly ONE fallback attempt was made (the
+	// fallback is single-shot, never a retry loop).
+	base := installedOnly(formulaPrefix + "idea")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == "idea" && len(req.Args) == 1 && req.Args[0] == "update":
+			return proc.Result{ExitCode: 1}
+		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == formulaPrefix+"idea":
+			return proc.Result{ExitCode: 1}
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent (a failed fallback must not mask the failure)", err)
+	}
+	if got := countInvocations(f.recordedCalls(), brewBinary, "upgrade", formulaPrefix+"idea"); got != 1 {
+		t.Fatalf("fallback brew upgrade attempts = %d, want exactly 1", got)
+	}
+}
+
+func TestUpgradeTool_NoFallbackOnCanceledContext(t *testing.T) {
+	// A canceled context reports the RUN's failure, not the tool's — the
+	// fallback must not fire (no misleading note, no doomed brew upgrade
+	// attempt on the same dead ctx).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{ExitCode: -1} // the signal-kill sentinel a cancellation yields
+	}}
+	installFakeRunner(t, f)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var stdout, stderr bytes.Buffer
+	tool := Tool{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}}
+	code, err := upgradeTool(ctx, &stdout, &stderr, tool, probeResult{installed: true})
+	if err == nil && code == 0 {
+		t.Fatal("expected the canceled delegation to remain a failure")
+	}
+	if invocationsContain(f.recordedCalls(), brewBinary, "upgrade", tool.Formula) {
+		t.Fatal("fallback brew upgrade must not fire on a canceled context")
+	}
+	if strings.Contains(stdout.String(), "falling back") {
+		t.Fatalf("fallback note must not print on a canceled context:\n%s", stdout.String())
+	}
+}
+
+func TestUpdate_NoArgvFailureNoDoubleBrewUpgrade(t *testing.T) {
+	// A tool with no Update argv whose primary `brew upgrade` fails must NOT get
+	// a second brew upgrade — the fallback exists for the delegation path only
+	// (the primary command here already IS brew upgrade).
+	prev := Roster
+	t.Cleanup(func() { Roster = prev })
+	legacy := Tool{Name: "legacy", Formula: formulaPrefix + "legacy"} // no Update argv
+	Roster = []Tool{legacy}
+
+	base := installedOnly(legacy.Formula)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == legacy.Formula {
+			return proc.Result{ExitCode: 1}
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, nil)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent", err)
+	}
+	if got := countInvocations(f.recordedCalls(), brewBinary, "upgrade", legacy.Formula); got != 1 {
+		t.Fatalf("brew upgrade attempts = %d, want exactly 1 (no fallback on the brew path)", got)
+	}
+	if strings.Contains(stdout.String(), "falling back") {
+		t.Fatalf("the fallback note must not print on the no-argv path:\n%s", stdout.String())
 	}
 }

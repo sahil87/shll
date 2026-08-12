@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades, exit-code aggregation, the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, full release bodies rendered inline via the shared `renderReleases` helper), and the `rk` legacy target alias."
+description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades with two self-heals (unlinked-keg relink, delegation-failure brew-upgrade fallback), exit-code aggregation, the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, full release bodies rendered inline via the shared `renderReleases` helper), and the `rk` legacy target alias."
 ---
 # cli/update
 
@@ -34,10 +34,10 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
 8. **Sequential per-tool upgrade (delegated).** For each installed tool in roster order, print its per-tool header then call `upgradeTool(ctx, stdout, stderr, t, probes[i])`. On a successful (exit 0) upgrade, re-query `installedVersion(ctx, t.Formula)` and record a bump against `probes[i].beforeVersion` if it changed (the digest input, r01z). Dispatch:
    - **has `Update` argv + supports the flag** → `<tool> update --skip-brew-update` (the `Update` argv with the flag appended).
-   - **has `Update` argv but no flag (version skew)** → `<tool> update` with no flag — and it does **not** fall back to `brew upgrade`. This is the retry-without-flag contract for an installed tool predating the `--skip-brew-update` convention (Constitution V — Graceful Degradation).
+   - **has `Update` argv but no flag (version skew)** → `<tool> update` with no flag — the dispatch never *chooses* `brew upgrade` over a present `update` subcommand. This is the retry-without-flag contract for an installed tool predating the `--skip-brew-update` convention (Constitution V — Graceful Degradation). (A *failing* delegated update is a separate matter — see [delegation-failure brew fallback](#delegation-failure-brew-fallback).)
    - **no `Update` argv (hypothetical future tool)** → `brew upgrade <formula>` fallback (today's pre-delegation behavior, retained for tools with no `update` subcommand), via plain `proc.RunForeground`. Because all six roster tools currently expose `update`, this fallback is **presently unreachable for the roster** — it is wired for correctness and future tools.
 
-   Best-effort across the roster: on per-tool failure (transport error or non-zero exit), set `anyFailed = true` and `continue` — never abort the loop.
+   On the delegation path, `upgradeTool` carries two self-heals before giving up on a tool: the **unlinked-keg relink heal** (delegated `update` returns `proc.ErrNotFound` despite the install probe → `brew link <tool>`, print `relinkNoteFmt`, retry the delegation once; a failed link skips the retry) and the **[delegation-failure brew fallback](#delegation-failure-brew-fallback)** (any remaining failure → one direct `brew upgrade <formula>`). Best-effort across the roster: on final per-tool failure, set `anyFailed = true` and `continue` — never abort the loop.
 
 9. **Summary tail, then the digest.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation)), then the **"What changed:" digest** for the recorded bumps (r01z — see [version capture](#version-capture--the-what-changed-digest)), then, if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). Both the tail and the digest are presentation-only and do **not** influence the exit code.
 
@@ -175,8 +175,27 @@ Constraints (Design Decision #2):
 `shll update` decides whether to append `--skip-brew-update` to a delegated `<tool> update` *before* invoking it — by probing, not by trying and retrying:
 
 - **Why probe-first** (Design Decision #3, cczs): knowing flag support up front avoids the false-positive where a genuine upgrade failure is mistaken for a flag-parse error. An "assume-support-then-retry-on-failure" strategy would re-run the tool's `update` after a real failure — which could re-trigger side effects (e.g. run-kit's daemon restart) it had already partially performed. A presence check on `--help` is side-effect-free.
-- **Version-skew handling**: when the probe reports the flag is *not* advertised (an installed tool predating the toolkit-wide `--skip-brew-update` contract), shll runs the tool's `update` **without the flag** — it does not fall back to `brew upgrade`, because the tool's own `update` is still the faithful composition (Constitution IV). The tool will then run its own internal `brew update`; correctness is preserved at the cost of a redundant metadata refresh for that one tool. Pinned by `TestUpdate_FlagUnsupportedVersionSkew`.
+- **Version-skew handling**: when the probe reports the flag is *not* advertised (an installed tool predating the toolkit-wide `--skip-brew-update` contract), shll runs the tool's `update` **without the flag** — the dispatch never picks `brew upgrade` over a present `update` subcommand, because the tool's own `update` is still the faithful composition (Constitution IV). The tool will then run its own internal `brew update`; correctness is preserved at the cost of a redundant metadata refresh for that one tool. Pinned by `TestUpdate_FlagUnsupportedVersionSkew` (which also pins that a *succeeding* flagless update triggers no fallback brew upgrade).
 - The probe is issued **only for installed tools that have a non-empty `Update` argv** — uninstalled tools and tools with no `update` subcommand are never probed (`TestUpdate_PartialInstalled`, `TestUpdate_NoUpdateArgvFallsBackToBrew`).
+
+## Delegation-failure brew fallback
+
+When a delegated `<tool> update` fails — **any** failure: non-zero exit or a transport error (a binary too broken to exec) — after the unlinked-keg relink heal has had its chance, `upgradeTool` (`src/cmd/shll/update.go`) falls back **once** to `brew upgrade <t.Formula>` via `proc.RunForeground`, announced beforehand on stdout via the named constant `fallbackNoteFmt`:
+
+```
+note: idea's own update failed (exit code 1) — falling back to 'brew upgrade sahil87/tap/idea'
+```
+
+The note carries the tool name, the delegated failure detail (exit code, or the error text for transport failures), and the exact fallback command — so the underlying failure stays visible even when the fallback rescues the tool.
+
+- **Trigger + ordering.** Delegation path only (`len(t.Update) > 0` — the no-argv path's primary command already IS `brew upgrade`, so it never gets a second attempt). The relink heal runs first (the more specific remedy); the fallback evaluates the *final* delegated outcome, so it also rescues the degraded relink branch (link failed → the fallback's `brew upgrade` relinks the keg as a side effect).
+- **Single attempt.** Exactly one fallback `brew upgrade` per tool per run — never a retry loop.
+- **Accounting.** Fallback success (exit 0) counts the tool as succeeded — the normal `succeeded++`, after-version re-query, and digest path run unchanged. Fallback failure is returned as the tool's outcome, feeding the existing `anyFailed`/stderr reporting.
+- **Brew-safety.** The fallback call carries the caller's context with **no deadline and no signals** — conformant with the update standard's brew-safety clause (`docs/site/standards/update.md`) and Constitution I. shll's deadline-free brew call is the whole point: it survives brew runs that stall for minutes.
+- **Side-effect trade-off.** A fallback upgrade skips the tool's own post-upgrade side effects (e.g. run-kit's daemon restart) for that one run; the next delegated run restores normal composition (Constitution IV). Rescue-path-only deviation, accepted deliberately.
+- **Known limit (deliberate non-goal).** No broken-keg reinstall escalation: if a prior mid-pour kill left brew believing the new version is installed while the binary is broken, the fallback `brew upgrade` no-ops and the tool stays broken. Possible follow-up; excluded from the fallback's scope.
+
+Pinned by `TestUpdate_DelegatedFailureBrewFallbackRescues` (fail → note + fallback follows the failed delegation → run succeeds; the note carries `exit code 1`), `TestUpdate_DelegatedFailureFallbackAlsoFails` (both fail → `errSilent`, exactly one fallback attempt), `TestUpdate_NoArgvFailureNoDoubleBrewUpgrade` (no-argv path: one `brew upgrade`, no note), and `TestUpdate_DelegationUnlinkedKegLinkFails` (failed link → no retry, then the fallback rescues).
 
 ## Foreground vs capture
 
@@ -325,6 +344,20 @@ This is the reason for the early short-circuit in step 5 above. The check is a l
 > **Migration**: Stragglers on a legacy-`rk`-only machine follow run-kit's README manual path (`brew uninstall rk`, then `shll install`); shll no longer automates it.
 > *Introduced by*: 260720-h3f6-retire-rk-migration-guard
 
+### Generic delegation-failure fallback over version-pinned knowledge
+
+> **Decision**: When a delegated `<tool> update` fails, fall back once to `brew upgrade <formula>` — for any roster tool, with no knowledge of which tool/version is broken.
+> **Why**: Rescues the live idea ≤ 0.1.2 self-update catch-22 (the old binary SIGKILLed its own brew child at 120s, so it could never upgrade past its own bug) and any future tool that ships a broken `update`. shll's brew calls carry no deadline, so the outside upgrade succeeds where the tool's own could not.
+> **Rejected**: Hardcoding "idea ≤ 0.1.2 is broken" in shll — covers one incident, requires a shll release per future incident, and rots.
+> *Introduced by*: 260812-blht-delegated-update-brew-fallback
+
+### Fallback on any failure, ordered after the relink heal
+
+> **Decision**: The fallback triggers on any failure (non-zero exit or exec/transport error) of the *final* delegated outcome, evaluated after the ErrNotFound → `brew link` → retry heal.
+> **Why**: One coherent rule; also rescues corrupted-binary cases where the delegated binary cannot exec at all. The relink heal stays first because it is the more specific remedy.
+> **Rejected**: A non-zero-exit-only trigger — leaves the exec-error family (broken binary) unrescued for no simplicity gain.
+> *Introduced by*: 260812-blht-delegated-update-brew-fallback
+
 ## Test seam
 
 All `update_test.go` tests inject a fake via `proc.Runner` (`installFakeRunner` t.Cleanup helper at `src/cmd/shll/update_test.go:53`). No real brew or sub-tool subprocess is ever spawned. The fake records every `proc.Request` so tests assert: which formulas were queried, which `--help` probes ran, which upgrades ran (delegated vs. brew-upgrade), the order of operations, the exit code, and the captured stdout/stderr writers.
@@ -341,7 +374,7 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_OnlyShllInstalled` — shll brew-installed but no roster tools → metadata refresh runs, self-upgrade runs, no roster delegation/upgrade, no short-circuit message, exit 0.
 - `TestUpdate_PartialInstalled` — only `hop` and `wt` installed → only those delegated via `<tool> update`; uninstalled tools neither delegated nor brew-upgraded; the `--help` probe is issued **only** for installed tools (`hop`/`wt` probed; `idea`/`fab-kit` not probed).
 - `TestUpdate_BrewUpdateFails` — `brew update --quiet` exits non-zero → stderr "brew update failed", no upgrade attempted (delegated or fallback), exit 1.
-- `TestUpdate_OneUpgradeFails` — first roster tool's delegated `update` exits non-zero → loop continues; total upgrade attempts = `len(Roster) + 1` (self brew-upgrade + every roster delegation), exit 1.
+- `TestUpdate_OneUpgradeFails` — first roster tool's delegated `update` AND its fallback `brew upgrade` exit non-zero → loop continues; total upgrade attempts = `len(Roster) + 2` (self brew-upgrade + every roster delegation + the one fallback), exit 1.
 - `TestUpdate_FlagSupported` — `run-kit` installed and `run-kit update --help` advertises `--skip-brew-update` → upgraded via `run-kit update --skip-brew-update`, NOT `brew upgrade sahil87/tap/run-kit`, and NOT a bare `run-kit update`.
 - `TestUpdate_FlagUnsupportedVersionSkew` — `hop` installed but its `--help` lacks the flag → upgraded via bare `hop update` (no flag), and does NOT fall back to `brew upgrade hop`.
 - `TestUpdate_NoUpdateArgvFallsBackToBrew` — a temporary single-entry roster with a `legacy` tool that has an empty `Update` argv → falls back to `brew upgrade <formula>`; no delegated update, no `--help` probe.
@@ -349,7 +382,11 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_BrewUpdateRunsExactlyOnce` — with `run-kit`/`hop`/`wt` installed, `brew update --quiet` runs exactly once for the whole run.
 - `TestUpdate_HeadersAndTail` — shll + full roster installed; asserts the verbatim `[N/M]` headers (`==> [1/7] shll (self)` first), the blank line before each subsequent header and before the tail, and the duration-bearing `Done — 7 of 7 tools succeeded in 1m12s.` tail (installs a deterministic clock).
 - `TestUpdate_HeaderPrecedesOutput` *(6vuo)* — the `==> [1/1] hop` header is in the buffer before hop's foregrounded upgrade runs.
-- `TestUpdate_PartialFailureTail` *(6vuo)* — `hop`+`wt` installed (shll not brewed → `total=2`), hop fails → partial-failure tail `1 succeeded, 1 failed in 1m12s — see above.` with the duration before the em-dash; asserts the honesty constraint (no "updated"/"up-to-date").
+- `TestUpdate_PartialFailureTail` *(6vuo)* — `hop`+`wt` installed (shll not brewed → `total=2`), hop's delegated update AND its fallback fail → partial-failure tail `1 succeeded, 1 failed in 1m12s — see above.` with the duration before the em-dash; asserts the honesty constraint (no "updated"/"up-to-date").
+- `TestUpdate_DelegatedFailureBrewFallbackRescues` — `idea update` exits 1 → fallback note printed (carrying `exit code 1`), `brew upgrade sahil87/tap/idea` follows the failed delegation, run exits 0.
+- `TestUpdate_DelegatedFailureFallbackAlsoFails` — delegation and fallback both exit 1 → exit 1, exactly one fallback attempt.
+- `TestUpdate_NoArgvFailureNoDoubleBrewUpgrade` — a no-`Update`-argv tool whose primary `brew upgrade` fails → exactly one brew upgrade, no fallback note.
+- `TestUpdate_DelegationUnlinkedKegSelfHeal` / `TestUpdate_DelegationUnlinkedKegLinkFails` — the relink heal: ErrNotFound → `brew link` between the two delegation attempts, relink note on stdout, no fallback after a successful retry; a failed link skips the retry (link failure on stderr, no relink note) and the fallback then rescues the tool.
 - `TestUpdate_EmptyCaseNoHeaderNoTail` *(6vuo)* — nothing installed → status line + `No shll tools installed.` only, with no `==>` header and no `Done —`/duration tail.
 - `TestUpdate_DryRunPreview` *(6vuo)* — shll NOT brew-installed, full roster, `run-kit`/`hop` advertise the flag → verbatim aligned-column preview (`Would update 6 tools (brew metadata refresh first):` then padded rows, `run-kit`/`hop` reading `… update --skip-brew-update`).
 - `TestUpdate_DryRunPreviewWithSelf` *(6vuo)* — shll brew-installed + full roster, no flag advertised → preview lists `shll (self)` first (`brew upgrade sahil87/tap/shll`), `shll (self)` is the widest label so all commands align under it.
