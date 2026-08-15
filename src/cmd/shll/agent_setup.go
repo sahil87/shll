@@ -174,7 +174,7 @@ never prompts). With ` + "`--print`" + ` the flag is a no-op (print never delega
 	}
 	cmd.Flags().BoolVar(&printMode, "print", false, "print the SKILL.md content and target paths, do not write any file")
 	cmd.Flags().BoolVar(&uninstallMode, "uninstall", false, "remove both placed shll-toolkit skill directories")
-	cmd.Flags().BoolP(yesFlag, yesFlagShorthand, false, agentSetupYesUsage)
+	cmd.Flags().BoolVarP(&yesMode, yesFlag, yesFlagShorthand, false, agentSetupYesUsage)
 	return cmd
 }
 

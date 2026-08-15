@@ -572,4 +572,29 @@ func TestAgentSetup_YesFlagWiredThroughCobra(t *testing.T) {
 	if fl.Usage != agentSetupYesUsage {
 		t.Errorf("--yes usage = %q, want the agent-setup-specific string %q", fl.Usage, agentSetupYesUsage)
 	}
+
+	// End-to-end through cobra Execute — the flag value must actually reach the
+	// delegation argv (a registered-but-unbound flag would pass Lookup above and
+	// still silently drop --yes; caught in PR #79 review).
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{ExitCode: 0} }}
+	installFakeRunner(t, f)
+
+	var out, errb bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errb)
+	cmd.SetArgs([]string{"--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("agent-setup --yes err = %v", err)
+	}
+	var yesDelegated bool
+	for _, c := range f.recordedCalls() {
+		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == agentSetupSub && c.Args[1] == "--"+yesFlag {
+			yesDelegated = true
+		}
+	}
+	if !yesDelegated {
+		t.Errorf("cobra --yes must reach the delegation argv (`run-kit agent-setup --yes`), calls: %+v", f.recordedCalls())
+	}
 }
