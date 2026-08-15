@@ -127,10 +127,19 @@ const agentSetupSub = "agent-setup"
 // daemon-stop hint. Named per code-quality.md (no magic strings).
 const runKitToolName = "run-kit"
 
+// agentSetupYesUsage is the cobra usage string for --yes/-y on `shll agent-setup`.
+// Distinct from uninstall.go's yesFlagUsage because the prompt being skipped is not
+// shll's own (the skill placement is promptless by construction) — it belongs to the
+// delegated `run-kit agent-setup`, whose hook-wiring confirmation would otherwise hang
+// an unattended run (a pane TTY with nobody attached is structurally undetectable, so
+// the consent must be explicit, never TTY-derived).
+const agentSetupYesUsage = "pass --yes to the run-kit agent-setup delegation (assume yes — for unattended runs)"
+
 func newAgentSetupCmd() *cobra.Command {
 	var (
 		printMode     bool
 		uninstallMode bool
+		yesMode       bool
 	)
 	cmd := &cobra.Command{
 		Use:   "agent-setup",
@@ -151,16 +160,21 @@ sentinel machinery. A per-path written/updated/unchanged summary is printed.
 Modes:
   shll agent-setup             place the skill at both locations (overwrites; idempotent)
   shll agent-setup --print     print the SKILL.md content and both target paths, write nothing
-  shll agent-setup --uninstall remove both placed skill directories`,
+  shll agent-setup --uninstall remove both placed skill directories
+
+Pass ` + "`--yes`" + ` (or ` + "`-y`" + `) to forward ` + "`--yes`" + ` to the run-kit delegation so its own
+confirmation prompt is skipped — for unattended runs (shll's skill placement itself
+never prompts). With ` + "`--print`" + ` the flag is a no-op (print never delegates).`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runAgentSetup(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), printMode, uninstallMode)
+			return runAgentSetup(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), printMode, uninstallMode, yesMode)
 		},
 	}
 	cmd.Flags().BoolVar(&printMode, "print", false, "print the SKILL.md content and target paths, do not write any file")
 	cmd.Flags().BoolVar(&uninstallMode, "uninstall", false, "remove both placed shll-toolkit skill directories")
+	cmd.Flags().BoolP(yesFlag, yesFlagShorthand, false, agentSetupYesUsage)
 	return cmd
 }
 
@@ -185,7 +199,11 @@ func resolveSkillTargets(env func(string) string) []string {
 //	env           resolves $HOME for skill-path derivation.
 //	printMode     print the content + paths, touch nothing, no delegation.
 //	uninstallMode delete both skill directories, then delegate run-kit's uninstall.
-func runAgentSetup(ctx context.Context, env func(string) string, stdout, stderr io.Writer, printMode, uninstallMode bool) error {
+//	yes           forward --yes to the run-kit delegation (skips its confirmation
+//	              prompt for unattended runs). A no-op under printMode, which never
+//	              delegates — deliberately NOT a usage error, unlike --print+--uninstall,
+//	              because the combination is harmless rather than contradictory.
+func runAgentSetup(ctx context.Context, env func(string) string, stdout, stderr io.Writer, printMode, uninstallMode, yes bool) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -200,9 +218,9 @@ func runAgentSetup(ctx context.Context, env func(string) string, stdout, stderr 
 		return runAgentPrint(targets, stdout, stderr)
 	}
 	if uninstallMode {
-		return runAgentUninstall(ctx, targets, stdout, stderr)
+		return runAgentUninstall(ctx, targets, yes, stdout, stderr)
 	}
-	return runAgentInstall(ctx, targets, stdout, stderr)
+	return runAgentInstall(ctx, targets, yes, stdout, stderr)
 }
 
 // runAgentPrint writes the canonical SKILL.md content followed by the two target paths
@@ -222,7 +240,7 @@ func runAgentPrint(targets []string, stdout, stderr io.Writer) error {
 // runAgentInstall writes the canonical SKILL.md to every target path (creating the
 // skill directory as needed — shll owns it), printing a per-path written/updated/
 // unchanged summary, then delegates run-kit's harness hooks.
-func runAgentInstall(ctx context.Context, targets []string, stdout, stderr io.Writer) error {
+func runAgentInstall(ctx context.Context, targets []string, yes bool, stdout, stderr io.Writer) error {
 	content := []byte(agentSkillContent)
 	anyFailed := false
 	for _, path := range targets {
@@ -233,7 +251,7 @@ func runAgentInstall(ctx context.Context, targets []string, stdout, stderr io.Wr
 
 	// Delegate run-kit's harness hooks (Constitution III/IV). Skip silently when
 	// run-kit is absent (Constitution V).
-	delegateRunKitAgentSetup(ctx, false, stderr)
+	delegateRunKitAgentSetup(ctx, false, yes, stderr)
 
 	if anyFailed {
 		return errSilent
@@ -285,7 +303,7 @@ func placeSkill(path string, content []byte, stdout, stderr io.Writer) error {
 // runAgentUninstall removes each placed skill DIRECTORY (the shll-toolkit dir under
 // each target, not just the SKILL.md file), then delegates `run-kit agent-setup
 // --uninstall`. Removing an shll-owned directory is safe and needs no confirmation.
-func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.Writer) error {
+func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, stderr io.Writer) error {
 	anyFailed := false
 	for _, path := range targets {
 		dir := filepath.Dir(path) // .../shll-toolkit
@@ -302,7 +320,7 @@ func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.
 	}
 
 	// Delegate run-kit's own uninstall.
-	delegateRunKitAgentSetup(ctx, true, stderr)
+	delegateRunKitAgentSetup(ctx, true, yes, stderr)
 
 	if anyFailed {
 		return errSilent
@@ -310,17 +328,23 @@ func runAgentUninstall(ctx context.Context, targets []string, stdout, stderr io.
 	return nil
 }
 
-// delegateRunKitAgentSetup invokes `run-kit agent-setup [--uninstall]` as a foreground
-// subprocess (via internal/proc — Constitution I) for run-kit's dashboard hooks. When
-// run-kit is not on PATH (proc.ErrNotFound) the delegation is skipped silently
-// (Constitution V — graceful degradation); its stdio is inherited (proc.RunForeground
-// always wires the real os.Stdout/os.Stderr) so the user sees run-kit's own output —
-// this helper only writes its own diagnostics to stderr, so it takes no stdout writer.
-// Only the default (install) and --uninstall paths call this; --print never does.
-func delegateRunKitAgentSetup(ctx context.Context, uninstall bool, stderr io.Writer) {
+// delegateRunKitAgentSetup invokes `run-kit agent-setup [--uninstall] [--yes]` as a
+// foreground subprocess (via internal/proc — Constitution I) for run-kit's dashboard
+// hooks. When run-kit is not on PATH (proc.ErrNotFound) the delegation is skipped
+// silently (Constitution V — graceful degradation); its stdio is inherited
+// (proc.RunForeground always wires the real os.Stdout/os.Stderr) so the user sees
+// run-kit's own output — this helper only writes its own diagnostics to stderr, so it
+// takes no stdout writer. yes forwards --yes so run-kit's hook-wiring confirmation is
+// skipped (unattended runs) — appended on both the install and uninstall paths, the
+// delegation being the same helper either way. Only the default (install) and
+// --uninstall paths call this; --print never does.
+func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr io.Writer) {
 	args := []string{agentSetupSub}
 	if uninstall {
 		args = append(args, "--uninstall")
+	}
+	if yes {
+		args = append(args, "--"+yesFlag)
 	}
 	code, err := proc.RunForeground(ctx, runKitToolName, args...)
 	if errors.Is(err, proc.ErrNotFound) {
@@ -383,12 +407,17 @@ const agentSkillRefreshHeader = "Refreshing placed agent skills (shll agent-setu
 // from PATH (a non-brew dev build) is a silent skip (Constitution V — `shll doctor`
 // still surfaces staleness), and any other failure warns and continues without
 // affecting the update's exit code — the tool upgrades are the run's core work.
-func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, stdout, stderr io.Writer) {
+//
+// yes threads `shll update --yes` through to the subprocess (`shll agent-setup --yes`),
+// which in turn forwards it to the run-kit delegation — the explicit consent chain
+// that keeps an unattended `shll update` from hanging on run-kit's hook prompt.
+func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, yes bool, stdout, stderr io.Writer) {
 	if placed, _ := agentSkillPlacementState(env); !placed {
 		return
 	}
 	fmt.Fprintf(stdout, "\n%s\n", agentSkillRefreshHeader)
-	code, err := proc.RunForeground(ctx, shllTargetToken, agentSetupSub)
+	argv := refreshArgv(yes)
+	code, err := proc.RunForeground(ctx, argv[0], argv[1:]...)
 	if errors.Is(err, proc.ErrNotFound) {
 		return // shll not on PATH (dev build) — skip silently.
 	}
@@ -399,4 +428,16 @@ func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, stdo
 	if code != 0 {
 		fmt.Fprintf(stderr, "shll update: agent skill refresh exited %d (continuing)\n", code)
 	}
+}
+
+// refreshArgv is the exact argv the end-of-run agent-skill refresh runs
+// (`shll agent-setup [--yes]`) — the single source of truth shared by the live
+// subprocess above and `shll update`'s dry-run preview line, so the preview can
+// never drift from what the run would do (mirrors update.go's upgradeArgv pattern).
+func refreshArgv(yes bool) []string {
+	argv := []string{shllTargetToken, agentSetupSub}
+	if yes {
+		argv = append(argv, "--"+yesFlag)
+	}
+	return argv
 }

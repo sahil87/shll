@@ -49,7 +49,7 @@ func TestAgentSetup_InstallPlacesBothSkills(t *testing.T) {
 	installFakeRunner(t, runKitAbsentFake())
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
 		t.Fatalf("runAgentSetup err = %v", err)
 	}
 	for _, p := range skillPaths(home) {
@@ -72,7 +72,7 @@ func TestAgentSetup_Idempotent(t *testing.T) {
 	installFakeRunner(t, runKitAbsentFake())
 
 	var o1, e1 bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &o1, &e1, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &o1, &e1, false, false, false); err != nil {
 		t.Fatalf("first run err = %v", err)
 	}
 	paths := skillPaths(home)
@@ -82,7 +82,7 @@ func TestAgentSetup_Idempotent(t *testing.T) {
 	}
 
 	var o2, e2 bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &o2, &e2, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &o2, &e2, false, false, false); err != nil {
 		t.Fatalf("second run err = %v", err)
 	}
 	// Files are byte-identical after the re-run.
@@ -111,7 +111,7 @@ func TestAgentSetup_OverwritesDivergedContent(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
 		t.Fatalf("runAgentSetup err = %v", err)
 	}
 	data, _ := os.ReadFile(claudePath)
@@ -131,7 +131,7 @@ func TestAgentSetup_Print(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, true /*print*/, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, true /*print*/, false, false); err != nil {
 		t.Fatalf("--print err = %v", err)
 	}
 	out := stdout.String()
@@ -167,11 +167,11 @@ func TestAgentSetup_Uninstall(t *testing.T) {
 
 	// Place first, then uninstall.
 	var o1, e1 bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &o1, &e1, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &o1, &e1, false, false, false); err != nil {
 		t.Fatalf("place err = %v", err)
 	}
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, true /*uninstall*/); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, true /*uninstall*/, false); err != nil {
 		t.Fatalf("--uninstall err = %v", err)
 	}
 	// Both skill DIRECTORIES are removed (not just the SKILL.md file).
@@ -188,7 +188,7 @@ func TestAgentSetup_PrintAndUninstallExit2(t *testing.T) {
 	installFakeRunner(t, runKitAbsentFake())
 
 	var stdout, stderr bytes.Buffer
-	err := runAgentSetup(context.Background(), env, &stdout, &stderr, true, true)
+	err := runAgentSetup(context.Background(), env, &stdout, &stderr, true, true, false)
 	var ec *errExitCode
 	if !errors.As(err, &ec) {
 		t.Fatalf("--print --uninstall err = %v, want *errExitCode", err)
@@ -206,7 +206,7 @@ func TestAgentSetup_DelegatesToRunKitWhenPresent(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
 		t.Fatalf("run err = %v", err)
 	}
 	var delegated bool
@@ -225,7 +225,7 @@ func TestAgentSetup_RunKitAbsentSkipsSilently(t *testing.T) {
 	installFakeRunner(t, runKitAbsentFake())
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
 		t.Fatalf("run-kit-absent run err = %v, want nil (delegation skipped silently)", err)
 	}
 	// The skills were still placed.
@@ -251,7 +251,7 @@ func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
 		t.Fatalf("a failed run-kit delegation must not fail the placement, err = %v", err)
 	}
 	// Placement is the core work — both skills still land.
@@ -272,7 +272,7 @@ func TestAgentSetup_UninstallDelegatesUninstall(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, true /*uninstall*/); err != nil {
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, true /*uninstall*/, false); err != nil {
 		t.Fatalf("run err = %v", err)
 	}
 	var delegatedUninstall bool
@@ -491,5 +491,85 @@ func TestAgentSetup_FlagsWiredThroughCobra(t *testing.T) {
 		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("--print via cobra must write nothing, but %s was created", p)
 		}
+	}
+}
+
+// --- --yes forwarding to the run-kit delegation (R1/R2) -----------------------
+
+func TestAgentSetup_YesForwardsToDelegation(t *testing.T) {
+	env, _ := agentHomeEnv(t)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{ExitCode: 0} }}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, true /*yes*/); err != nil {
+		t.Fatalf("run err = %v", err)
+	}
+	var yesDelegated bool
+	for _, c := range f.recordedCalls() {
+		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == agentSetupSub && c.Args[1] == "--"+yesFlag {
+			yesDelegated = true
+		}
+	}
+	if !yesDelegated {
+		t.Errorf("expected a `run-kit agent-setup --yes` delegation, calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestAgentSetup_YesRidesUninstallDelegation(t *testing.T) {
+	env, _ := agentHomeEnv(t)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{ExitCode: 0} }}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, true /*uninstall*/, true /*yes*/); err != nil {
+		t.Fatalf("run err = %v", err)
+	}
+	var yesDelegated bool
+	for _, c := range f.recordedCalls() {
+		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == agentSetupSub && c.Args[1] == "--uninstall" && c.Args[2] == "--"+yesFlag {
+			yesDelegated = true
+		}
+	}
+	if !yesDelegated {
+		t.Errorf("expected a `run-kit agent-setup --uninstall --yes` delegation, calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestAgentSetup_PrintWithYesIsNoOp(t *testing.T) {
+	env, home := agentHomeEnv(t)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{ExitCode: 0} }}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	// --yes with --print is deliberately NOT a usage error (unlike --print+--uninstall):
+	// print never delegates, so there is no prompt for the flag to skip.
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, true /*print*/, false, true /*yes*/); err != nil {
+		t.Fatalf("--print --yes must be a harmless no-op, err = %v", err)
+	}
+	if !strings.HasPrefix(stdout.String(), agentSkillContent) {
+		t.Errorf("--print --yes must still print the canonical content, got:\n%s", stdout.String())
+	}
+	for _, p := range skillPaths(home) {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("--print --yes must write nothing, but %s was created", p)
+		}
+	}
+	if len(f.recordedCalls()) != 0 {
+		t.Errorf("--print --yes must not delegate, calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestAgentSetup_YesFlagWiredThroughCobra(t *testing.T) {
+	cmd := newAgentSetupCmd()
+	fl := cmd.Flags().Lookup(yesFlag)
+	if fl == nil {
+		t.Fatal("agent-setup must register a --yes flag")
+	}
+	if fl.Shorthand != yesFlagShorthand {
+		t.Errorf("--yes shorthand = %q, want %q", fl.Shorthand, yesFlagShorthand)
+	}
+	if fl.Usage != agentSetupYesUsage {
+		t.Errorf("--yes usage = %q, want the agent-setup-specific string %q", fl.Usage, agentSetupYesUsage)
 	}
 }
