@@ -40,10 +40,17 @@ const shllSelfLabel = "shll (self)"
 // the dry-run empty case so both read identically. Named per code-quality.md.
 const noToolsInstalledMsg = "No shll tools installed."
 
-// updatePreviewSkillRefreshLine is the dry-run preview line for the conditional
+// updatePreviewSkillRefreshFmt is the dry-run preview line for the conditional
 // end-of-run agent-skill refresh (printed only when a placement exists, mirroring
-// the live run's guard). Named per code-quality.md (no magic strings).
-const updatePreviewSkillRefreshLine = "Then: shll agent-setup (refresh placed agent skills)"
+// the live run's guard). The %s carries the exact refresh argv from refreshArgv —
+// `shll agent-setup` or `shll agent-setup --yes` — so the preview reflects the flag
+// (an inaccurate preview is worse than none). Named per code-quality.md.
+const updatePreviewSkillRefreshFmt = "Then: %s (refresh placed agent skills)"
+
+// updateYesUsage is the cobra usage string for --yes/-y on `shll update`. The flag's
+// single consumption point is the end-of-run agent-setup refresh (per-tool delegated
+// updates are already prompt-free by standard, and their argv stays fixed).
+const updateYesUsage = "forward --yes to the end-of-run shll agent-setup refresh (assume yes — for unattended runs)"
 
 func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -62,7 +69,10 @@ progress output streams directly to your terminal.
 
 When agent skills were previously placed via ` + "`shll agent-setup`" + `, the run ends by
 re-running ` + "`shll agent-setup`" + ` so the placed skills track the freshly upgraded
-binaries (best-effort; skipped entirely when no placement exists).
+binaries (best-effort; skipped entirely when no placement exists). Pass ` + "`--yes`" + `
+(or ` + "`-y`" + `) to forward ` + "`--yes`" + ` through that refresh into the run-kit delegation,
+skipping its confirmation prompt — for unattended runs (an agent-driven pane, the
+run-kit dashboard's update button). Nothing else about the run prompts.
 
 With no arguments, shll update processes the whole roster as above. Pass one or
 more tool names to update only that subset (valid targets: shll, wt, idea, tu,
@@ -75,10 +85,12 @@ silently skipped).`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool(dryRunFlag)
-			return runUpdate(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, args)
+			yes, _ := cmd.Flags().GetBool(yesFlag)
+			return runUpdate(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, yes, args)
 		},
 	}
 	cmd.Flags().Bool(dryRunFlag, false, dryRunFlagUsage)
+	cmd.Flags().BoolP(yesFlag, yesFlagShorthand, false, updateYesUsage)
 	return cmd
 }
 
@@ -122,7 +134,11 @@ type probeResult struct {
 // env resolves $HOME for the agent-skill placement probe (the conditional
 // end-of-run refresh) — injected so tests never touch the real ~. Production
 // passes os.Getenv.
-func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun bool, args []string) error {
+//
+// yes forwards --yes to the end-of-run agent-setup refresh subprocess (its ONLY
+// consumption point — the per-tool delegated updates and the shll self-upgrade
+// argv are untouched; they are already prompt-free by the update standard).
+func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun, yes bool, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -260,7 +276,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		// (principle №5 — an inaccurate preview is worse than none). Kept out of
 		// the tool rows: the header counts tools, and the refresh is not one.
 		if placed, _ := agentSkillPlacementState(env); placed {
-			fmt.Fprintln(stdout, updatePreviewSkillRefreshLine)
+			fmt.Fprintf(stdout, updatePreviewSkillRefreshFmt+"\n", argvString(refreshArgv(yes)...))
 		}
 		return nil
 	}
@@ -396,7 +412,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 	// agent-setup uses the just-upgraded run-kit. Placement-gated (no unsolicited
 	// writes), best-effort (never changes the exit code), and idempotent — a
 	// no-change run reports each path as "unchanged".
-	refreshPlacedAgentSkills(ctx, env, stdout, stderr)
+	refreshPlacedAgentSkills(ctx, env, yes, stdout, stderr)
 
 	// Summary tail: one line by exit-code counts (Done — N of M / X succeeded,
 	// Y failed) plus the wall-clock run duration. A blank line precedes it so the

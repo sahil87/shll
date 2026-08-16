@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades with two self-heals (unlinked-keg relink, delegation-failure brew-upgrade fallback), exit-code aggregation, the post-upgrade `What changed:` release digest (version capture via probeInstalledVersion, full release bodies rendered inline via the shared `renderReleases` helper), and the `rk` legacy target alias."
+description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades with two self-heals (unlinked-keg relink, delegation-failure brew-upgrade fallback), exit-code aggregation, the post-upgrade `What changed:` release digest, the placement-gated end-of-run agent-skill refresh with its `--yes`/`-y` unattended-run forwarding, and the `rk` legacy target alias."
 ---
 # cli/update
 
@@ -39,7 +39,9 @@ The full happy/unhappy paths, in the order `runUpdate` evaluates them (`src/cmd/
 
    On the delegation path, `upgradeTool` carries two self-heals before giving up on a tool: the **unlinked-keg relink heal** (delegated `update` returns `proc.ErrNotFound` despite the install probe → `brew link <tool>`, print `relinkNoteFmt`, retry the delegation once; a failed link skips the retry) and the **[delegation-failure brew fallback](#delegation-failure-brew-fallback)** (any remaining failure → one direct `brew upgrade <formula>`). Best-effort across the roster: on final per-tool failure, set `anyFailed = true` and `continue` — never abort the loop.
 
-9. **Summary tail, then the digest.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation)), then the **"What changed:" digest** for the recorded bumps (r01z — see [version capture](#version-capture--the-what-changed-digest)), then, if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). Both the tail and the digest are presentation-only and do **not** influence the exit code.
+9. **End-of-run agent-skill refresh (placement-gated).** After the roster loop and before the tail, `refreshPlacedAgentSkills(ctx, env, yes, stdout, stderr)` (`agent_setup.go`) re-runs `shll agent-setup` as a **subprocess** — see [the refresh + `--yes`](#end-of-run-agent-skill-refresh--yes) below. Skipped entirely when no prior `shll agent-setup` placement exists; best-effort (never changes the exit code).
+
+10. **Summary tail, then the digest.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation)), then the **"What changed:" digest** for the recorded bumps (r01z — see [version capture](#version-capture--the-what-changed-digest)), then, if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). Both the tail and the digest are presentation-only and do **not** influence the exit code.
 
 > **Slice-aliasing guard.** The roster's `Update` argvs are shared, read-only slices. `upgradeTool` appends the flag via `appendArg` (`src/cmd/shll/update.go:236`), which always allocates a fresh slice (`make` + `copy`) so a naive `append` can never write into the shared backing array when spare capacity exists. The same helper builds the `--help` probe argv.
 
@@ -296,6 +298,14 @@ Would update 7 tools (brew metadata refresh first):
 **Brew-missing precondition unchanged.** `--dry-run` does not relax the `hasBrew` bail — a missing brew still writes `brewMissingHint` to stderr and exits 1 (the brew-missing check at `update.go:92` precedes the dry-run branch).
 
 Exit code: always 0 in dry-run (no writes, nothing can fail) except the brew-missing precondition (exit 1).
+
+## End-of-run agent-skill refresh + `--yes`
+
+When a prior `shll agent-setup` placement exists (`agentSkillPlacementState(env)` — ANY skill target file present under `$HOME`), `shll update` ends the write phase by re-running `shll agent-setup` as a **subprocess** resolved from PATH (`refreshPlacedAgentSkills` in `agent_setup.go`, header `Refreshing placed agent skills (shll agent-setup)…`). A subprocess, not an in-process call, because after a brew self-upgrade the RUNNING binary still holds the OLD embedded skill content — only the freshly installed binary on PATH can place the new bytes. It runs AFTER the roster loop so the run-kit hook delegation inside agent-setup uses the just-upgraded run-kit. No placement → no unsolicited writes (silent skip); shll off PATH (dev build) → silent skip; any other failure warns `(continuing)` and never changes the exit code. Pinned by `TestUpdate_RefreshesPlacedAgentSkills`, `TestUpdate_NoPlacementSkipsRefresh`, `TestUpdate_RefreshFailureWarnsAndContinues`, `TestUpdate_RefreshShllNotOnPathSkipsSilently`.
+
+**`--yes`/`-y` (3ovi).** `shll update` accepts the shared `yesFlag`/`yesFlagShorthand` flag (usage string `updateYesUsage`), threaded as `yes bool` through `runUpdate`. Its **only consumption point** is this refresh: `refreshArgv(yes)` (`agent_setup.go`) builds `shll agent-setup [--yes]`, so `shll update --yes` makes the refresh forward `--yes` onward to the `run-kit agent-setup` delegation — the unattended-run consent chain that keeps run-kit's `Write these changes? [y/N]` hook prompt from hanging a nobody-attached pane (see [cli/agent-setup §run-kit delegation](/cli/agent-setup.md#run-kit-delegation) and its explicit-plumbing Design Decision). The per-tool delegated `<tool> update [--skip-brew-update]` argvs and the shll self-upgrade `brew upgrade` are **untouched** by the flag — they are already bound prompt-free by the update standard (`docs/site/standards/update.md` § Prompt-free, unconditionally). `refreshArgv` is the single source of truth shared by the live subprocess and the dry-run preview line `Then: %s (refresh placed agent skills)` (`updatePreviewSkillRefreshFmt`) — under `--yes --dry-run` the preview reads `Then: shll agent-setup --yes (refresh placed agent skills)`; the preview prints under the same placement gate as the live refresh. Pinned by `TestUpdate_YesThreadsIntoRefresh`, `TestUpdate_YesLeavesToolArgvsUntouched`, `TestUpdate_DryRunPreviewsYesRefresh` (+ the no-flag `TestUpdate_DryRunPreviewsSkillRefresh` / `TestUpdate_DryRunNoPlacementOmitsRefreshLine`), and `TestUpdate_YesFlagWiredThroughCobra` (flag wiring + the `--skip-brew-update` help literal intact).
+
+The downstream consumer is run-kit's dashboard update button (`handleShllUpdate` in run-kit's `app/backend/api/update.go`), which appends `--yes` to its unattended `shll update` job argv — run-kit-repo change, out of shll's scope.
 
 ## Leaves-first Roster order
 
