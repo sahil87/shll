@@ -211,12 +211,12 @@ func TestAgentSetup_DelegatesToRunKitWhenPresent(t *testing.T) {
 	}
 	var delegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 1 && c.Args[0] == agentSetupSub {
+		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == "agent" && c.Args[1] == "setup" {
 			delegated = true
 		}
 	}
 	if !delegated {
-		t.Errorf("expected a `run-kit agent-setup` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `run-kit agent setup` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -235,7 +235,7 @@ func TestAgentSetup_RunKitAbsentSkipsSilently(t *testing.T) {
 		}
 	}
 	// The absent-run-kit case must not surface a delegation error.
-	if strings.Contains(stderr.String(), "run-kit agent-setup:") {
+	if strings.Contains(stderr.String(), "run-kit agent setup:") {
 		t.Errorf("run-kit absent must be a silent skip, but stderr carried a delegation error: %q", stderr.String())
 	}
 }
@@ -261,7 +261,7 @@ func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
 		}
 	}
 	// The non-zero exit is surfaced as a warn-and-continue, not swallowed.
-	if want := "run-kit agent-setup exited 3 (continuing)"; !strings.Contains(stderr.String(), want) {
+	if want := "run-kit agent setup exited 3 (continuing)"; !strings.Contains(stderr.String(), want) {
 		t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
 	}
 }
@@ -277,12 +277,12 @@ func TestAgentSetup_UninstallDelegatesUninstall(t *testing.T) {
 	}
 	var delegatedUninstall bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == agentSetupSub && c.Args[1] == "--uninstall" {
+		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--uninstall" {
 			delegatedUninstall = true
 		}
 	}
 	if !delegatedUninstall {
-		t.Errorf("expected a `run-kit agent-setup --uninstall` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `run-kit agent setup --uninstall` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -507,12 +507,12 @@ func TestAgentSetup_YesForwardsToDelegation(t *testing.T) {
 	}
 	var yesDelegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == agentSetupSub && c.Args[1] == "--"+yesFlag {
+		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--"+yesFlag {
 			yesDelegated = true
 		}
 	}
 	if !yesDelegated {
-		t.Errorf("expected a `run-kit agent-setup --yes` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `run-kit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -527,12 +527,12 @@ func TestAgentSetup_YesRidesUninstallDelegation(t *testing.T) {
 	}
 	var yesDelegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == agentSetupSub && c.Args[1] == "--uninstall" && c.Args[2] == "--"+yesFlag {
+		if c.Name == runKitToolName && len(c.Args) == 4 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--uninstall" && c.Args[3] == "--"+yesFlag {
 			yesDelegated = true
 		}
 	}
 	if !yesDelegated {
-		t.Errorf("expected a `run-kit agent-setup --uninstall --yes` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `run-kit agent setup --uninstall --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -590,11 +590,11 @@ func TestAgentSetup_YesFlagWiredThroughCobra(t *testing.T) {
 	}
 	var yesDelegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == agentSetupSub && c.Args[1] == "--"+yesFlag {
+		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--"+yesFlag {
 			yesDelegated = true
 		}
 	}
 	if !yesDelegated {
-		t.Errorf("cobra --yes must reach the delegation argv (`run-kit agent-setup --yes`), calls: %+v", f.recordedCalls())
+		t.Errorf("cobra --yes must reach the delegation argv (`run-kit agent setup --yes`), calls: %+v", f.recordedCalls())
 	}
 }

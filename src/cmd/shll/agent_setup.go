@@ -17,7 +17,7 @@ import (
 
 // agent_setup.go implements `shll agent-setup` — mechanically place ONE thin Agent
 // Skill (the toolkit bootstrap) into the harnesses' global skills directories, then
-// delegate run-kit's dashboard-hook wiring to `run-kit agent-setup` (Constitution
+// delegate run-kit's dashboard-hook wiring to `run-kit agent setup` (Constitution
 // III/IV — compose, don't absorb). It graduates the cross-toolkit harness wiring from
 // run-kit (a leaf tool) to shll (the manager).
 //
@@ -116,13 +116,24 @@ var skillTargetRelDirs = []string{
 	".claude/skills",
 }
 
-// agentSetupSub is the toolkit-standard `agent-setup` subcommand name, shared by the
-// run-kit hook-wiring delegation and by `shll update`'s self-refresh subprocess
-// (refreshPlacedAgentSkills). Named per code-quality.md (no magic strings).
+// agentSetupSub is shll's OWN `agent-setup` subcommand name, used by the cobra `Use:`
+// line and by `shll update`'s self-refresh subprocess (refreshPlacedAgentSkills →
+// refreshArgv). The run-kit delegation no longer shares it — run-kit renamed its
+// command family to the two-token `agent setup` (runKitAgentSetupArgs). Named per
+// code-quality.md (no magic strings).
 const agentSetupSub = "agent-setup"
 
+// runKitAgentSetupArgs is the run-kit hook-wiring command family in its post-rename
+// two-token spelling `run-kit agent setup` (run-kit PR #620; first shipped in
+// v3.16.23). The prior `run-kit agent-setup` spelling is deprecated upstream and
+// prints a deprecation warning on every delegation. Deliberately no version probe and
+// no old-spelling fallback: the delegation is a best-effort adjunct (warn-and-continue
+// below), and `shll update`'s refresh runs after the roster loop has just upgraded
+// run-kit, so the new family exists by construction there.
+var runKitAgentSetupArgs = []string{"agent", "setup"}
+
 // runKitToolName is the run-kit binary name — the subprocess target for
-// delegateRunKitAgentSetup's `run-kit agent-setup` delegation (Constitution III/IV —
+// delegateRunKitAgentSetup's `run-kit agent setup` delegation (Constitution III/IV —
 // compose, don't absorb), and matched against Roster entry names by uninstall.go's
 // daemon-stop hint. Named per code-quality.md (no magic strings).
 const runKitToolName = "run-kit"
@@ -130,10 +141,10 @@ const runKitToolName = "run-kit"
 // agentSetupYesUsage is the cobra usage string for --yes/-y on `shll agent-setup`.
 // Distinct from uninstall.go's yesFlagUsage because the prompt being skipped is not
 // shll's own (the skill placement is promptless by construction) — it belongs to the
-// delegated `run-kit agent-setup`, whose hook-wiring confirmation would otherwise hang
+// delegated `run-kit agent setup`, whose hook-wiring confirmation would otherwise hang
 // an unattended run (a pane TTY with nobody attached is structurally undetectable, so
 // the consent must be explicit, never TTY-derived).
-const agentSetupYesUsage = "pass --yes to the run-kit agent-setup delegation (assume yes — for unattended runs)"
+const agentSetupYesUsage = "pass --yes to the run-kit agent setup delegation (assume yes — for unattended runs)"
 
 func newAgentSetupCmd() *cobra.Command {
 	var (
@@ -146,7 +157,7 @@ func newAgentSetupCmd() *cobra.Command {
 		Short: "place the shll toolkit skill for agent harnesses",
 		Long: `Mechanically place one thin Agent Skill — the shll toolkit bootstrap — into the
 agent harnesses' global skills directories, then delegate run-kit's dashboard-hook
-wiring to ` + "`run-kit agent-setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
+wiring to ` + "`run-kit agent setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
 driving a toolkit tool.
 
 The skill is written to exactly two global locations (covering all four harnesses):
@@ -301,7 +312,7 @@ func placeSkill(path string, content []byte, stdout, stderr io.Writer) error {
 }
 
 // runAgentUninstall removes each placed skill DIRECTORY (the shll-toolkit dir under
-// each target, not just the SKILL.md file), then delegates `run-kit agent-setup
+// each target, not just the SKILL.md file), then delegates `run-kit agent setup
 // --uninstall`. Removing an shll-owned directory is safe and needs no confirmation.
 func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, stderr io.Writer) error {
 	anyFailed := false
@@ -328,7 +339,7 @@ func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, 
 	return nil
 }
 
-// delegateRunKitAgentSetup invokes `run-kit agent-setup [--uninstall] [--yes]` as a
+// delegateRunKitAgentSetup invokes `run-kit agent setup [--uninstall] [--yes]` as a
 // foreground subprocess (via internal/proc — Constitution I) for run-kit's dashboard
 // hooks. When run-kit is not on PATH (proc.ErrNotFound) the delegation is skipped
 // silently (Constitution V — graceful degradation); its stdio is inherited
@@ -337,9 +348,11 @@ func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, 
 // takes no stdout writer. yes forwards --yes so run-kit's hook-wiring confirmation is
 // skipped (unattended runs) — appended on both the install and uninstall paths, the
 // delegation being the same helper either way. Only the default (install) and
-// --uninstall paths call this; --print never does.
+// --uninstall paths call this; --print never does. An installed run-kit older than
+// v3.16.23 lacks the `agent` family and exits non-zero — that lands on the same
+// warn-and-continue path as any other delegation failure (see runKitAgentSetupArgs).
 func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr io.Writer) {
-	args := []string{agentSetupSub}
+	args := append([]string{}, runKitAgentSetupArgs...)
 	if uninstall {
 		args = append(args, "--uninstall")
 	}
@@ -354,14 +367,14 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr i
 		// A real delegation error (not "absent") is worth surfacing, but it does not
 		// fail the skill placement shll already did — placement is agent-setup's core
 		// work; run-kit hooks are the optional adjunct.
-		fmt.Fprintf(stderr, "%s: run-kit agent-setup: %v (continuing)\n", agentSetupErrPrefix, err)
+		fmt.Fprintf(stderr, "%s: run-kit agent setup: %v (continuing)\n", agentSetupErrPrefix, err)
 		return
 	}
 	if code != 0 {
 		// RunForeground returns err == nil when the child starts and exits non-zero
 		// (the code carries the outcome). Same adjunct rule: warn, never fail the
 		// placement (mirrors install's delegated-trust-step precedent).
-		fmt.Fprintf(stderr, "%s: run-kit agent-setup exited %d (continuing)\n", agentSetupErrPrefix, code)
+		fmt.Fprintf(stderr, "%s: run-kit agent setup exited %d (continuing)\n", agentSetupErrPrefix, code)
 	}
 }
 

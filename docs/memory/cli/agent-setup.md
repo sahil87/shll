@@ -1,10 +1,10 @@
 ---
 type: memory
-description: "`shll agent-setup` — places ONE thin `shll-toolkit` Agent Skill at `~/.agents/skills/` + `~/.claude/skills/`, then delegates run-kit's dashboard hooks to `run-kit agent-setup` (`--yes`/`-y` forwards `--yes` to that delegation for unattended runs). Idempotent (write/overwrite/delete, no sentinel); `--print`/`--uninstall` modes. SKILL.md is a Go constant; `agentSkillDescription()` builds the frontmatter from the Roster: `SkillHint` clauses plus each `ProactiveHint`."
+description: "`shll agent-setup` — places ONE thin `shll-toolkit` Agent Skill at `~/.agents/skills/` + `~/.claude/skills/`, then delegates run-kit's dashboard hooks to `run-kit agent setup` (min rk v3.16.23; `--yes`/`-y` forwards `--yes` to that delegation for unattended runs). Idempotent (write/overwrite/delete, no sentinel); `--print`/`--uninstall` modes. SKILL.md is a Go constant; `agentSkillDescription()` builds the frontmatter from the Roster: `SkillHint` clauses plus each `ProactiveHint`."
 ---
 # cli/agent-setup
 
-`shll agent-setup` — mechanically places one thin Agent Skill (the toolkit bootstrap) into the agent harnesses' global skills directories, then delegates run-kit's dashboard-hook wiring to `run-kit agent-setup`. Cross-toolkit harness wiring belongs in shll (the manager), not run-kit (a leaf tool); the composition half of the design is [cli/skill](/cli/skill.md). (agst)
+`shll agent-setup` — mechanically places one thin Agent Skill (the toolkit bootstrap) into the agent harnesses' global skills directories, then delegates run-kit's dashboard-hook wiring to `run-kit agent setup`. Cross-toolkit harness wiring belongs in shll (the manager), not run-kit (a leaf tool); the composition half of the design is [cli/skill](/cli/skill.md). (agst)
 
 Source: `src/cmd/shll/agent_setup.go` (+ `agent_setup_test.go`).
 
@@ -27,10 +27,16 @@ The skill directories are shll-owned, so:
 *Introduced by*: `260718-agst-agent-setup-skill-commands`
 
 ### Explicit `--yes` plumbing, not TTY detection
-**Decision**: Unattended-run consent rides an explicit `--yes` flag threaded through the chain `shll update --yes` → `shll agent-setup --yes` → `run-kit agent-setup --yes`; shll never infers attendance from the terminal.
+**Decision**: Unattended-run consent rides an explicit `--yes` flag threaded through the chain `shll update --yes` → `shll agent-setup --yes` → `run-kit agent setup --yes`; shll never infers attendance from the terminal.
 **Why**: The motivating failure is a pane-TTY-but-unattended session — run-kit's dashboard update button runs `shll update` in an rk-jobs tmux window, where stdin IS a TTY, so run-kit's non-TTY `--yes` refusal never triggers and its hook prompt hangs forever with nobody attached. That state is structurally undetectable from inside the process; only the caller knows nobody is watching, so the caller must say so.
 **Rejected**: TTY detection (fails the motivating case exactly); making `shll update`'s agent-setup refresh unconditionally `--yes` (removes user consent for run-kit's hook writes on attended runs).
 *Introduced by*: 260815-3ovi-yes-flag-update-agent-setup
+
+### No probe, no old-spelling fallback for rk < v3.16.23
+**Decision**: The delegation invokes the two-token `run-kit agent setup` family plainly — no version probe, no retry with the deprecated `run-kit agent-setup` spelling.
+**Why**: The delegation is already a best-effort adjunct (ErrNotFound → silent skip; other failures → `(continuing)` warning, never failing the placement). The dominant exposure path — `shll update`'s end-of-run refresh — runs after the roster loop has just upgraded run-kit, so the new family exists by construction; fresh machines get latest rk from brew. A blind retry-on-nonzero cannot distinguish "unknown command" from a genuine setup failure and would re-run a failing (possibly prompting) setup twice.
+**Rejected**: Old-spelling fallback retry (indistinguishable failure signal, double-runs real failures); a `--help` capability probe per run (an extra subprocess to protect a one-day-old version boundary); a version-parse gate (same cost, more parsing).
+*Introduced by*: 260816-iags-rk-agent-setup-spelling
 
 ### Design Decision: the `ProactiveHint` does three jobs
 **Decision**: run-kit's `ProactiveHint` is a two-sentence value doing three load-bearing jobs. Sentence one carries agent-proactive trigger vocabulary (visual display + proxy a local http port + notify). Sentence two is a counter-instruction with two collision surfaces: (b) local `open`/`xdg-open`/localhost URLs may never reach a remote-dashboard user, so read `shll skill run-kit` before opening any file or local port in a browser; and (c) publishing to a hosted artifact page (e.g. claude.ai) forces a remote-dashboard user off the dashboard, so the same recipe applies before publishing an artifact or hosted page to show the user something.
@@ -83,8 +89,8 @@ Use when driving any shll toolkit CLI or shll itself — {clause, …}. {Proacti
 
 - **`--print --uninstall` together** → `errExitCode{code: usageExitCode}` (exit 2) — mutually exclusive, checked first.
 - **`--print`** (`runAgentPrint`) → writes `agentSkillContent` then a `Target paths:` block listing both resolved absolute paths, and **modifies nothing**. **No run-kit delegation.**
-- **`--uninstall`** (`runAgentUninstall`) → `os.RemoveAll` on each `shll-toolkit` **directory** (`filepath.Dir(path)`, not just the SKILL.md file); reports `removed`/`absent` per dir; then delegates `run-kit agent-setup --uninstall`.
-- **default** (`runAgentInstall`) → `placeSkill` per target, then delegates `run-kit agent-setup`.
+- **`--uninstall`** (`runAgentUninstall`) → `os.RemoveAll` on each `shll-toolkit` **directory** (`filepath.Dir(path)`, not just the SKILL.md file); reports `removed`/`absent` per dir; then delegates `run-kit agent setup --uninstall`.
+- **default** (`runAgentInstall`) → `placeSkill` per target, then delegates `run-kit agent setup`.
 - **`--yes`/`-y`** (registered via the shared `yesFlag`/`yesFlagShorthand` constants from `uninstall.go`, with its own `agentSetupYesUsage` string) → forwards `--yes` to the run-kit delegation on both the install and `--uninstall` paths (3ovi). **`--print --yes` is a harmless no-op, NOT a usage error** — print never delegates, so there is no prompt to skip (deliberate contrast with `--print`+`--uninstall`, which are contradictory modes).
 
 ### `placeSkill` — the three-state per-path summary
@@ -95,11 +101,11 @@ Use when driving any shll toolkit CLI or shll itself — {clause, …}. {Proacti
 - **`unchanged`** — file existed and already held the canonical bytes; **no write is performed** (idempotent re-run).
 - **`updated`** — file existed with different bytes; overwritten.
 
-The compare uses a tiny local `bytesEqual` helper (the file's footprint is file-I/O-only — it avoids importing `bytes` for one call). A non-not-exist read error (permission, etc.) surfaces to stderr and is skipped (sets `anyFailed`). `anyFailed` on any target → `errSilent` (exit 1) after the loop.
+The compare uses `bytes.Equal` on the read content. A non-not-exist read error (permission, etc.) surfaces to stderr and is skipped (sets `anyFailed`). `anyFailed` on any target → `errSilent` (exit 1) after the loop.
 
 ### run-kit delegation
 
-`delegateRunKitAgentSetup(ctx, uninstall, yes bool, stderr)` invokes `run-kit agent-setup [--uninstall] [--yes]` as a **foreground** subprocess via `proc.RunForeground` (Constitution I; `agentSetupSub = "agent-setup"`, binary name is `runKitToolName = "run-kit"`, **reused from `install.go`** — its only remaining consumer after the nudge graduation, see below):
+`delegateRunKitAgentSetup(ctx, uninstall, yes bool, stderr)` invokes `run-kit agent setup [--uninstall] [--yes]` as a **foreground** subprocess via `proc.RunForeground` (Constitution I). The command family is the two-token argv prefix `runKitAgentSetupArgs = []string{"agent", "setup"}` (minimum run-kit v3.16.23, per run-kit PR #620) against the binary `runKitToolName = "run-kit"`. `agentSetupSub = "agent-setup"` is solely shll's OWN subcommand token (the cobra `Use:` line and `refreshArgv`'s `shll agent-setup` self-invocation) — the delegation does not use it. An installed run-kit older than v3.16.23 lacks the `agent` family and exits non-zero, landing on the ordinary warn-and-continue path below (see the no-probe Design Decision):
 
 - **`yes` appends `--yes`** to the delegated argv (after `--uninstall` when both apply), skipping run-kit's `Write these changes? [y/N]` hook-wiring confirmation — the unattended-run consent chain (3ovi; see the [Design Decision](#explicit---yes-plumbing-not-tty-detection) below).
 - **run-kit absent** (`proc.ErrNotFound`) → skip silently (Constitution V).
@@ -120,11 +126,11 @@ Two surfaces point users at `shll agent-setup` (agst):
 
 ## Constitution fit
 
-I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; skill placement is plain `os` file I/O in shll-owned directories. II — stateless (no tracking of whether agent-setup ran; re-run re-derives via read-then-compare). III/IV — delegates run-kit's hooks by *pointing at* `run-kit agent-setup`, never absorbing them; run-kit agent-setup keeps working standalone. V — run-kit absent → silent skip. VII — justified above.
+I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; skill placement is plain `os` file I/O in shll-owned directories. II — stateless (no tracking of whether agent-setup ran; re-run re-derives via read-then-compare). III/IV — delegates run-kit's hooks by *pointing at* `run-kit agent setup`, never absorbing them; run-kit's own command keeps working standalone. V — run-kit absent → silent skip. VII — justified above.
 
 ## Test seam
 
-`agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`. Coverage grounds R6–R9: both files written with canonical content and a per-path summary; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == shll-toolkit == dir name`. The `--yes` forwarding (3ovi) is pinned by `TestAgentSetup_YesForwardsToDelegation` (install argv `agent-setup --yes`), `TestAgentSetup_YesRidesUninstallDelegation` (`agent-setup --uninstall --yes`), `TestAgentSetup_PrintWithYesIsNoOp` (no write, no delegation, exit 0), and `TestAgentSetup_YesFlagWiredThroughCobra` (flag name/shorthand/usage-string wiring).
+`agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`. Coverage grounds R6–R9: both files written with canonical content and a per-path summary; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == shll-toolkit == dir name`. The `--yes` forwarding (3ovi) is pinned by `TestAgentSetup_YesForwardsToDelegation` (install argv `agent setup --yes`), `TestAgentSetup_YesRidesUninstallDelegation` (`agent setup --uninstall --yes`), `TestAgentSetup_PrintWithYesIsNoOp` (no write, no delegation, exit 0), and `TestAgentSetup_YesFlagWiredThroughCobra` (flag name/shorthand/usage-string wiring). The delegation-argv assertions pin the two-token literals `"agent", "setup"` (not the constant) so a regression in `runKitAgentSetupArgs` is caught.
 
 Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (every tool declares a `SkillHint`, each rendered as a `hint (name)` clause), `TestRosterProactiveHint` (exactly run-kit carries a `ProactiveHint`, rendered verbatim after the clauses and before the two-step pointer — the sprawl guard — plus the three load-bearing fragments `"to proxy a local http port"`, `"before opening any file or local port in a browser, read"`, and `"publishing an artifact"`, so a rewording cannot silently drop the proxy vocabulary, the local-browser counter-instruction, or the hosted-artifact counter-instruction), `TestAgentSetup_DescriptionSingleLine` (single-line, `: `-free), and `TestAgentSetup_BodyTeachesTwoStepAndStandards` (body teaches the two-step + `shll standards`, no stanza/sentinel wording).
 
