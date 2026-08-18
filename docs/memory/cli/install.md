@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run. Ends with the “Next steps” nudge (gated shell-setup + unconditional `shll agent-setup`). Also the `exec` target of the `curl … | sh` bootstrap, whose arg pass-through is public surface."
+description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run. Ends with the “Next steps” nudge (gated shell-setup + unconditional `shll agent-setup`). Also the `exec` target of the `curl … | sh` bootstrap — the script owns the pre-brew phase (preflight + headless Homebrew bootstrap); this command owns everything post-brew, and the arg pass-through is public surface."
 ---
 # cli/install
 
@@ -10,7 +10,7 @@ Source: `src/cmd/shll/install.go`, with shared brew helpers in `src/cmd/shll/bre
 
 ## The `curl | sh` upstream entry point
 
-`shll install` is also the delegation target of the copy-paste install one-liner. The bootstrap script `scripts/install.sh` (served at `shll.ai/install`) requires Homebrew, trust-then-installs `shll` itself only if it is missing, then ends with `exec shll install "$@"` — forwarding every arg verbatim as the install subset:
+`shll install` is also the delegation target of the copy-paste install one-liner. The bootstrap script `scripts/install.sh` (served at `shll.ai/install`) owns the whole pre-brew phase — it preflights git/CLT, curl, and tmux (consolidated report, per-platform fix commands), bootstraps Homebrew headlessly (`NONINTERACTIVE=1` official installer) when brew is absent and threads the absolute `$BREW` path plus shellenv — then trust-then-installs `shll` itself only if it is missing, and ends with `exec shll install "$@"` — forwarding every arg verbatim as the install subset:
 
 ```sh
 curl -fsSL https://shll.ai/install | sh                # → exec shll install        (whole roster)
@@ -20,7 +20,7 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt   # → exec shll install h
 Two implications for `shll install`'s contract:
 
 - **The arg pass-through is now part of `shll install`'s public surface.** The [positional tool-name subset args](#positional-tool-name-args--subset-targeting) are what a piped `sh -s -- <tools…>` reaches. The bootstrap adds no filtering of its own — it hands the args straight to `runInstall`, which validates them (`resolveTargets`, `allowShll=false`; unknown/`shll` targets still hard-error, the alias `rk` still resolves to `run-kit`).
-- **The script owns only the shll-self bootstrap; `shll install` owns everything else.** Roster knowledge, subset filtering, per-formula trust for the other six tools, and graceful skips all live here, not in the script (Constitution III). The script's sole job is the circularity `shll install` cannot solve — trusting/installing `shll`'s own formula before that binary exists. See [ci/install-bootstrap](/ci/install-bootstrap.md) for the script contract and the shll.ai raw-fetch URL contract.
+- **The script owns the pre-brew phase; `shll install` owns everything post-brew.** Preflight, the Homebrew bootstrap, and the shll-self trust/install live in the script; roster knowledge, subset filtering, per-formula trust for the other six tools, and graceful skips all live here, not in the script (Constitution III). The script's job is the phase `shll install` cannot reach — the user cannot have `shll` without Homebrew having worked. See [ci/install-bootstrap](/ci/install-bootstrap.md) for the script contract and the shll.ai raw-fetch URL contract.
 
 ## Behavior contract
 
