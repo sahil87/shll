@@ -80,7 +80,7 @@ preflight() {
     if [ "$curl_ok" -eq 0 ]; then
         case "$os" in
             Darwin)
-                echo "  - curl — fix: install curl (it ships with macOS; a missing curl means a broken PATH)" >&2
+                echo "  - curl — fix: export PATH=\"/usr/bin:\$PATH\"   (curl ships at /usr/bin/curl on macOS; a missing curl means a broken PATH)" >&2
                 ;;
             *)
                 echo "  - curl — fix: sudo apt-get install -y curl   (Debian/Ubuntu; use your package manager otherwise)" >&2
@@ -138,7 +138,18 @@ main() {
     bootstrapped=0
     if ! command -v brew >/dev/null 2>&1; then
         echo "Homebrew not found — installing it with the official installer (NONINTERACTIVE=1)..."
-        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # Download first, then execute: an inline /bin/bash -c "$(curl ...)"
+        # would run an empty string when curl fails (network/SSL/DNS), a
+        # silent no-op that still marks the bootstrap done.
+        brew_installer=$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh) || {
+            echo "Failed to download the Homebrew installer — check your network and re-run this script." >&2
+            exit 1
+        }
+        if [ -z "$brew_installer" ]; then
+            echo "Downloaded Homebrew installer is empty — refusing to run it; re-run this script." >&2
+            exit 1
+        fi
+        NONINTERACTIVE=1 /bin/bash -c "$brew_installer"
         bootstrapped=1
     fi
 
