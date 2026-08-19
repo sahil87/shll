@@ -30,7 +30,7 @@ eval "$(/opt/homebrew/bin/brew shellenv)"   # Apple Silicon; /usr/local/bin/brew
 
 An existing Homebrew is used as-is (≥ 6.0.4 — on 6.0.0–6.0.3, run `brew update` first), and the script is idempotent — safe to re-run.
 
-Because the script ends in `exec shll install "$@"`, every bootstrap run finishes with the machine **fully wired** — the shell integration and agent-harness steps below run automatically at the end of `shll install`, and its opt-out flags ride the same argument passthrough (`curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup`).
+Because the script ends in `exec shll install "$@"`, the shell integration and agent-harness steps below run automatically at the end of every bootstrap — **best-effort**: a step that fails warns and prints its manual nudge instead, never failing the install — and the opt-out flags ride the same argument passthrough (`curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup`).
 
 > **A failed download exits 0.** If the download itself fails, `curl -fsSL … | sh` still **exits 0 silently** — `sh` reads the empty input and succeeds — so an `&&`-chained next step proceeds as if the install worked. Curl's error does appear on stderr (that's the `-S`), but the pipeline's exit code cannot be trusted. (The script's `main()` wrapper protects against *partial* execution of a truncated download, not against a *failed* one.) After a run that seemed to do nothing, check `command -v shll` — or re-read stderr — before chaining on.
 

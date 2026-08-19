@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless `NONINTERACTIVE=1` Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, then `exec shll install \"$@\"` — which auto-runs shell-setup + agent-setup: a fully wired machine; `sh -s -- --no-*` passthrough is public surface. The path is load-bearing — shll.ai raw-fetches it from `main`."
+description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless `NONINTERACTIVE=1` Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, then `exec shll install \"$@\"` — which auto-runs shell-setup + agent-setup (best-effort); `sh -s -- --no-*` passthrough is public surface. The path is load-bearing — shll.ai raw-fetches it from `main`."
 ---
 # ci/install-bootstrap
 
@@ -15,7 +15,7 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt   # install a subset
 
 `scripts/install.sh` is a POSIX-sh bootstrap that owns the whole **pre-brew phase**: it preflights the dependencies the install needs (git/CLT, curl, tmux), bootstraps Homebrew headlessly when absent, then solves the circularity that `shll` cannot trust/install its own Homebrew formula before that binary exists on `PATH`. Once `shll` is present it `exec`s into `shll install "$@"`, which owns all the post-brew intelligence — roster knowledge, subset filtering, per-formula trust for the other six tools, graceful skips (Constitution III — wrap, don't reinvent). The script carries none of that logic.
 
-**The outcome is a fully wired machine.** `shll install` auto-runs `shll shell-setup` and `shll agent-setup --yes` at the end of every non-dry-run install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), so the curl-bootstrap user lands with shell integration and agent harnesses wired — not with nudges to ignore. The opt-out flags ride the script's verbatim arg passthrough: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup` → `exec shll install --no-agent-setup` — and that flag passthrough is public surface alongside the tool-name subset args.
+**The intended outcome is a fully wired machine.** `shll install` auto-runs `shll shell-setup` and `shll agent-setup --yes` at the end of every non-dry-run install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), so the curl-bootstrap user normally lands with shell integration and agent harnesses wired — not with nudges to ignore. Both steps are best-effort: a failure warns and falls back to that step's manual nudge, never failing the install. The opt-out flags ride the script's verbatim arg passthrough: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup` → `exec shll install --no-agent-setup` — and that flag passthrough is public surface alongside the tool-name subset args.
 
 ## Behavior contract
 
