@@ -287,6 +287,17 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 	// write-phase the tail summarizes.
 	start := nowFunc()
 
+	// OSC 9;4 terminal progress (progress.go), on stderr so the invisible control
+	// channel never lands in piped stdout. Constructed only once the write phase
+	// begins — the dry-run/short-circuit/pre-write error paths above emit nothing —
+	// and removed via defer so EVERY post-construction exit (the brew-update
+	// failure return, success, a panic) clears the terminal's progress state.
+	// Indeterminate covers the run-wide brew refresh; the per-tool loop below
+	// switches to determinate roster-position progress.
+	progress := newProgressReporter(stderr, env)
+	defer progress.remove()
+	progress.indeterminate()
+
 	// Refresh brew metadata once. Foregrounded so users see progress. Because
 	// each delegated `<tool> update --skip-brew-update` skips its own internal
 	// brew update, this run-wide refresh happens exactly once.
@@ -338,6 +349,10 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 			fmt.Fprintln(stdout)
 		}
 		printToolHeader(stdout, name, pos, total, color)
+		// Determinate progress: completed-so-far at each tool boundary. A failure
+		// pulse (errorState at pos*100/total) lands on the same value this set
+		// resumes at for the next tool, so the bar stays monotonic.
+		progress.set((pos - 1) * 100 / total)
 	}
 
 	// bumps records the version transitions of tools that ACTUALLY changed
@@ -361,8 +376,10 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
 			anyFailed = true
+			progress.errorState(pos * 100 / total)
 		} else if code != 0 {
 			anyFailed = true
+			progress.errorState(pos * 100 / total)
 		} else {
 			succeeded++
 			// Re-query the after-version and record a bump when it changed.
@@ -390,10 +407,12 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: %s: %v\n", t.Name, err)
 			anyFailed = true
+			progress.errorState(pos * 100 / total)
 			continue
 		}
 		if code != 0 {
 			anyFailed = true
+			progress.errorState(pos * 100 / total)
 			continue
 		}
 		succeeded++
@@ -402,6 +421,14 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		if b, ok := makeBump(t.Name, t.Repo, probes[i].beforeVersion, installedVersion(ctx, t.Formula)); ok {
 			bumps = append(bumps, b)
 		}
+	}
+
+	// Progress tail: the bar reads complete — error-colored when any tool failed —
+	// while the refresh and digest below run; the deferred remove clears it at exit.
+	if anyFailed {
+		progress.errorState(100)
+	} else {
+		progress.set(100)
 	}
 
 	// End-of-run agent-skill refresh: when a prior `shll agent-setup` placement

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades with two self-heals (unlinked-keg relink, delegation-failure brew-upgrade fallback), exit-code aggregation, the post-upgrade `What changed:` release digest, the placement-gated end-of-run agent-skill refresh with its `--yes`/`-y` unattended-run forwarding, and the `rk` legacy target alias."
+description: "`shll update` — brew detection, installed-tool filtering, sequential delegated upgrades with two self-heals (unlinked-keg relink, delegation-failure brew-upgrade fallback), exit-code aggregation, the post-upgrade `What changed:` release digest, the placement-gated end-of-run agent-skill refresh with its `--yes`/`-y` unattended-run forwarding, OSC 9;4 terminal progress on a TTY stderr (tmux-passthrough-wrapped), and the `rk` legacy target alias."
 ---
 # cli/update
 
@@ -263,6 +263,19 @@ The duration in the summary tail is measured via an injectable package-level clo
 
 `runUpdate` captures `start := nowFunc()` at `update.go:159` — **after** the nothing-to-do short-circuit *and* the dry-run branch have returned — so the measured elapsed (`nowFunc().Sub(start)` at `update.go:265`) covers only the write phase the tail summarizes (the metadata refresh + self-upgrade + roster loop), not the read-only probe phase. The seam keeps `runUpdate`'s signature stable apart from the `dryRun bool` parameter (see [`--dry-run`](#dry-run)). `TestInstallFakeClock_Sequences` unit-tests the helper's sequencing.
 
+## OSC 9;4 terminal progress
+
+`shll update`'s write phase emits OSC 9;4 (ConEmu/Windows Terminal convention) terminal-progress sequences on **stderr**, so a progress-aware terminal — most importantly a run-kit dashboard tile, whose xterm.js renders them via `@xterm/addon-progress` — shows a live progress bar for the run. All emission logic lives in `src/cmd/shll/progress.go` (`progressReporter`); `update.go` only constructs the reporter and calls its four methods. Presentation-only: no subprocess calls (Constitution I), no state (Constitution II), never influences the exit code. (rbdd)
+
+- **Sequence forms.** BEL-terminated: `set(percent)` → `ESC ]9;4;1;{percent} BEL` (determinate), `indeterminate()` → `…;3;0 BEL`, `errorState(percent)` → `…;2;{percent} BEL`, `remove()` → `…;0;0 BEL`. Pieces are named constants (`oscProgressPrefix`/`oscProgressSuffix`, `progressState*`).
+- **Gating.** Enabled only when stderr is a real TTY, via the swappable seam `var progressWriterIsTTY = defaultProgressWriterIsTTY` (an `*os.File` + `term.IsTerminal` check mirroring `defaultStdinIsTTY`). Deliberately **independent of `NO_COLOR`** — that convention governs styling, and OSC 9;4 is terminal progress *state* (same styling-vs-not line `stdinIsTTY` draws). A disabled reporter's methods write zero bytes, so pipes/CI/tests see an entirely inert feature.
+- **stderr, not stdout.** The framing headers/tail stay on stdout (stream discipline with foregrounded sub-tool output); the invisible OSC control channel rides stderr so it never lands in piped stdout while still reaching the terminal.
+- **tmux passthrough.** When `env("TMUX")` is non-empty (the same injected `env` seam `runUpdate` threads), every sequence is wrapped in the DCS envelope `ESC Ptmux; {sequence with each ESC doubled} ESC \` so it survives tmux and reaches the outer terminal — run-kit sessions run `allow-passthrough on`, so rk tiles receive it.
+- **Lifecycle.** Constructed on stderr at write-phase start (with `start := nowFunc()`, i.e. after the dry-run return) with an immediate `defer remove()` — every post-construction exit (brew-update failure, success, panic) clears the terminal's progress state. `indeterminate()` covers the run-wide `brew update --quiet`; the `updateHeader` closure emits `set((pos-1)*100/total)` at each tool boundary; each failure site (self-upgrade or `upgradeTool`, error or non-zero exit) pulses `errorState(pos*100/total)` — the slot-consumed percent, so the next header's `set` resumes monotonically at the same value; after the loop the tail emits `errorState(100)` when `anyFailed` else `set(100)`, holding through the agent-skill refresh and digest until the deferred `remove()` fires at return.
+- **No emission on non-write paths.** Dry-run, the nothing-to-do short-circuit, and every pre-write error return never construct the reporter, so they emit no OSC bytes.
+
+Pinned by `progress_test.go` (byte-exact sequence forms, disabled no-op, `bytes.Buffer` constructor disablement, NO_COLOR independence, tmux ESC-doubling) and the `TestUpdate_Progress*` wiring tests (see [Test seam](#test-seam)).
+
 ## `--dry-run`
 
 `shll update --dry-run` previews the exact commands the run **would** execute, then exits 0 **without any write**. The flag is a cobra bool (`dryRunFlag = "dry-run"`, usage `dryRunFlagUsage`, both named constants in `update.go:66`), wired in `newUpdateCmd` and read in `RunE` into the new `dryRun bool` parameter on `runUpdate`.
@@ -361,6 +374,20 @@ This is the reason for the early short-circuit in step 5 above. The check is a l
 > **Rejected**: Hardcoding "idea ≤ 0.1.2 is broken" in shll — covers one incident, requires a shll release per future incident, and rots.
 > *Introduced by*: 260812-blht-delegated-update-brew-fallback
 
+### Progress emission is consumer-side, not a toolkit standard
+
+> **Decision**: OSC 9;4 progress is implemented directly in `shll update` (the compose consumer); the producer-facing `update` standard (`docs/site/standards/update.md`) is untouched and no roster tool is asked to emit anything.
+> **Why**: OSC 9;4 is a singleton terminal channel — one progress state per terminal. shll delegates with inherited stdio, so per-tool emission inside the compose would conflict (a tool's terminal `remove` clears shll's roster-level bar mid-loop). Only the orchestrator knows "tool N of M", which is the signal the run-kit tile consumer wants; the standard already assigns consumer-side compose behavior to shll.
+> **Rejected**: A producer-standard clause obligating each roster tool to emit — requires a remove/re-assert coordination protocol plus a 6-repo rollout while no tool emits today. Standardize from working practice only when a second emitter appears.
+> *Introduced by*: 260819-rbdd-update-osc-progress
+
+### Progress on stderr, TTY-gated, independent of NO_COLOR
+
+> **Decision**: Progress sequences ride stderr, enabled only when stderr is a real TTY (`progressWriterIsTTY` seam), and the gate does not consult `NO_COLOR`.
+> **Why**: Headers/tail must stay on stdout (stream discipline with foregrounded output); OSC is an invisible control channel and stderr keeps it out of piped stdout while still reaching the terminal. `NO_COLOR` governs styling per no-color.org — the codebase already draws the styling-vs-not line at `defaultStdinIsTTY`, and the TTY gate alone excludes pipes/CI.
+> **Rejected**: stdout emission (couples to the color gate and risks captured-output pollution); honoring `NO_COLOR` (wrong scope — a styling convention gating non-styling terminal state).
+> *Introduced by*: 260819-rbdd-update-osc-progress
+
 ### Fallback on any failure, ordered after the relink heal
 
 > **Decision**: The fallback triggers on any failure (non-zero exit or exec/transport error) of the *final* delegated outcome, evaluated after the ErrNotFound → `brew link` → retry heal.
@@ -412,6 +439,12 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_SubsetArgOrderIndependentRosterOrder` *(b2vg)* — `shll update fab-kit wt` → `wt` before `fab-kit` (roster order, not arg order).
 - `TestUpdate_SubsetBrewUpdateRunsOnce` *(b2vg)* — a single-tool subset still runs `brew update --quiet` exactly once.
 - `TestUpdate_SubsetDryRunPreviewFiltered` *(b2vg)* — `shll update --dry-run hop wt` → preview lists exactly the two-tool subset in roster order, header `Would update 2 tools (brew metadata refresh first):`, exit 0, no write.
+- `TestUpdate_ProgressEmissionOrder_Success` *(rbdd)* — TTY seam forced, shll-self only (`total=1`), all succeed → stderr is byte-exactly `indeterminate` → `set(0)` → `set(100)` → `remove`.
+- `TestUpdate_ProgressErrorPulseAndErrorTail` *(rbdd)* — self-upgrade exits non-zero → the failure pulse `errorState(100)` and the `anyFailed` tail `errorState(100)`, then the deferred `remove`.
+- `TestUpdate_ProgressRemoveOnBrewUpdateFailure` *(rbdd)* — `brew update` fails after the reporter started → `indeterminate` then the deferred `remove`, no `set`/`errorState` ever emitted.
+- `TestUpdate_ProgressSilentOnNonWritePaths` *(rbdd)* — dry-run and the no-tools short-circuit emit zero OSC bytes even with the TTY seam forced.
+
+The `progressReporter` itself (sequence forms, gating, NO_COLOR independence, tmux ESC-doubling envelope) is unit-tested in `progress_test.go`, which forces the enabled branch via the `forceProgressTTY` t.Cleanup helper (swapping the `progressWriterIsTTY` seam).
 
 The shared resolver is unit-tested directly in `tools_test.go` (`TestResolveTargets_RosterOrderRegardlessOfArgOrder`, `TestResolveTargets_ShllGatedByAllowShll`, `TestResolveTargets_MultipleUnknownAllReported`, `TestResolveTargets_EmptyArgs`).
 

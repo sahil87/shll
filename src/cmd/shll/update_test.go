@@ -2089,3 +2089,123 @@ func TestUpdate_YesFlagWiredThroughCobra(t *testing.T) {
 		t.Errorf("update Long help lost the literal %q", skipBrewUpdateFlag)
 	}
 }
+
+// oscProgressMarker is the shared prefix of every OSC 9;4 sequence — the
+// substring the zero-emission assertions scan stderr for.
+const oscProgressMarker = "\x1b]9;4"
+
+// onlyShllInstalledRunner returns a fakeRunner where shll itself is
+// brew-installed and no roster tool is — the minimal deterministic write-phase
+// (total = 1) the progress-order tests drive.
+func onlyShllInstalledRunner(selfUpgradeExit int) *fakeRunner {
+	return &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list":
+			if req.Args[3] == shllFormula {
+				return proc.Result{Stdout: []byte(shllFormula + " 1.0.0\n")}
+			}
+			return proc.Result{Err: errors.New("not installed")}
+		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == shllFormula:
+			return proc.Result{ExitCode: selfUpgradeExit}
+		}
+		return proc.Result{}
+	}}
+}
+
+func TestUpdate_ProgressEmissionOrder_Success(t *testing.T) {
+	// With the TTY seam forced, a full-success run over total = 1 (shll-self
+	// only) emits exactly: indeterminate (brew refresh) → set(0) (header) →
+	// set(100) (tail) → remove (deferred). stderr carries nothing else on the
+	// success path, so the assertion is byte-exact.
+	forceProgressTTY(t)
+	installFakeRunner(t, onlyShllInstalledRunner(0))
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	want := "\x1b]9;4;3;0\x07" + "\x1b]9;4;1;0\x07" + "\x1b]9;4;1;100\x07" + "\x1b]9;4;0;0\x07"
+	if got := stderr.String(); got != want {
+		t.Fatalf("stderr = %q, want exact progress order %q", got, want)
+	}
+}
+
+func TestUpdate_ProgressErrorPulseAndErrorTail(t *testing.T) {
+	// The self-upgrade exits non-zero (no stderr text on the code!=0 branch), so
+	// stderr is exactly: indeterminate → set(0) → errorState(100) (the failure
+	// pulse at pos 1 of 1) → errorState(100) (the anyFailed tail) → remove.
+	forceProgressTTY(t)
+	installFakeRunner(t, onlyShllInstalledRunner(1))
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent", err)
+	}
+	want := "\x1b]9;4;3;0\x07" + "\x1b]9;4;1;0\x07" + "\x1b]9;4;2;100\x07" + "\x1b]9;4;2;100\x07" + "\x1b]9;4;0;0\x07"
+	if got := stderr.String(); got != want {
+		t.Fatalf("stderr = %q, want exact progress order %q", got, want)
+	}
+}
+
+func TestUpdate_ProgressRemoveOnBrewUpdateFailure(t *testing.T) {
+	// The brew metadata refresh fails after the reporter started: indeterminate
+	// was emitted, the deferred remove must still fire on the errSilent return,
+	// and no determinate/error progress is ever set.
+	forceProgressTTY(t)
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 1 && req.Args[0] == "update" {
+			return proc.Result{ExitCode: 1}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent", err)
+	}
+	got := stderr.String()
+	indet := strings.Index(got, "\x1b]9;4;3;0\x07")
+	remove := strings.Index(got, "\x1b]9;4;0;0\x07")
+	if indet == -1 || remove == -1 || remove < indet {
+		t.Fatalf("stderr = %q, want indeterminate then deferred remove", got)
+	}
+	if strings.Contains(got, "\x1b]9;4;1;") || strings.Contains(got, "\x1b]9;4;2;") {
+		t.Fatalf("stderr = %q, want no set/errorState after brew update failure", got)
+	}
+}
+
+func TestUpdate_ProgressSilentOnNonWritePaths(t *testing.T) {
+	// Dry-run and the no-tools short-circuit never construct the reporter, so
+	// even with the TTY seam forced no OSC byte reaches stderr.
+	forceProgressTTY(t)
+
+	t.Run("dry-run", func(t *testing.T) {
+		installFakeRunner(t, onlyShllInstalledRunner(0))
+		var stdout, stderr bytes.Buffer
+		if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, false, nil); err != nil {
+			t.Fatalf("runUpdate err = %v, want nil", err)
+		}
+		if strings.Contains(stderr.String(), oscProgressMarker) {
+			t.Fatalf("stderr = %q, want no OSC progress on dry-run", stderr.String())
+		}
+	})
+
+	t.Run("no-tools", func(t *testing.T) {
+		installFakeRunner(t, &fakeRunner{respond: func(req proc.Request) proc.Result {
+			if req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list" {
+				return proc.Result{Err: errors.New("not installed")}
+			}
+			return proc.Result{}
+		}})
+		var stdout, stderr bytes.Buffer
+		if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+			t.Fatalf("runUpdate err = %v, want nil", err)
+		}
+		if strings.Contains(stderr.String(), oscProgressMarker) {
+			t.Fatalf("stderr = %q, want no OSC progress on the no-tools short-circuit", stderr.String())
+		}
+	})
+}
