@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -40,17 +41,32 @@ idempotent, so re-runs stay clean. Pass ` + "`--no-trust`" + ` to skip the trust
 (for users who manage trust themselves). If your Homebrew is too old to ship
 ` + "`brew trust`" + `, the trust step is skipped gracefully and the install proceeds.
 
+After the install outcome, shll install also wires the machine automatically. It
+runs the equivalent of ` + "`shll shell-setup`" + ` (adds the
+` + "`eval \"$(shll shell-init <shell>)\"`" + ` line to your rc file — sentinel-managed and
+idempotent, so re-runs are no-ops), then ` + "`shll agent-setup --yes`" + ` (places the
+shll-toolkit skill for agent harnesses and delegates run-kit's dashboard hooks,
+forwarding --yes so nothing can prompt on an unattended run). Both steps are
+best-effort: a failure warns and prints the step's manual nudge instead, and
+never changes the install's exit code. Opt out with ` + "`--no-shell-setup`" + ` (e.g.
+dotfile-manager users) and/or ` + "`--no-agent-setup`" + `. Neither step runs under
+` + "`--dry-run`" + `. After a fresh wire, restart your shell or run: exec $SHELL.
+
 shll install does NOT upgrade already-installed tools. Use ` + "`shll update`" + `
 for that.`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dryRun, _ := cmd.Flags().GetBool(dryRunFlag)
 			noTrust, _ := cmd.Flags().GetBool(noTrustFlag)
-			return runInstall(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, noTrust, args)
+			noShellSetup, _ := cmd.Flags().GetBool(noShellSetupFlag)
+			noAgentSetup, _ := cmd.Flags().GetBool(noAgentSetupFlag)
+			return runInstall(cmd.Context(), os.Getenv, cmd.OutOrStdout(), cmd.ErrOrStderr(), dryRun, noTrust, noShellSetup, noAgentSetup, args)
 		},
 	}
 	cmd.Flags().Bool(dryRunFlag, false, dryRunFlagUsage)
 	cmd.Flags().Bool(noTrustFlag, false, noTrustFlagUsage)
+	cmd.Flags().Bool(noShellSetupFlag, false, noShellSetupFlagUsage)
+	cmd.Flags().Bool(noAgentSetupFlag, false, noAgentSetupFlagUsage)
 	return cmd
 }
 
@@ -61,6 +77,22 @@ const noTrustFlag = "no-trust"
 
 // noTrustFlagUsage is the cobra usage string for --no-trust.
 const noTrustFlagUsage = "skip recording per-formula Homebrew trust before installing (manage trust yourself)"
+
+// noShellSetupFlag is the bool flag on `shll install` that opts out of the automatic
+// shell-setup step at the end of install (for dotfile-manager users who wire their rc
+// files themselves). Named constant per code-quality.md (mirrors noTrustFlag).
+const noShellSetupFlag = "no-shell-setup"
+
+// noShellSetupFlagUsage is the cobra usage string for --no-shell-setup.
+const noShellSetupFlagUsage = "skip the automatic shell-setup step at the end of install (wire your rc file yourself)"
+
+// noAgentSetupFlag is the bool flag on `shll install` that opts out of the automatic
+// agent-setup step at the end of install. Named constant per code-quality.md
+// (mirrors noTrustFlag).
+const noAgentSetupFlag = "no-agent-setup"
+
+// noAgentSetupFlagUsage is the cobra usage string for --no-agent-setup.
+const noAgentSetupFlagUsage = "skip the automatic agent-setup step at the end of install (wire agent harnesses yourself)"
 
 // runInstall is the implementation seam for `shll install`. Extracted from
 // the cobra factory so install_test.go can drive it with bytes.Buffer writers
@@ -94,12 +126,16 @@ const noTrustFlagUsage = "skip recording per-formula Homebrew trust before insta
 // before any work; a named tool that is already installed is filtered out of the
 // install set (the idempotent skip, same as the whole-roster behavior).
 //
-// env is the environment lookup threaded into the post-install "Next steps" nudge
-// block's shell-setup gate (via resolveWiringFact) — production passes os.Getenv;
-// tests pass a map-backed func pointing at a t.TempDir() rc file, mirroring
-// runDoctor's established seam. It is used ONLY by the nudge block (printNextSteps),
-// which reads the rc file read-only; runInstall never writes to it.
-func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun, noTrust bool, args []string) error {
+// env is the environment lookup threaded into the post-install setup steps
+// (runPostInstallSetup): the shell-setup gate (resolveWiringFact), the shell/rc
+// resolution for the auto-run, and agent-setup's skill-target derivation.
+// Production passes os.Getenv; tests pass a map-backed func pointing at a
+// t.TempDir() rc file and HOME, mirroring runDoctor's established seam.
+//
+// noShellSetup / noAgentSetup are the --no-shell-setup / --no-agent-setup opt-outs:
+// when set, the matching post-install auto-run step is skipped and its nudge line
+// prints instead (see runPostInstallSetup).
+func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun, noTrust, noShellSetup, noAgentSetup bool, args []string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -155,14 +191,15 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 
 	if len(missing) == 0 {
 		fmt.Fprintln(stdout, allInstalledMsg)
-		// Short-circuit path (decision 3): a re-runner who never wired their shell
-		// still gets nudged. colorEnabled is computed here (the install-loop path
+		// Short-circuit path: a re-runner who never wired their shell still gets
+		// wired (the auto-run steps are idempotent, so this path is their exact
+		// beneficiary). colorEnabled is computed here (the install-loop path
 		// computes it once below for its own framing; this early-return path never
 		// reaches that, so it needs its own decision). Suppressed under --dry-run:
-		// decision 5 keeps `--dry-run` nudge-free, and this short-circuit precedes
-		// the dry-run branch, so gate on !dryRun here too.
+		// the auto-run steps are writes and MUST NOT run on the preview path, and
+		// this short-circuit precedes the dry-run branch, so gate on !dryRun here.
 		if !dryRun {
-			printNextSteps(env, stdout, colorEnabled(stdout))
+			runPostInstallSetup(ctx, env, stdout, stderr, colorEnabled(stdout), noShellSetup, noAgentSetup)
 		}
 		return nil
 	}
@@ -245,12 +282,14 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	fmt.Fprintln(stdout)
 	printSummaryTail(stdout, succeeded, total, nowFunc().Sub(start), color)
 
-	// Post-install "Next steps" nudge block (decisions 1–4). Printed after the
-	// summary tail, on stdout, reusing the loop's single `color` decision. It is
-	// informational and orthogonal to install outcome, so it prints regardless of
-	// anyFailed (the tail already conveys per-tool failures). Never reached by the
-	// dry-run / brew-missing / unknown-target early returns above.
-	printNextSteps(env, stdout, color)
+	// Post-install auto-run steps (shell-setup, then agent-setup) plus the adapted
+	// "Next steps" block. Runs after the summary tail, reusing the loop's single
+	// `color` decision. The steps are best-effort: a failure warns to stderr and
+	// falls back to that step's nudge line — the install's own exit code (anyFailed)
+	// stays the sole authority. Never reached by the dry-run / brew-missing /
+	// unknown-target early returns above, so the write steps cannot fire on a
+	// preview run.
+	runPostInstallSetup(ctx, env, stdout, stderr, color, noShellSetup, noAgentSetup)
 
 	if anyFailed {
 		return errSilent
@@ -269,61 +308,141 @@ const allInstalledMsg = "All shll tools already installed."
 // Named per code-quality.md (no magic strings).
 const shllSelfInstallNote = "shll — already present / self-managed"
 
-// Post-install "Next steps" nudge strings (change 93r2; agent-setup graduation
-// change agst). Each is a named constant per code-quality.md — the wording is part of
-// the user contract, so it lives in one place (mirroring allInstalledMsg /
-// shllSelfInstallNote and doctor's suggestNotWired).
+// Post-install "Next steps" strings (change 93r2; agent-setup graduation change
+// agst; auto-run change gjhx). Each is a named constant per code-quality.md — the
+// wording is part of the user contract, so it lives in one place (mirroring
+// allInstalledMsg / shllSelfInstallNote and doctor's suggestNotWired).
 //
-//   - nextStepsHeader labels the block.
+//   - nextStepsHeader labels the block. The block prints only when at least one
+//     line applies (the fully-wired happy path prints no header at all).
 //   - shellSetupNudgeFmt is the shell-setup line; the single %s is the arrow glyph
-//     (arrow(color) → `→` on a color TTY, `->` otherwise). Its wording tracks doctor's
-//     suggestNotWired ("run 'shll shell-setup' then 'exec $SHELL'").
-//   - agentSetupNudgeFmt is the agent-setup line; the single %s is the arrow glyph. It
-//     GRADUATED from the former `run-kit agent-setup` nudge (change agst): the
-//     cross-toolkit harness wiring now belongs to shll (the manager), which wires agent
-//     harnesses with toolkit context AND delegates run-kit's dashboard hooks. It is
-//     informational and marked "optional, once per machine" — shll cannot cheaply know
-//     whether agent-setup already ran (it would have to read several harness files just
-//     to gate a nudge; Constitution II/III argue against it), so the line prints
-//     unconditionally on the outcome paths (the accepted trade-off, mirroring the old
-//     run-kit line, which also printed for users who had already run it).
+//     (arrow(color) → `→` on a color TTY, `->` otherwise). Its wording tracks
+//     doctor's suggestNotWired ("run 'shll shell-setup' then 'exec $SHELL'"). It now
+//     prints only when the auto shell-setup step was opted out of or failed (and
+//     the resolveWiringFact gate is open).
+//   - agentSetupNudgeFmt is the agent-setup line; the single %s is the arrow glyph.
+//     It now prints only when the auto agent-setup step was opted out of or failed —
+//     after a successful auto-run the "shll cannot cheaply know whether agent-setup
+//     already ran" rationale no longer applies on this path.
+//   - execShellReminderFmt is the reminder shown after a successful auto shell-setup
+//     wire: a freshly wired rc file isn't loaded in the current shell (and under the
+//     curl bootstrap the install process's parent shell dies anyway), so the user
+//     must exec/restart to pick it up.
 const (
-	nextStepsHeader    = "Next steps:"
-	shellSetupNudgeFmt = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
-	agentSetupNudgeFmt = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
+	nextStepsHeader      = "Next steps:"
+	shellSetupNudgeFmt   = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
+	agentSetupNudgeFmt   = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
+	execShellReminderFmt = "  %s exec $SHELL         # load the just-wired shll integration into your current shell (or open a new terminal)"
 )
 
-// printNextSteps writes the post-install "Next steps" nudge block to stdout (change
-// 93r2; agent-setup graduation change agst):
+// Auto-run failure warnings (stderr). A failed post-install step never changes the
+// install's exit code (the install outcome is the sole authority — the same posture
+// as the trust step), so the warning says "continuing" and the step's nudge line is
+// the printed fallback.
+const (
+	shellSetupAutoRunWarn = "shll install: automatic shell setup failed (continuing)"
+	agentSetupAutoRunWarn = "shll install: automatic agent setup failed (continuing)"
+)
+
+// runPostInstallSetup runs the two post-install auto-run steps — shell-setup, then
+// agent-setup — and renders the adapted "Next steps" block after them. It replaces
+// the nudge-only printNextSteps (changes 93r2/agst): the steps now RUN instead of
+// being nudged, and each nudge line survives only as the fallback for an opted-out
+// or failed step.
 //
-//   - shell-setup nudge: printed only when shll's sentinel block is NOT wired in the
-//     user's rc file. The gate reuses doctor's read-only resolveWiringFact(env)
-//     detector (Constitution III — one detection path) and fires on
-//     `shellResolved && !corrupt && !wired`: quiet on an unresolvable $SHELL (nudging
-//     toward `shll shell-setup` would exit 2) and on a corrupt open-without-close block
-//     (shell-setup refuses it — doctor owns that diagnostic). Strictly read-only:
-//     resolveWiringFact only os.ReadFile's the rc file; `shll install` never writes it.
-//   - agent-setup line: printed UNCONDITIONALLY (graduated from the run-kit-gated
-//     `run-kit agent-setup` line, change agst). shll is by definition present, so a
-//     presence gate is meaningless; and shll cannot cheaply know whether agent-setup
-//     already ran without reading several harness files just to gate a nudge
-//     (Constitution II/III argue against it). Informational, marked "optional, once per
-//     machine" — the accepted trade-off (it may print for users who already ran it),
-//     mirroring the old run-kit line.
+// Step 1 — shell wiring. Gated by doctor's read-only resolveWiringFact(env)
+// (Constitution III — one detection path):
 //
-// The agent-setup line always prints, so the block (and its "Next steps:" header)
-// always prints on the outcome paths. The header and lines go to stdout with the same
-// color/TTY framing as the headers/tail (the arrow glyph degrades via arrow(color)). A
-// blank line precedes the block (the existing section-spacing rule). Never called on
-// the dry-run / brew-missing / unknown-target paths (they return before the outcome).
-func printNextSteps(env func(string) string, stdout io.Writer, color bool) {
+//   - Unresolvable $SHELL or a corrupt open-without-close block → QUIET skip, no
+//     nudge (the 93r2 quiet edge states: a nudge would dead-end; doctor owns the
+//     corrupt-block diagnostic).
+//   - Already wired → silent skip (no write, no reminder — idempotency makes the
+//     auto-run a no-op, so there is nothing to announce).
+//   - Unwired → auto-run in-process via the same write path the standalone command
+//     uses: resolve the shell and rc path through the env seam (resolveShell /
+//     resolveRcFile), then runShellSetupDefault. On success the shell-setup output
+//     announces the wire and the execShellReminderFmt line is queued for the block.
+//     On failure (e.g. the rc file does not exist — shell-setup never creates one)
+//     the actionable error text goes to stderr with shellSetupAutoRunWarn and the
+//     gated nudge is the fallback. The error is consumed, never propagated.
+//   - --no-shell-setup → skip the auto-run; print the gated nudge instead.
+//
+// Step 2 — agent wiring. Runs the equivalent of `shll agent-setup --yes` in-process
+// via runAgentSetup (placing the shll-toolkit skill files, then delegating
+// `run-kit agent setup --yes` — forwarding --yes so the delegation cannot hang on
+// run-kit's hook-wiring prompt in an unattended install). The per-path
+// wrote/unchanged/updated summary plus run-kit's own output are the announcement.
+// A run-kit delegation failure stays non-fatal and does NOT trigger the nudge
+// (inherited standalone semantics — re-running would hit the same failure, so the
+// nudge would dead-end); only a placement failure (runAgentSetup's return) warns
+// and falls back to the agent-setup nudge. --no-agent-setup → skip and nudge.
+//
+// The "Next steps:" block renders only when at least one line applies — the
+// fully-wired happy path (shell wired or just auto-wired... reminder only) prints
+// the reminder alone; a machine that needed nothing prints no header at all. A
+// blank line precedes the block (the existing section-spacing rule) and the arrow
+// glyph degrades via arrow(color). Never called on the dry-run / brew-missing /
+// unknown-target paths (the call sites return before the outcome).
+func runPostInstallSetup(ctx context.Context, env func(string) string, stdout, stderr io.Writer, color, noShellSetup, noAgentSetup bool) {
+	glyph := arrow(color)
+	var lines []string
+
+	// Step 1: shell wiring.
 	w := resolveWiringFact(env)
-	shellSetup := w.shellResolved && !w.corrupt && !w.wired
+	shellGateOpen := w.shellResolved && !w.corrupt && !w.wired
+	switch {
+	case noShellSetup:
+		// Opted out (dotfile-manager users) — the gated nudge is the fallback.
+		if shellGateOpen {
+			lines = append(lines, fmt.Sprintf(shellSetupNudgeFmt, glyph))
+		}
+	case !shellGateOpen:
+		// Quiet edge states (unresolvable $SHELL, corrupt block) or already wired:
+		// silent skip, no write, no nudge, no reminder.
+	default:
+		// Unwired — auto-run the shell-setup write path. The gate guarantees
+		// resolveShell succeeds here; the error branch is belt-and-braces.
+		shell, err := resolveShell(nil, env)
+		if err == nil {
+			err = runShellSetupDefault(shell, resolveRcFile(shell, env), false, stdout, stderr)
+		}
+		if err != nil {
+			// Surface the actionable message (errExitCode carries it; the errSilent
+			// paths already wrote their own diagnostic to stderr from inside
+			// shell-setup), warn, and fall back to the nudge. Never propagated.
+			var ec *errExitCode
+			if errors.As(err, &ec) && ec.msg != "" {
+				fmt.Fprintln(stderr, ec.msg)
+			}
+			fmt.Fprintln(stderr, shellSetupAutoRunWarn)
+			lines = append(lines, fmt.Sprintf(shellSetupNudgeFmt, glyph))
+		} else {
+			lines = append(lines, fmt.Sprintf(execShellReminderFmt, glyph))
+		}
+	}
+
+	// Step 2: agent wiring.
+	switch {
+	case noAgentSetup:
+		// Opted out — the nudge is the fallback.
+		lines = append(lines, fmt.Sprintf(agentSetupNudgeFmt, glyph))
+	default:
+		if err := runAgentSetup(ctx, env, stdout, stderr, false, false, true); err != nil {
+			// Placement failure — the per-path diagnostics were already written to
+			// stderr by agent-setup itself; warn and fall back to the nudge. Never
+			// propagated (the install's exit code stays the authority).
+			fmt.Fprintln(stderr, agentSetupAutoRunWarn)
+			lines = append(lines, fmt.Sprintf(agentSetupNudgeFmt, glyph))
+		}
+	}
+
+	// The block prints only when at least one line applies (no empty header).
+	if len(lines) == 0 {
+		return
+	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, nextStepsHeader)
-	glyph := arrow(color)
-	if shellSetup {
-		fmt.Fprintf(stdout, shellSetupNudgeFmt+"\n", glyph)
+	for _, ln := range lines {
+		fmt.Fprintln(stdout, ln)
 	}
-	fmt.Fprintf(stdout, agentSetupNudgeFmt+"\n", glyph)
 }

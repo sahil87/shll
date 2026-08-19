@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll install` — brew detection, per-formula trust by default (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run. Ends with the “Next steps” nudge (gated shell-setup + unconditional `shll agent-setup`). Also the `exec` target of the `curl … | sh` bootstrap — the script owns the pre-brew phase (preflight + headless Homebrew bootstrap); this command owns everything post-brew, and the arg pass-through is public surface."
+description: "`shll install` — per-formula trust (`--no-trust` opt-out), bootstrap of missing roster tools via `brew install`, idempotent re-run. Post-outcome it auto-runs `shll shell-setup` and `shll agent-setup --yes` in-process (opt-outs `--no-shell-setup`/`--no-agent-setup`; failures warn + nudge, never failing the install; never under `--dry-run`). The `exec` target of the `curl … | sh` bootstrap: the script owns pre-brew, this command post-brew; arg/flag pass-through is public surface."
 ---
 # cli/install
 
@@ -19,7 +19,7 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt   # → exec shll install h
 
 Two implications for `shll install`'s contract:
 
-- **The arg pass-through is now part of `shll install`'s public surface.** The [positional tool-name subset args](#positional-tool-name-args--subset-targeting) are what a piped `sh -s -- <tools…>` reaches. The bootstrap adds no filtering of its own — it hands the args straight to `runInstall`, which validates them (`resolveTargets`, `allowShll=false`; unknown/`shll` targets still hard-error, the alias `rk` still resolves to `run-kit`).
+- **The arg pass-through is part of `shll install`'s public surface.** The [positional tool-name subset args](#positional-tool-name-args--subset-targeting) are what a piped `sh -s -- <tools…>` reaches — and the pass-through is verbatim, so flags ride it too: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup` lands as `exec shll install --no-agent-setup`. The bootstrap adds no filtering of its own — it hands the args straight to `runInstall`, which validates them (`resolveTargets`, `allowShll=false`; unknown/`shll` targets still hard-error, the alias `rk` still resolves to `run-kit`).
 - **The script owns the pre-brew phase; `shll install` owns everything post-brew.** Preflight, the Homebrew bootstrap, and the shll-self trust/install live in the script; roster knowledge, subset filtering, per-formula trust for the other six tools, and graceful skips all live here, not in the script (Constitution III). The script's job is the phase `shll install` cannot reach — the user cannot have `shll` without Homebrew having worked. See [ci/install-bootstrap](/ci/install-bootstrap.md) for the script contract and the shll.ai raw-fetch URL contract.
 
 ## Behavior contract
@@ -32,13 +32,13 @@ The full happy/unhappy paths, in the order `runInstall` evaluates them (`src/cmd
 
 2. **Partition the roster into a `[]Tool` of missing tools.** Iterate the roster in order, call `isInstalled(ctx, t.Formula)` for each, and collect the missing entries — every tool (run-kit included) goes through the same plain check. A missing run-kit is a plain `brew install sahil87/tap/run-kit`; a legacy-`rk`-keg-only machine classifies run-kit as missing and installs the new formula (the orphan `rk` keg is manual cleanup per run-kit's README). A present run-kit is skipped (idempotent).
 
-3. **Nothing missing → short-circuit.** If `len(missing) == 0`, write `All shll tools already installed.` to stdout, then (unless `--dry-run`) emit the [post-install "Next steps" nudge](#the-post-install-next-steps-nudge) via `printNextSteps(ctx, env, stdout, colorEnabled(stdout))`, and return nil. Exit code: 0. No `brew update` is invoked — there's nothing to install. (A re-runner who never wired their shell still gets nudged from this path — decision 3.)
+3. **Nothing missing → short-circuit.** If `len(missing) == 0`, write `All shll tools already installed.` to stdout, then (unless `--dry-run`) run the [post-install auto-run steps](#the-post-install-auto-run-steps-and-the-next-steps-block) via `runPostInstallSetup(ctx, env, stdout, stderr, colorEnabled(stdout), noShellSetup, noAgentSetup)`, and return nil. Exit code: 0. No `brew update` is invoked — there's nothing to install. (A re-runner who never wired their shell gets wired from this path — the steps are idempotent, so the short-circuit re-runner is their exact beneficiary.)
 
 4. **No `brew update --quiet`.** Unlike `shll update`, `shll install` does NOT refresh brew metadata first. `brew install sahil87/tap/<formula>` resolves the formula via the tap directly, and the spec freezes this distinction (Design Decision: install ≠ update). `TestInstall_NoBrewUpdateInvoked` pins the contract.
 
 5. **Sequential per-tool install — trust then install (0854).** For each missing tool in roster order, print its per-tool header (see [Per-tool output separation](#per-tool-output-separation)), then — when trust is enabled — record per-formula trust via `brewTrustFormula(ctx, t.Formula)` *immediately before* the action `proc.RunForeground(ctx, brewBinary, "install", t.Formula)`. The trust step is interleaved in the per-tool loop (not a separate up-front pass), so trust stays adjacent to the install it unblocks (installed ≠ trusted). Best-effort across the roster: on per-tool install failure (transport error or non-zero exit), set `anyFailed = true` and `continue`. See [Per-formula trust before install](#per-formula-trust-before-install).
 
-6. **Summary tail, then the "Next steps" nudge.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation)), then emit the [post-install "Next steps" nudge](#the-post-install-next-steps-nudge) via `printNextSteps(ctx, env, stdout, color)` (93r2) — reusing the loop's single `color` decision, and printed **regardless of `anyFailed`** (it is informational and orthogonal to install outcome). Then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
+6. **Summary tail, then the post-install auto-run steps.** After the loop, print one summary line via `printSummaryTail` (see [Per-tool output separation](#per-tool-output-separation)), then run the [post-install auto-run steps](#the-post-install-auto-run-steps-and-the-next-steps-block) via `runPostInstallSetup(ctx, env, stdout, stderr, color, noShellSetup, noAgentSetup)` — reusing the loop's single `color` decision, and run **regardless of `anyFailed`** (the steps are best-effort and orthogonal to install outcome). Then — unchanged — if `anyFailed`, return `errSilent` (exit 1); else return nil (exit 0). The tail is presentation-only and does not change the exit code.
 
 ## The prepended shll-first informational line
 
@@ -105,72 +105,81 @@ run-kit carries no special install path — the missing-partition classifies it 
 
 Tests (`install_test.go`): `TestInstall_LegacyAliasResolvesWithNotice` (`shll install rk` → alias notice + canonical resolution).
 
-## The post-install "Next steps" nudge
+## The post-install auto-run steps and the "Next steps" block
 
-`shll install` ends with a "Next steps" block on **stdout** — a **gated** shell-setup line plus an **unconditional** `shll agent-setup` line (agst), nudging the follow-on steps a fresh install still needs. It exists because `shll install` is the delegation target of the `curl … | sh` bootstrap (`scripts/install.sh` ends with `exec shll install "$@"` — see [The `curl | sh` upstream entry point](#the-curl--sh-upstream-entry-point)): the homepage copy-paster's *entire* first-run experience terminates in this command's output — without the nudge they would never be told to wire their shell (`shll shell-setup`) or their agent harnesses (`shll agent-setup`), and would silently miss shell integration (the only other CLI nudge is `shll doctor`'s `suggestNotWired` WARN, which a fresh user has no reason to run). This is the state-aware CLI-side fix that reaches everyone. (93r2)
+`shll install` ends by **running** the two follow-on wirings itself, not nudging toward them: after the install outcome it auto-runs the shell-setup step, then the agent-setup step, and renders an adapted "Next steps" block containing only the lines that still apply. It exists because `shll install` is the delegation target of the `curl … | sh` bootstrap (`scripts/install.sh` ends with `exec shll install "$@"` — see [The `curl | sh` upstream entry point](#the-curl--sh-upstream-entry-point)): the homepage copy-paster's *entire* first-run experience terminates in this command's output, and a nudge that's routinely ignored is a silent adoption failure — the machine leaves this command fully wired. Both steps are idempotent and reversible (the sentinel-block re-run is a no-op and `shell-setup --uninstall` removes it; agent-setup overwrites shll-owned skill files and has `--uninstall`), announced by the steps' own output, and opt-out-able via `--no-shell-setup` / `--no-agent-setup`. (gjhx)
 
-The block is produced by `printNextSteps(ctx, env, stdout, color)` (`src/cmd/shll/install.go`), which computes the two gates and prints nothing when neither fires (no empty `Next steps:` header). Illustrative shape:
+The orchestrator is `runPostInstallSetup(ctx, env, stdout, stderr, color, noShellSetup, noAgentSetup)` (`src/cmd/shll/install.go`). Illustrative happy-path shape on a fresh machine:
 
 ```
 Done — 3 of 3 tools succeeded in 42s.
+Installed shll shell integration to /Users/x/.zshrc. Restart your shell or run: source /Users/x/.zshrc
+wrote /Users/x/.agents/skills/shll-toolkit/SKILL.md
+wrote /Users/x/.claude/skills/shll-toolkit/SKILL.md
+… (run-kit's own delegated output)
 
 Next steps:
-  → shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL
-  → shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)
+  → exec $SHELL         # load the just-wired shll integration into your current shell (or open a new terminal)
 ```
 
-> **The agent-setup line points at `shll agent-setup` and prints unconditionally** (no run-kit presence gate) — see [The two gates](#the-two-gates) and [cli/agent-setup §touchpoints](/cli/agent-setup.md#touchpoints). (agst)
+### Step 1 — shell wiring (auto `shll shell-setup`)
+
+Gated by doctor's read-only `resolveWiringFact(env)` (`shellGateOpen := w.shellResolved && !w.corrupt && !w.wired` — one detection path, Constitution III):
+
+- **Unresolvable `$SHELL`** (e.g. fish) or a **corrupt open-without-close block** → **quiet skip**: no write, no nudge, no reminder, no stderr. A nudge would dead-end (`shell-setup` would exit 2 on the first, refuses the second); doctor owns the corrupt-block diagnostic. (The 93r2 quiet edge states.)
+- **Already wired** → silent skip — idempotency makes the auto-run a no-op, so there is nothing to announce.
+- **Unwired** → auto-run **in-process** via the same write path the standalone command uses: pre-resolve `shell := resolveShell(nil, env)` / `rcPath := resolveRcFile(shell, env)` through the env seam, then `runShellSetupDefault(shell, rcPath, false, stdout, stderr)` (`src/cmd/shll/shell_setup.go`). On success shell-setup's own `Installed shll shell integration to <path>.` output announces the wire and the `exec $SHELL` reminder line is queued for the block. On failure (e.g. the rc file does not exist — shell-setup never creates one) the actionable error text goes to stderr, `shellSetupAutoRunWarn` warns, and the **gated** shell-setup nudge is the fallback. The error is consumed, never propagated.
+- **`--no-shell-setup`** (`noShellSetupFlag`/`noShellSetupFlagUsage` constants, mirroring `noTrustFlag`) → skip the auto-run; the gated nudge prints instead — for dotfile-manager users who wire rc files themselves.
+
+See [cli/doctor §the wiring fact](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse) for the `wiringFact` shape and [cli/shell-setup](/cli/shell-setup.md) for the write-path contract install inherits.
+
+### Step 2 — agent wiring (auto `shll agent-setup --yes`)
+
+Immediately after the shell step, unless `--no-agent-setup` (`noAgentSetupFlag`/`noAgentSetupFlagUsage` constants): run `runAgentSetup(ctx, env, stdout, stderr, false, false, true)` (`src/cmd/shll/agent_setup.go`) **in-process** — the equivalent of `shll agent-setup --yes`. It places the shll-toolkit skill into both shll-owned global skill dirs, then delegates `run-kit agent setup --yes` — `--yes` forwarded so run-kit's hook-wiring confirmation cannot hang an unattended install (under the curl bootstrap stdin is the pipe; without `--yes` run-kit refuses non-interactively). The per-path `wrote`/`unchanged`/`updated` summary plus run-kit's own output are the announcement. run-kit absent (`proc.ErrNotFound`) → silent skip (inherited Constitution V behavior), and the step still counts as success. A run-kit **delegation** failure stays non-fatal and does **not** trigger the nudge — re-running `shll agent-setup` would hit the same delegation failure, so the nudge would dead-end (the same logic as the quiet edge states); only a **placement** failure (`runAgentSetup`'s return) warns (`agentSetupAutoRunWarn`) and falls back to the agent-setup nudge. See [cli/agent-setup](/cli/agent-setup.md).
 
 ### Emission points — loop tail + short-circuit (both non-preview outcome paths)
 
-`printNextSteps` is called on exactly the two paths that report an *outcome*, after the outcome line:
+`runPostInstallSetup` is called on exactly the two paths that report an *outcome*, after the outcome line:
 
-- **Install-loop path** — after `printSummaryTail(...)` (`runInstall`, reusing the loop's single `color`). Prints regardless of `anyFailed` — the block is informational, and the tail already conveys per-tool failures.
-- **Short-circuit path** — after the `allInstalledMsg` line (`"All shll tools already installed."`), gated on `!dryRun`. This path computes its own `colorEnabled(stdout)` (the loop's single decision is never reached here), so a re-runner who never wired their shell is still nudged (decision 3).
+- **Install-loop path** — after `printSummaryTail(...)` (`runInstall`, reusing the loop's single `color`). Runs regardless of `anyFailed` — the steps are best-effort, and the tail already conveys per-tool failures.
+- **Short-circuit path** — after the `allInstalledMsg` line (`"All shll tools already installed."`), gated on `!dryRun`. This path computes its own `colorEnabled(stdout)` (the loop's single decision is never reached here). The re-runner who never wired their shell is this path's exact beneficiary.
 
-It is **never** reached on the [`--dry-run`](#--dry-run) path (a command preview, not an outcome — decision 5), nor on the brew-missing / unknown-target early returns (they `return` before any outcome). The short-circuit call is explicitly `!dryRun`-guarded because that short-circuit *precedes* the dry-run branch; the loop-tail call is naturally after the dry-run branch's early return.
+It is **never** reached on the [`--dry-run`](#--dry-run) path (a command preview, not an outcome — the auto-run steps are writes and MUST NOT run there), nor on the brew-missing / unknown-target early returns (they `return` before any outcome). The short-circuit call is explicitly `!dryRun`-guarded because that short-circuit *precedes* the dry-run branch; the loop-tail call is naturally after the dry-run branch's early return.
 
-### The two gates
+### Exit-code authority
 
-**shell-setup nudge — rc wiring, read-only reuse of doctor's `resolveWiringFact`.** The line prints only when `shellSetup := w.shellResolved && !w.corrupt && !w.wired` for `w := resolveWiringFact(env)`. `resolveWiringFact` is doctor's established read-only composition of shell-setup's own primitives (`resolveShell` → `resolveRcFile` → `os.ReadFile` → `locateBlock` → `blockMatch.hasEval`, covering both the new `# >>> shll >>>` and legacy `# >>> shll shell-init >>>` sentinels) — **reused in place from `doctor.go`** (same `main` package, no move; one detection path, Constitution III). The reuse is strictly **read-only**: `resolveWiringFact` only `os.ReadFile`s the rc file — `shll install` never writes, creates, or migrates it (it calls **none** of shell-setup's write paths). The gate is quiet on the two edge states, mirroring doctor's own `suggestNotWired` vs. `suggestCorruptBlock` separation:
+A failure of either auto-run step **never changes `shll install`'s exit code** — the install outcome (`anyFailed` from the brew loop) remains the sole authority, the same posture as the trust step. Errors returned by the seams are consumed, never propagated.
 
-- **Unresolvable `$SHELL`** (`!shellResolved`, e.g. `fish`) — nudging toward `shll shell-setup` would itself exit 2, so the line is omitted.
-- **Corrupt block** (`corrupt` — an open sentinel with no matching close) — `shell-setup` refuses to modify it, so the nudge would dead-end; `doctor` owns that diagnostic.
+### The adapted block and the named constants
 
-See [cli/doctor §the wiring fact](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse) for the `wiringFact` shape and [cli/shell-setup §block location and parsing](/cli/shell-setup.md#block-location-and-parsing) for the underlying primitives.
-
-**agent-setup nudge — UNCONDITIONAL (agst).** The `shll agent-setup` line (constant `agentSetupNudgeFmt`) prints on every outcome path with **no gate at all**:
-
-- **Why no gate.** The line points at `shll agent-setup`, and **shll is by definition present** (it is the running orchestrator), so a presence gate is meaningless. shll *also* cannot cheaply know whether `agent-setup` has already run (that would require reading several harness skill files just to gate a nudge — Constitution II/III argue against it), so the line prints unconditionally as the accepted trade-off (it may print for users who already ran it).
-- **The wording** describes wiring agent harnesses: `shll agent-setup # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)`. The "toolkit context + run-kit dashboard hooks" phrasing reflects `shll agent-setup`'s actual work — it places the toolkit bootstrap skill AND delegates run-kit's hooks (see [cli/agent-setup](/cli/agent-setup.md)).
-- Because the agent-setup line always prints, the block (and its `Next steps:` header) always prints on the outcome paths — the shell-setup line is the only *gated* line now.
-
-> **The `runKitToolName = "run-kit"` constant lives in `install.go`, but its sole consumer is `agent_setup.go`'s `delegateRunKitAgentSetup`** (the run-kit binary name for the delegation subprocess). See [cli/agent-setup §run-kit delegation](/cli/agent-setup.md#run-kit-delegation).
-
-### Framing and the named constants
-
-The block goes to **stdout** (same stream as the per-tool headers and tail), preceded by a blank line (the existing section-spacing rule), with the arrow glyph degrading via `arrow(color)` (`→` on a color TTY, `->` otherwise) — the same `ui.go` framing as the headers/tail. On the loop path it reuses the loop's single `color`; the short-circuit path computes `colorEnabled(stdout)` itself. Every user-facing string is a **named constant** in `install.go` (no magic strings, per code-quality.md — mirroring `allInstalledMsg` / `shllSelfInstallNote` and doctor's `suggestNotWired`):
+The block goes to **stdout** after both steps, preceded by a blank line (the existing section-spacing rule), with the arrow glyph degrading via `arrow(color)` — and prints **only when at least one line applies** (no empty `Next steps:` header): the gated shell-setup nudge (opt-out or failure), the agent-setup nudge (opt-out or placement failure), and the `exec $SHELL` reminder (after a successful auto wire). The fully-wired happy path — wired rc or fresh wire, successful agent-setup — prints no block at all, or the reminder alone. Every user-facing string is a **named constant** in `install.go`:
 
 ```go
 const (
-	nextStepsHeader    = "Next steps:"
-	shellSetupNudgeFmt = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
-	agentSetupNudgeFmt = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
+	nextStepsHeader      = "Next steps:"
+	shellSetupNudgeFmt   = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
+	agentSetupNudgeFmt   = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
+	execShellReminderFmt = "  %s exec $SHELL         # load the just-wired shll integration into your current shell (or open a new terminal)"
 )
-const runKitToolName = "run-kit" // now consumed only by agent_setup.go's delegation (see the note above)
+const (
+	shellSetupAutoRunWarn = "shll install: automatic shell setup failed (continuing)"
+	agentSetupAutoRunWarn = "shll install: automatic agent setup failed (continuing)"
+)
 ```
 
-The `%s` in each nudge format is the arrow glyph. The shell-setup wording tracks doctor's `suggestNotWired` (`run 'shll shell-setup' then 'exec $SHELL'`); the agent-setup wording describes `shll agent-setup`'s work (toolkit-skill placement + run-kit hook delegation).
+The `%s` in each block line is the arrow glyph. The shell-setup nudge wording tracks doctor's `suggestNotWired` (`run 'shll shell-setup' then 'exec $SHELL'`); the agent-setup nudge wording describes `shll agent-setup`'s work (toolkit-skill placement + run-kit hook delegation).
+
+> **The `runKitToolName = "run-kit"` constant lives in `install.go`, but its sole consumer is `agent_setup.go`'s `delegateRunKitAgentSetup`** (the run-kit binary name for the delegation subprocess). See [cli/agent-setup §run-kit delegation](/cli/agent-setup.md#run-kit-delegation).
 
 ### The `env` seam on `runInstall`
 
-`runInstall` gained an `env func(string) string` parameter (93r2) — threaded solely into the shell-setup gate's `resolveWiringFact(env)` — mirroring `runDoctor`'s established test seam (`runDoctor(ctx, jsonOut, env, stdout, stderr)`). The cobra factory `newInstallCmd` passes `os.Getenv`; `install_test.go` passes a map-backed `envFunc` pointing at a `t.TempDir()` rc file reached via a faked `$SHELL`/`$ZDOTDIR`/`$HOME`, so the wiring probe NEVER touches the real `~/.zshrc`. `env` is used ONLY by `printNextSteps`; `runInstall` writes nothing through it.
+`runInstall` takes an `env func(string) string` parameter — threaded into `runPostInstallSetup` for the shell-setup gate (`resolveWiringFact(env)`), the shell/rc pre-resolution for the auto-run, and agent-setup's skill-target derivation — mirroring `runDoctor`'s established test seam (`runDoctor(ctx, jsonOut, env, stdout, stderr)`). The cobra factory `newInstallCmd` passes `os.Getenv`; `install_test.go` passes a map-backed `envFunc` pointing at a `t.TempDir()` rc file and `$HOME` reached via a faked `$SHELL`/`$ZDOTDIR`/`$HOME`, so the wiring probe and the auto-run writes NEVER touch the real `~/.zshrc` or real skill dirs. The auto shell-setup pre-resolves via `resolveShell(nil, env)`/`resolveRcFile(shell, env)` rather than the `runShellSetup` wrapper, so no internal `os.Getenv` escapes the seam.
 
 ### Constitution fit
 
-I — no new subprocess path in command code (the wiring probe is file I/O via `resolveWiringFact`). II — the shell-setup gate is re-derived per invocation, no state; the agent-setup line is stateless too (unconditional). III/IV — reuses the existing detector and composes `shll shell-setup` / `shll agent-setup` by *pointing at them*, never absorbing them. V — the shell-setup line degrades silently to nothing on its edges (unresolvable shell, corrupt block, or wired user); the agent-setup line always prints. VII — no new subcommand; additive output on an existing one (`shll agent-setup` is itself a new subcommand justified separately — see [cli/agent-setup](/cli/agent-setup.md)).
+I — no new subprocess path in command code (both steps are in-process seam calls; agent-setup's own run-kit delegation routes through `internal/proc` as before). II — the gates are re-derived per invocation, no state. III/IV — install *composes* `shll shell-setup` / `shll agent-setup` by calling their existing seams, never absorbing their logic. V — every auto-run failure degrades to warn + nudge; the quiet edge states suppress dead-end nudges; run-kit absent is a silent skip. VII — two flags on the existing `install` subcommand, no new commands.
 
-Tests (`install_test.go`; 93r2, agst): `TestInstall_ShellSetupNudgeShownWhenUnwired` (unwired rc → shell-setup line shown), `TestInstall_ShellSetupNudgeHiddenWhenWired` (wired rc → shell-setup line suppressed, but the block still prints with the **agent line only** — `nextStepsAgentOnly`), `TestInstall_AgentSetupNudgeUnconditional` (the `shll agent-setup` line prints for **both** run-kit-present and run-kit-absent, marked "optional, once per machine"), `TestInstall_NoNudgesOnDryRun` (loop-path dry-run → preview only, no nudge), `TestInstall_DryRunEmptyCaseNoNudge` (short-circuit under `--dry-run` → no nudge), `TestInstall_ShortCircuitPathNudgesWhenUnwired` (the nothing-to-do path still nudges an unwired re-runner). The golden-string tests thread a **wired** env via the shared `installWiredEnv(t)` helper to suppress the shell-setup line and append the unconditional agent line (helper `nextStepsAgentOnly`).
+Tests (`install_test.go`): `TestInstall_AutoShellSetupWiresRcFile` (fresh unwired rc → sentinel block appended, shell-setup's own announcement + the `exec $SHELL` reminder, no nudge), `TestInstall_AutoShellSetupIdempotentRewire` (second run is a byte-identical silent skip — no reminder, no nudge), `TestInstall_AutoShellSetupQuietSkips` (wired / unresolvable `$SHELL` / corrupt block → no write, no nudge, no reminder, no stderr), `TestInstall_AutoShellSetupFailureDegrades` (missing rc → actionable stderr message + warn + gated nudge, exit 0, rc never created), `TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes` (both skill files placed with canonical bytes, foreground `run-kit agent setup --yes` argv pinned, fully-wired happy path prints no `Next steps:` header), `TestInstall_AutoAgentSetupRunKitAbsentSilentSkip` (placement still happens, no nudge, no stderr), `TestInstall_AutoAgentSetupDelegationFailureContinues` (rk < v3.16.23 version skew → warn-and-`(continuing)`, NO nudge, install unaffected), `TestInstall_AutoAgentSetupFailureDegrades` (unwritable skill dir → per-path diagnostic + warn + agent nudge, exit unchanged). The nudge-era tests survive with adapted semantics: `TestInstall_ShellSetupNudgeShownWhenUnwired` (both opt-outs restore the nudge-era block — both lines, no writes), `TestInstall_ShellSetupNudgeHiddenWhenWired` (wired rc + both opt-outs → agent-only block, `nextStepsAgentOnly`), `TestInstall_AgentSetupNudgeOnOptOut` (the agent nudge is the `--no-agent-setup` fallback, run-kit present and absent), `TestInstall_NoNudgesOnDryRun` (dry-run runs neither step and prints no nudge), `TestInstall_DryRunEmptyCaseNoNudge`, `TestInstall_ShortCircuitPathNudgesWhenUnwired`. The golden-string tests thread a **wired** env via the shared `installWiredEnv(t)` helper.
 
 ## `--dry-run`
 
@@ -192,7 +201,7 @@ Would install 4 tools:
 
 **Graceful degradation (Constitution V).** Only the missing subset is listed; already-installed tools are omitted (they are filtered out into `missing` before the preview builds).
 
-**Empty case.** When every roster tool is already installed, the dry-run path never reaches the preview builder — the shared all-already-installed short-circuit (step 3) fires first, so stdout is the shll-first informational line then `All shll tools already installed.\n` (i.e. `shllSelfInstallNote + "\n" + allInstalledMsg + "\n"`, bb7r), exit 0, no preview table, no install (`TestInstall_DryRunEmptyCase`). Under `--dry-run` the short-circuit's `printNextSteps` call is `!dryRun`-gated, so **no nudge** prints even here (`TestInstall_DryRunEmptyCaseNoNudge`, 93r2) — see [The post-install "Next steps" nudge §emission points](#emission-points--loop-tail--short-circuit-both-non-preview-outcome-paths).
+**Empty case.** When every roster tool is already installed, the dry-run path never reaches the preview builder — the shared all-already-installed short-circuit (step 3) fires first, so stdout is the shll-first informational line then `All shll tools already installed.\n` (i.e. `shllSelfInstallNote + "\n" + allInstalledMsg + "\n"`, bb7r), exit 0, no preview table, no install (`TestInstall_DryRunEmptyCase`). Under `--dry-run` the short-circuit's `runPostInstallSetup` call is `!dryRun`-gated, so **neither auto-run step runs and no nudge** prints even here (`TestInstall_DryRunEmptyCaseNoNudge`) — see [The post-install auto-run steps §emission points](#emission-points--loop-tail--short-circuit-both-non-preview-outcome-paths).
 
 **Brew-missing precondition unchanged.** A missing brew still writes `installBrewMissingHint` to stderr and exits 1 (the `hasBrew` check precedes the dry-run branch).
 
@@ -220,6 +229,26 @@ Would install 4 tools:
 > *Why a new top-level subcommand?* `install` is a distinct lifecycle operation from `update`: different precondition (tool not installed vs. installed), different failure modes (no metadata-refresh dependency), and different discoverability (a new user wanting "get me the toolkit" looks for `install`). Cannot be cleanly expressed as a flag on `update` because `update`'s installed-only precondition would have to invert for a subset of the run.
 >
 > *Rejected*: `shll update --install-missing`. The branching gets messy and the verb mismatch hurts new-user discoverability.
+
+## Design Decisions
+
+### Post-install steps run in-process via the existing seams
+**Decision**: The auto-run steps invoke `runShellSetupDefault` (with install-side `resolveShell`/`resolveRcFile` pre-resolution) and `runAgentSetup` directly, not a `shll`-self subprocess.
+**Why**: Both seams live in package `main` with injectable env/writers; in-process reuse is hermetic under the existing test seams and strictly stronger than Constitution I's proc-routing requirement (no subprocess at all). Pre-resolving shell/rc for `runShellSetupDefault` avoids `runShellSetup`'s internal `os.Getenv`, keeping install's `env` seam authoritative.
+**Rejected**: `proc.RunForeground(ctx, "shll", "shell-setup")` self-exec — an unnecessary subprocess, PATH-dependent, and untestable without a real binary.
+*Introduced by*: 260819-gjhx-install-auto-shell-agent-setup
+
+### A run-kit delegation failure does not trigger the agent-setup nudge
+**Decision**: Inside the auto agent-setup step, a delegation failure stays non-fatal and does NOT fall back to the nudge; only a `runAgentSetup` placement failure does.
+**Why**: Inherits the standalone command's exact semantics — `delegateRunKitAgentSetup` warns with `(continuing)` and never fails placement; re-running `shll agent-setup` would hit the same delegation failure, so nudging would dead-end (the same logic as the shell-setup quiet edge states).
+**Rejected**: Plumbing a delegation-outcome signal out of `runAgentSetup` — changes the standalone command's contract for a nudge that would dead-end anyway.
+*Introduced by*: 260819-gjhx-install-auto-shell-agent-setup
+
+### The "Next steps:" block prints only when non-empty
+**Decision**: The block (header + lines) renders only when at least one line applies; the fully-wired happy path prints no header at all.
+**Why**: An empty header is noise; the happy-path output should read as "done and wired", with only the `exec $SHELL` reminder.
+**Rejected**: An unconditional header with an "all wired" line — a new string with no action for the user.
+*Introduced by*: 260819-gjhx-install-auto-shell-agent-setup
 
 ## Spec-locked Design Decisions for this subcommand
 
@@ -280,8 +309,8 @@ Per-tool header/tail behavior (y630) plus the change-6vuo `[N/M]` counter, durat
 - Sibling lifecycle command: [cli/update](/cli/update.md) — the upgrade-already-installed counterpart; the [per-tool header/tail contract](/cli/update.md#per-tool-output-separation) is documented there and shared via `ui.go`. `update` deliberately does NOT mutate trust (0854) — it relies on `install` having trusted the tools.
 - **Counterpart lifecycle command: [cli/uninstall](/cli/uninstall.md)** (kkaj) — the install/uninstall pairing. `shll uninstall` is the clean-slate repair path that removes what `shll install` bootstraps: it mirrors install's per-tool `ui.go` framing and dry-run preview but in **reverse-roster** order (dependents before leaves), gates a destructive removal behind a `Proceed? [y/N]` confirmation, and reuses the shared brew helpers (`brew.go`) and `resolveTargets` (with `allowShll=true`, unlike install's `allowShll=false`, so `shll uninstall shll` is a legal explicit target).
 - Trust helpers `brewTrustFormula`/`brewTrustAvailable` live in `brew.go`: [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The read-only sibling check that surfaces an installed-but-untrusted tool: [cli/doctor §the trust sub-check](/cli/doctor.md#the-trust-sub-check).
-- **The read-only wiring detector the [post-install nudge](#the-post-install-next-steps-nudge) reuses (93r2)**: `resolveWiringFact` lives in `doctor.go` and is shared strictly read-only — [cli/doctor §the wiring fact](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse), built on [cli/shell-setup §block location and parsing](/cli/shell-setup.md#block-location-and-parsing). (The agent-setup line is unconditional — agst.)
-- **The `shll agent-setup` command the nudge points at (agst)**: [cli/agent-setup](/cli/agent-setup.md). The two-step skill discovery it wires: [cli/skill](/cli/skill.md).
+- **The read-only wiring detector the [post-install auto-run steps](#the-post-install-auto-run-steps-and-the-next-steps-block) gate on**: `resolveWiringFact` lives in `doctor.go` and is shared strictly read-only — [cli/doctor §the wiring fact](/cli/doctor.md#the-wiring-fact--resolvewiringfact-read-only-reuse), built on [cli/shell-setup §block location and parsing](/cli/shell-setup.md#block-location-and-parsing). When the gate reports unwired, install then drives shell-setup's write path (`runShellSetupDefault`) in-process.
+- **The `shll agent-setup` command the agent step runs (and the nudge points at)**: [cli/agent-setup](/cli/agent-setup.md). The two-step skill discovery it wires: [cli/skill](/cli/skill.md).
 - Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll).
 - **The upstream bootstrap that execs into this command: [ci/install-bootstrap](/ci/install-bootstrap.md)** (m1zt) — the `curl … | sh` script (`scripts/install.sh`, served at shll.ai/install) and its shll.ai raw-fetch URL contract.
 - Constitution I (Security First — the trust ceremony routes through `internal/proc`), III (Wrap, Don't Reinvent), IV (Composition, Not Replacement), V (Graceful Degradation — trust degrades, not aborts, when `brew trust` is absent or fails), VII (Minimal Surface Area — `--no-trust` is a flag on existing `install`, no new command).
