@@ -32,6 +32,12 @@ The skill directories are shll-owned, so:
 **Rejected**: TTY detection (fails the motivating case exactly); making `shll update`'s agent-setup refresh unconditionally `--yes` (removes user consent for run-kit's hook writes on attended runs).
 *Introduced by*: 260815-3ovi-yes-flag-update-agent-setup
 
+### Install's auto-run always forwards `--yes`
+**Decision**: `shll install`'s post-install auto-run invokes the agent-setup seam with `yes=true` unconditionally — the equivalent of `shll agent-setup --yes` — distinct from `shll update`'s attended-refresh path, which keeps the consent gate.
+**Why**: install's terminal path is the unattended curl bootstrap — stdin is the pipe, there is no TTY, and run-kit's hook-wiring prompt refuses non-interactively without `--yes` (`errNonInteractiveConsent`), so omitting it would dead-end exactly the runs the auto-run exists for. run-kit's merge is verified idempotent and non-clobbering (rk-owned `settings.json` entries are marker-detected and replaced in place, never duplicated; malformed JSON is refused, not rewritten), so the prompt is a consent gate, not a data-loss guard.
+**Rejected**: Prompting or a timed countdown (no TTY under `curl | sh`); skipping the delegation on the auto-run (leaves the machine half-wired — the adoption failure the auto-run removes).
+*Introduced by*: 260819-gjhx-install-auto-shell-agent-setup
+
 ### No probe, no old-spelling fallback for rk < v3.16.23
 **Decision**: The delegation invokes the two-token `run-kit agent setup` family plainly — no version probe, no retry with the deprecated `run-kit agent-setup` spelling.
 **Why**: The delegation is already a best-effort adjunct (ErrNotFound → silent skip; other failures → `(continuing)` warning, never failing the placement). The dominant exposure path — `shll update`'s end-of-run refresh — runs after the roster loop has just upgraded run-kit, so the new family exists by construction; fresh machines get latest rk from brew. A blind retry-on-nonzero cannot distinguish "unknown command" from a genuine setup failure and would re-run a failing (possibly prompting) setup twice.
@@ -115,9 +121,10 @@ The compare uses `bytes.Equal` on the read content. A non-not-exist read error (
 
 ## Touchpoints
 
-Two surfaces point users at `shll agent-setup` (agst):
+Three surfaces run or point users at `shll agent-setup` (agst, gjhx):
 
-- **`install.go`'s post-install "Next steps" nudge** — the unconditional `agentSetupNudgeFmt` line (`shll agent-setup # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)`). shll is by definition present, so the line carries no presence gate — it prints on both outcome paths, never on dry-run. See [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge).
+- **`install.go`'s post-install auto-run** — `shll install` runs the equivalent of `shll agent-setup --yes` in-process (`runAgentSetup(ctx, env, stdout, stderr, false, false, true)`) at the end of every non-dry-run install, on both outcome paths, unless `--no-agent-setup`. The nudge line (`agentSetupNudgeFmt` — `shll agent-setup # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)`) survives as the fallback only: it prints when the step was opted out of or the placement failed — a run-kit *delegation* failure does not re-surface it (that nudge would dead-end). See [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block).
+- **`shll update`'s end-of-run refresh** — the `shll agent-setup` self-invocation (`refreshArgv`), consent-gated by update's own `--yes` chain (3ovi; see the [Design Decision](#explicit---yes-plumbing-not-tty-detection)).
 - **README install flow** — the command block and its explanation paragraph, plus `### shll agent-setup` and `### shll skill` command sections describing the skills-placement + two-step design (no stanza wording anywhere).
 
 ## Constitution VII justification
@@ -137,7 +144,7 @@ Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (
 ## Cross-references
 
 - The runtime steps the placed skill teaches (`shll skill` glossary → `shll skill <tool>` bundle → `shll skill <tool> <topic>` topic page): [cli/skill](/cli/skill.md).
-- The nudge and the shared `runKitToolName` constant (consumed only by this file's delegation): [cli/install §the post-install nudge](/cli/install.md#the-post-install-next-steps-nudge).
+- The install auto-run, the fallback nudge, and the shared `runKitToolName` constant (consumed only by this file's delegation): [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block).
 - The subprocess wrapper the delegation uses: [internal/proc](/internal/proc.md).
 - Root wiring (`newAgentSetupCmd`), the exit-code sentinels (`errExitCode`/`usageExitCode`/`errSilent`): [cli/commands](/cli/commands.md).
 - The standard's landed-design note recording skills placement (not context aggregation): [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-agent-setup-skills-placement-not-context-aggregation).

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the whole pre-brew phase (platform-correct git/curl/tmux preflight, headless `NONINTERACTIVE=1` Homebrew bootstrap, absolute-`$BREW` + shellenv threading), capability-probed tap-trust, then `exec shll install \"$@\"`. The `scripts/install.sh` path is load-bearing — shll.ai raw-fetches it from `main`."
+description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless `NONINTERACTIVE=1` Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, then `exec shll install \"$@\"` — which auto-runs shell-setup + agent-setup: a fully wired machine; `sh -s -- --no-*` passthrough is public surface. The path is load-bearing — shll.ai raw-fetches it from `main`."
 ---
 # ci/install-bootstrap
 
@@ -14,6 +14,8 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt   # install a subset
 ## Overview
 
 `scripts/install.sh` is a POSIX-sh bootstrap that owns the whole **pre-brew phase**: it preflights the dependencies the install needs (git/CLT, curl, tmux), bootstraps Homebrew headlessly when absent, then solves the circularity that `shll` cannot trust/install its own Homebrew formula before that binary exists on `PATH`. Once `shll` is present it `exec`s into `shll install "$@"`, which owns all the post-brew intelligence — roster knowledge, subset filtering, per-formula trust for the other six tools, graceful skips (Constitution III — wrap, don't reinvent). The script carries none of that logic.
+
+**The outcome is a fully wired machine.** `shll install` auto-runs `shll shell-setup` and `shll agent-setup --yes` at the end of every non-dry-run install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), so the curl-bootstrap user lands with shell integration and agent harnesses wired — not with nudges to ignore. The opt-out flags ride the script's verbatim arg passthrough: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup` → `exec shll install --no-agent-setup` — and that flag passthrough is public surface alongside the tool-name subset args.
 
 ## Behavior contract
 
@@ -36,7 +38,7 @@ The body is wrapped `main() { … }; main "$@"` and runs `set -eu`. In `main`'s 
    - **Capability-probed trust.** `"$BREW" trust --help >/dev/null 2>&1` gates the trust step. On success run `"$BREW" trust --formula sahil87/tap/shll`; on non-zero (pre-6.0 Homebrew has no `brew trust` and no trust requirement) skip it silently. This mirrors the Go probe `brewTrustAvailable` (`src/cmd/shll/brew.go:67`) — **the probe is the contract, never a version-floor check**. See [cli/install §Per-formula trust before install](/cli/install.md#per-formula-trust-before-install).
    - `"$BREW" install sahil87/tap/shll`.
    - Under `set -e`, a failing `brew trust` or `brew install` on Homebrew 6.0+ aborts the script with brew's own error output — no swallowing. That surface-the-error tolerance is intentional.
-7. **Exec hand-off.** `exec shll install "$@"` — every arg forwarded verbatim as the install subset (tool names, e.g. `hop wt`). `shll install` validates the names itself (`resolveTargets`, `allowShll=false`; the alias `rk` resolves to `run-kit`). The script contains zero roster/subset/per-tool-trust logic.
+7. **Exec hand-off.** `exec shll install "$@"` — every arg forwarded verbatim: tool names (e.g. `hop wt`) as the install subset, and flags (e.g. `sh -s -- --no-shell-setup --no-agent-setup`) straight through to `shll install`'s own flag parsing. `shll install` validates the names itself (`resolveTargets`, `allowShll=false`; the alias `rk` resolves to `run-kit`). The script contains zero roster/subset/per-tool-trust logic — and zero wiring logic: the auto shell-setup/agent-setup steps live in `shll install`, inherited here by the exec.
 
 ## Requirements
 
@@ -70,12 +72,17 @@ When `command -v brew` fails, the script SHALL print a progress line and run `NO
 - **THEN** the official installer runs headlessly, `$BREW` resolves to the installed prefix's `brew`, shellenv is eval'd in-process, and the exact rc line is printed for future shells
 
 ### Requirement: Delegate all intelligence to `shll install`
-The final action SHALL be `exec shll install "$@"`. The script SHALL NOT duplicate roster knowledge, subset filtering, per-formula trust for the other tools, or graceful skips.
+The final action SHALL be `exec shll install "$@"`. The script SHALL NOT duplicate roster knowledge, subset filtering, per-formula trust for the other tools, graceful skips, or the post-install wiring (shell-setup/agent-setup auto-runs — `shll install` runs them; the script inherits the behavior and forwards the `--no-*` opt-out flags verbatim).
 
 #### Scenario: subset pass-through
 - **GIVEN** the script is invoked as `sh -s -- hop wt`
 - **WHEN** it reaches the hand-off
 - **THEN** it runs `exec shll install hop wt` (args forwarded verbatim), and the script itself carries no roster/subset logic
+
+#### Scenario: flag pass-through
+- **GIVEN** the script is invoked as `sh -s -- --no-agent-setup`
+- **WHEN** it reaches the hand-off
+- **THEN** it runs `exec shll install --no-agent-setup` — the opt-out flag reaches `shll install` untouched, and that step is skipped (its nudge prints instead)
 
 ## The shll.ai raw-fetch URL contract
 

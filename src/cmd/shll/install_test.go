@@ -13,43 +13,58 @@ import (
 	"github.com/sahil87/shll/internal/proc"
 )
 
-// --- post-install "Next steps" nudge env/golden helpers (change 93r2) ---------
+// --- post-install env/golden helpers (change 93r2; auto-run change gjhx) -------
+
+// installEnvDir returns an env func resolving the given shell and pointing the rc
+// path and $HOME at a fresh t.TempDir() holding a .zshrc with rcContent, plus the
+// dir itself — for tests that assert on the rc file or the files the agent-setup
+// step writes under $HOME. NEVER touches the real ~/.zshrc or $HOME.
+func installEnvDir(t *testing.T, shell, rcContent string) (func(string) string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte(rcContent), 0o644); err != nil {
+		t.Fatalf("write rc: %v", err)
+	}
+	return envFunc(map[string]string{"SHELL": shell, "ZDOTDIR": dir, "HOME": dir}), dir
+}
 
 // installWiredEnv returns an env func resolving zsh and pointing the rc path at a
 // fresh t.TempDir() .zshrc that already contains shll's eval block, so the
-// shell-setup nudge gate (resolveWiringFact → !wired) reports WIRED and the
-// shell-setup line is suppressed. Existing golden-string tests use this so the only
-// nudge that can fire is the (unconditional, change agst) shll agent-setup line.
-// Mirrors doctor_test's rcEnv/writeWiredRC pattern; NEVER touches the real ~/.zshrc.
+// resolveWiringFact gate reports WIRED and the auto shell-setup step is a silent
+// skip. Mirrors doctor_test's rcEnv/writeWiredRC pattern; NEVER touches the real
+// ~/.zshrc.
 func installWiredEnv(t *testing.T) func(string) string {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte("export FOO=bar\n"+tNewBlockZsh), 0o644); err != nil {
-		t.Fatalf("write wired rc: %v", err)
-	}
-	return envFunc(map[string]string{"SHELL": "/bin/zsh", "ZDOTDIR": dir, "HOME": dir})
+	env, _ := installEnvDir(t, "/bin/zsh", "export FOO=bar\n"+tNewBlockZsh)
+	return env
+}
+
+// installWiredEnvDir is installWiredEnv plus the temp dir.
+func installWiredEnvDir(t *testing.T) (func(string) string, string) {
+	t.Helper()
+	return installEnvDir(t, "/bin/zsh", "export FOO=bar\n"+tNewBlockZsh)
 }
 
 // installUnwiredEnv returns an env func resolving zsh and pointing the rc path at a
-// fresh t.TempDir() .zshrc with NO shll block, so the shell-setup nudge gate fires.
+// fresh t.TempDir() .zshrc with NO shll block, so the resolveWiringFact gate is
+// open (shellResolved && !corrupt && !wired).
 func installUnwiredEnv(t *testing.T) func(string) string {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".zshrc"), []byte("export FOO=bar\n"), 0o644); err != nil {
-		t.Fatalf("write unwired rc: %v", err)
-	}
-	return envFunc(map[string]string{"SHELL": "/bin/zsh", "ZDOTDIR": dir, "HOME": dir})
+	env, _ := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
+	return env
 }
 
 // agentSetupNudgeGolden is the plain (non-color, bytes.Buffer) shll agent-setup nudge
 // line as it appears in stdout, INCLUDING the trailing newline. arrow(false) yields
 // `->` on the non-TTY test writer. It GRADUATED from the former run-kit agent-setup
-// line (change agst) and now prints unconditionally.
+// line (change agst); since the auto-run change (gjhx) it prints as the
+// --no-agent-setup / failed-step fallback.
 const agentSetupNudgeGolden = "  -> shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)\n"
 
 // nextStepsAgentOnly is the whole "Next steps" block a golden test sees when the
-// shell-setup nudge is suppressed (wired env): the leading blank line, the header,
-// then the always-printed agent-setup line only.
+// shell step is quiet (wired env) and the agent step was opted out of
+// (--no-agent-setup): the leading blank line, the header, then the agent-setup
+// nudge line only.
 const nextStepsAgentOnly = "\n" + nextStepsHeader + "\n" + agentSetupNudgeGolden
 
 func TestInstall_BrewMissing(t *testing.T) {
@@ -62,7 +77,7 @@ func TestInstall_BrewMissing(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil)
+	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent", err)
 	}
@@ -88,11 +103,13 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	// The wired env suppresses the shell-setup nudge; the shll agent-setup line is
-	// unconditional (change agst), so it fires after the nothing-to-do note.
+	// The wired env makes the auto shell-setup a silent skip; --no-agent-setup
+	// opts out of the agent step, so its nudge prints as the fallback after the
+	// nothing-to-do note (keeping this golden deterministic — an auto agent-setup
+	// would print temp-dir placement paths).
 	if got, want := stdout.String(), shllSelfInstallNote+"\nAll shll tools already installed.\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -121,13 +138,18 @@ func TestInstall_NoneInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	for _, tool := range Roster {
 		if !invocationsContain(f.calls, brewBinary, "install", tool.Formula) {
 			t.Errorf("expected brew install %s, calls: %+v", tool.Formula, f.calls)
 		}
+	}
+	// The loop path also ran the post-install agent-setup auto-run (the wired env
+	// silent-skips the shell step): the run-kit delegation is forwarded --yes.
+	if !invocationsContain(f.calls, runKitToolName, "agent", "setup", "--yes") {
+		t.Errorf("expected the auto agent-setup delegation `run-kit agent setup --yes`, calls: %+v", f.calls)
 	}
 	// Sanity: stdout should NOT contain the "all already installed" message.
 	if strings.Contains(stdout.String(), "already installed") {
@@ -154,7 +176,7 @@ func TestInstall_PartialInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v", err)
 	}
 	// Already-installed tools must NOT receive an install call.
@@ -193,7 +215,7 @@ func TestInstall_NoBrewUpdateInvoked(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v", err)
 	}
 	if invocationsContain(f.calls, brewBinary, "update", "--quiet") {
@@ -219,7 +241,7 @@ func TestInstall_OneInstallFails(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil)
+	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (overall failure)", err)
 	}
@@ -246,7 +268,7 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	// Headers carry the [N/M] counter over the missing subset (M=4), each header
@@ -258,7 +280,7 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 		"\n==> [3/4] run-kit\n" +
 		"\n==> [4/4] fab-kit\n" +
 		"\nDone — 4 of 4 tools succeeded in 1m12s.\n" +
-		nextStepsAgentOnly // wired env → shell-setup suppressed; run-kit runnable → agent-setup nudge (change 93r2)
+		nextStepsAgentOnly // wired env → shell step silent-skips; --no-agent-setup → the agent nudge prints as the opt-out fallback (change gjhx)
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -270,17 +292,17 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 
 func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	// Everything already installed → short-circuit, no install loop, so no
-	// header and no tail. The nothing-to-do note is followed by the run-kit
-	// agent-setup nudge (wired env suppresses the shell-setup line; the fake
-	// reports run-kit runnable — change 93r2). The nudge carries neither a `==>`
-	// header nor a `Done —` tail, so the no-loop-framing assertion still holds.
+	// header and no tail. The nothing-to-do note is followed by the agent-setup
+	// nudge (--no-agent-setup opt-out fallback; the wired env silent-skips the
+	// shell step — change gjhx). The nudge carries neither a `==>` header nor a
+	// `Done —` tail, so the no-loop-framing assertion still holds.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\nAll shll tools already installed.\n"+nextStepsAgentOnly; got != want {
@@ -311,14 +333,14 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil)
+	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil)
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent (one install failed)", err)
 	}
 	// Partial-failure tail carries the duration before the em-dash. The agent-setup
-	// nudge follows the tail (nudges print regardless of anyFailed — the block is
-	// informational and orthogonal to install outcome), so assert the tail appears
-	// mid-stream and the nudge is the true suffix.
+	// nudge (opt-out fallback) follows the tail — the post-install block is
+	// orthogonal to install outcome, so it prints regardless of anyFailed — so
+	// assert the tail appears mid-stream and the nudge is the true suffix.
 	if !strings.Contains(stdout.String(), "5 succeeded, 1 failed in 1m12s — see above.\n") {
 		t.Fatalf("stdout = %q, want the partial-failure tail (5/1)", stdout.String())
 	}
@@ -335,7 +357,7 @@ func TestInstall_DryRunPreview(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	// Longest missing label is "fab-kit" (7); shorter labels pad to 7. The shll-
@@ -369,7 +391,7 @@ func TestInstall_DryRunNoWrites(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -399,7 +421,7 @@ func TestInstall_DryRunEmptyCase(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
@@ -426,7 +448,7 @@ func TestInstall_ShllFirstInformationalLine(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	firstLine := strings.SplitN(stdout.String(), "\n", 2)[0]
@@ -451,7 +473,7 @@ func TestInstall_SubsetUnknownTargetHardErrors(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, []string{"hpo"})
+	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"hpo"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent for unknown target", err)
 	}
@@ -473,7 +495,7 @@ func TestInstall_SubsetShllRejected(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, []string{"shll"})
+	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"shll"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runInstall err = %v, want errSilent for `shll install shll`", err)
 	}
@@ -503,7 +525,7 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, []string{"fab-kit", "wt"}); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, []string{"fab-kit", "wt"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -529,10 +551,9 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 		}
 	}
 	// Counter M=2 over the subset; success tail. The shll-first informational line
-	// leads regardless of the named subset. run-kit isn't in this subset, but the
-	// fake reports it runnable on PATH, so the post-run agent-setup nudge still fires
-	// (decision 4 — the gate is "run-kit installed after the run", uniform across
-	// subset runs where run-kit is present; change 93r2).
+	// leads regardless of the named subset. The run passes --no-agent-setup, so the
+	// agent-setup nudge prints as the opt-out fallback after the tail (wired env →
+	// the shell step silent-skips).
 	want := shllSelfInstallNote + "\n" +
 		"==> [1/2] wt\n" +
 		"\n==> [2/2] fab-kit\n" +
@@ -553,12 +574,12 @@ func TestInstall_SubsetNamedAlreadyInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, []string{"hop"}); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, []string{"hop"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	// installedOnly reports run-kit runnable on PATH (default success for
-	// `run-kit --version`), so the post-run agent-setup nudge fires after the
-	// nothing-to-do note; the wired env suppresses the shell-setup line (change 93r2).
+	// The run passes --no-agent-setup, so the agent-setup nudge prints as the
+	// opt-out fallback after the nothing-to-do note; the wired env silent-skips
+	// the shell step (change gjhx).
 	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want the shll-first note + nothing-to-do note + run-kit nudge for a named-already-installed target", got)
 	}
@@ -579,7 +600,7 @@ func TestInstall_SubsetDryRunPreviewFiltered(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, []string{"fab-kit", "idea"}); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, []string{"fab-kit", "idea"}); err != nil {
 		t.Fatalf("runInstall --dry-run subset err = %v, want nil", err)
 	}
 	want := shllSelfInstallNote + "\n" +
@@ -605,7 +626,7 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 	installFakeClock(t, t0, t0.Add(72*time.Second))
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	want := shllSelfInstallNote + "\n" +
@@ -615,7 +636,7 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 		"\n==> [4/5] hop\n" +
 		"\n==> [5/5] fab-kit\n" +
 		"\nDone — 5 of 5 tools succeeded in 1m12s.\n" +
-		nextStepsAgentOnly // run-kit runnable → agent-setup nudge; wired env → no shell-setup line (change 93r2)
+		nextStepsAgentOnly // --no-agent-setup → the agent nudge prints as the opt-out fallback; wired env → shell step silent-skips (change gjhx)
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
@@ -648,7 +669,7 @@ func TestInstall_TrustsEachFormulaBeforeInstall(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -689,7 +710,7 @@ func TestInstall_NoTrustSkipsTrustStep(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, true /*noTrust*/, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, true /*noTrust*/, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -721,7 +742,7 @@ func TestInstall_TrustUnavailableSkipsGracefully(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil (trust unavailable degrades)", err)
 	}
 	calls := f.recordedCalls()
@@ -744,7 +765,7 @@ func TestInstall_TrustFailureContinues(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil (trust failure is best-effort, installs succeeded)", err)
 	}
 	calls := f.recordedCalls()
@@ -802,7 +823,7 @@ func TestInstall_LegacyOnlyMachineBrewInstallsRunKit(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, []string{"run-kit"}); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"run-kit"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
@@ -827,7 +848,7 @@ func TestInstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, []string{"rk"}); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"rk"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if !strings.Contains(stdout.String(), "note: rk is now run-kit") {
@@ -839,15 +860,16 @@ func TestInstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 	assertNoLegacyFormulaReference(t, f.recordedCalls())
 }
 
-// --- post-install "Next steps" nudge (change 93r2) ----------------------------
+// --- post-install auto-run steps + "Next steps" block (93r2, agst, gjhx) --------
 
 // allInstalledRunKitState builds a fake where every roster formula is already
 // installed (brew list succeeds) so runInstall hits the all-already-installed
-// short-circuit — isolating the nudge gates from install-loop framing. runKitOnPath
-// drives the run-kit presence probe (`run-kit --version` and its `rk` legacy
-// fallback). Since change agst the shll agent-setup nudge is UNCONDITIONAL, so
-// run-kit presence no longer gates it; the parameter is retained so tests can still
-// vary the PATH state without affecting the nudge outcome.
+// short-circuit — isolating the post-install steps from install-loop framing.
+// runKitOnPath drives the run-kit presence probe (`run-kit --version` and its `rk`
+// legacy fallback). Note the agent-setup auto-run's DELEGATION call
+// (`run-kit agent setup --yes`) does not match the --version probe shape, so it
+// falls through to the default success regardless of runKitOnPath — tests that need
+// the delegation itself to fail or be absent build a dedicated fake.
 func allInstalledRunKitState(runKitOnPath bool) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		// run-kit / rk PATH probe (toolInstalled → probeToolVersion, incl. the
@@ -865,13 +887,15 @@ func allInstalledRunKitState(runKitOnPath bool) *fakeRunner {
 }
 
 func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
-	// Unwired rc → the shell-setup nudge fires; the shll agent-setup line is
-	// unconditional (change agst), so BOTH lines appear after the nothing-to-do note.
-	f := allInstalledRunKitState(false /* run-kit absent — no longer gates the nudge */)
+	// Both opt-outs restore the nudge-era block: with --no-shell-setup and
+	// --no-agent-setup on an unwired machine, BOTH nudge lines appear after the
+	// nothing-to-do note — and neither step writes anything (change gjhx).
+	f := allInstalledRunKitState(false /* run-kit absent — irrelevant to the nudges */)
 	installFakeRunner(t, f)
 
+	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installUnwiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, true /*noShellSetup*/, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -881,40 +905,56 @@ func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
 	if !strings.Contains(out, "shll shell-setup") || !strings.Contains(out, "exec $SHELL") {
 		t.Fatalf("expected the shell-setup nudge (run 'shll shell-setup' … exec $SHELL), got %q", out)
 	}
-	// The agent-setup line prints unconditionally (graduated from run-kit, change agst).
 	if !strings.Contains(out, "shll agent-setup") {
-		t.Fatalf("expected the unconditional shll agent-setup nudge, got %q", out)
+		t.Fatalf("expected the agent-setup nudge, got %q", out)
 	}
 	// The former run-kit agent-setup wording is gone.
 	if strings.Contains(out, "run-kit agent-setup") {
 		t.Fatalf("the nudge must point at 'shll agent-setup', not 'run-kit agent-setup', got %q", out)
 	}
+	// No writes: the rc file is untouched, no skill files exist under $HOME, and
+	// no run-kit delegation ran.
+	rc, err := os.ReadFile(filepath.Join(dir, ".zshrc"))
+	if err != nil {
+		t.Fatalf("read rc: %v", err)
+	}
+	if got, want := string(rc), "export FOO=bar\n"; got != want {
+		t.Fatalf("--no-shell-setup must not write the rc file: got %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".agents")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("--no-agent-setup must write no skill files under $HOME")
+	}
+	if invocationsContain(f.recordedCalls(), runKitToolName, "agent", "setup", "--yes") {
+		t.Fatalf("--no-agent-setup must not invoke the run-kit delegation")
+	}
 }
 
 func TestInstall_ShellSetupNudgeHiddenWhenWired(t *testing.T) {
-	// Wired rc → the shell-setup line is suppressed, but the shll agent-setup line is
-	// unconditional (change agst), so the "Next steps" block STILL prints (agent-only).
-	f := allInstalledRunKitState(false /* run-kit absent — irrelevant to the nudge now */)
+	// Wired rc + both steps opted out → the shell-setup line is suppressed (its
+	// gate is closed), so the "Next steps" block prints with the agent-setup
+	// opt-out fallback line only (change gjhx).
+	f := allInstalledRunKitState(false /* run-kit absent — irrelevant to the nudges */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, true /*noShellSetup*/, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	out := stdout.String()
 	if strings.Contains(out, "shll shell-setup") {
 		t.Fatalf("wired rc must suppress the shell-setup nudge, got %q", out)
 	}
-	// The agent-setup line still fires → the block prints with the agent line only.
+	// The agent-setup opt-out fallback fires → the block prints agent-only.
 	if got, want := out, shllSelfInstallNote+"\n"+allInstalledMsg+"\n"+nextStepsAgentOnly; got != want {
 		t.Fatalf("stdout = %q, want the shll-note + nothing-to-do note + agent-only nudge block", got)
 	}
 }
 
-func TestInstall_AgentSetupNudgeUnconditional(t *testing.T) {
-	// The shll agent-setup line is UNCONDITIONAL (change agst) — it prints whether or
-	// not run-kit is on PATH (shll is always present, and shll cannot cheaply know
-	// whether agent-setup already ran). Wired rc isolates it from the shell-setup line.
+func TestInstall_AgentSetupNudgeOnOptOut(t *testing.T) {
+	// The agent-setup nudge is the --no-agent-setup fallback (change gjhx) — it
+	// prints whether or not run-kit is on PATH (the nudge points at `shll
+	// agent-setup`, and shll is by definition present). Wired rc isolates it from
+	// the shell-setup line.
 	for _, runKitPresent := range []bool{true, false} {
 		name := "run-kit absent"
 		if runKitPresent {
@@ -924,12 +964,12 @@ func TestInstall_AgentSetupNudgeUnconditional(t *testing.T) {
 			f := allInstalledRunKitState(runKitPresent)
 			installFakeRunner(t, f)
 			var stdout, stderr bytes.Buffer
-			if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+			if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
 				t.Fatalf("runInstall err = %v, want nil", err)
 			}
 			out := stdout.String()
 			if !strings.Contains(out, "shll agent-setup") {
-				t.Fatalf("the shll agent-setup nudge must always show, got %q", out)
+				t.Fatalf("the shll agent-setup nudge must show on opt-out, got %q", out)
 			}
 			if !strings.Contains(out, "optional, once per machine") {
 				t.Fatalf("agent-setup nudge must be marked 'optional, once per machine', got %q", out)
@@ -939,9 +979,10 @@ func TestInstall_AgentSetupNudgeUnconditional(t *testing.T) {
 }
 
 func TestInstall_NoNudgesOnDryRun(t *testing.T) {
-	// --dry-run is a preview, not an outcome → no nudge, even with an unwired rc and
-	// run-kit present (both gates would otherwise fire). hop+wt installed so the
-	// dry-run reaches the preview table (not the short-circuit).
+	// --dry-run is a preview, not an outcome → no nudge, and NEITHER auto-run step
+	// runs (the steps are writes), even with an unwired rc and run-kit present.
+	// hop+wt installed so the dry-run reaches the preview table (not the
+	// short-circuit).
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if (req.Name == "run-kit" || req.Name == "rk") && len(req.Args) == 1 && req.Args[0] == "--version" {
 			return proc.Result{Stdout: []byte("run-kit 3.0.0\n")} // present
@@ -957,8 +998,9 @@ func TestInstall_NoNudgesOnDryRun(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 
+	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installUnwiredEnv(t), &stdout, &stderr, true /*dryRun*/, false, nil); err != nil {
+	if err := runInstall(context.Background(), env, &stdout, &stderr, true /*dryRun*/, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -969,33 +1011,63 @@ func TestInstall_NoNudgesOnDryRun(t *testing.T) {
 	if !strings.Contains(out, "Would install") {
 		t.Fatalf("expected the dry-run preview table, got %q", out)
 	}
+	// Neither auto-run step ran: rc untouched, no skill files, no run-kit delegation.
+	assertDryRunNoSetupWrites(t, f, dir)
+}
+
+// assertDryRunNoSetupWrites asserts the dry-run contract on the post-install
+// auto-run steps (change gjhx): the rc file still holds exactly its unwired
+// content (no sentinel block appended), no skill files exist under $HOME, and no
+// run-kit delegation was invoked.
+func assertDryRunNoSetupWrites(t *testing.T, f *fakeRunner, dir string) {
+	t.Helper()
+	rc, err := os.ReadFile(filepath.Join(dir, ".zshrc"))
+	if err != nil {
+		t.Fatalf("read rc: %v", err)
+	}
+	if got, want := string(rc), "export FOO=bar\n"; got != want {
+		t.Fatalf("dry-run must not wire the rc file: got %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".agents")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("dry-run must write no skill files under $HOME")
+	}
+	for _, c := range f.recordedCalls() {
+		if c.Name == runKitToolName {
+			t.Fatalf("dry-run must not invoke run-kit, got %+v", c)
+		}
+	}
 }
 
 func TestInstall_DryRunEmptyCaseNoNudge(t *testing.T) {
 	// The all-already-installed short-circuit precedes the dry-run branch, but under
-	// --dry-run it must still print NO nudge (decision 5 — --dry-run is nudge-free),
-	// even with an unwired rc and run-kit present.
+	// --dry-run it must still print NO nudge and run NEITHER auto-run step
+	// (--dry-run is write-free by contract), even with an unwired rc and run-kit
+	// present.
 	f := allInstalledRunKitState(true /* run-kit present */)
 	installFakeRunner(t, f)
 
+	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installUnwiredEnv(t), &stdout, &stderr, true /*dryRun*/, false, nil); err != nil {
+	if err := runInstall(context.Background(), env, &stdout, &stderr, true /*dryRun*/, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"; got != want {
 		t.Fatalf("--dry-run empty case must be nudge-free; stdout = %q, want %q", got, want)
 	}
+	assertDryRunNoSetupWrites(t, f, dir)
 }
 
 func TestInstall_ShortCircuitPathNudgesWhenUnwired(t *testing.T) {
-	// The all-already-installed short-circuit path (no install loop) still nudges a
-	// re-runner who never wired their shell (decision 3). Unwired rc → the shell-setup
-	// line fires; the agent-setup line is unconditional (change agst) → both fire.
-	f := allInstalledRunKitState(true /* run-kit present — no longer gates the nudge */)
+	// The all-already-installed short-circuit path (no install loop) reaches the
+	// post-install block too: with both steps opted out, an unwired re-runner gets
+	// both nudge lines (change gjhx — the nudge-era "re-runner still gets nudged"
+	// decision becomes "opted-out re-runner still gets nudged"; by default the
+	// short-circuit path WIRES them instead — see TestInstall_AutoShellSetupWiresRcFile).
+	f := allInstalledRunKitState(true /* run-kit present */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installUnwiredEnv(t), &stdout, &stderr, false, false, nil); err != nil {
+	if err := runInstall(context.Background(), installUnwiredEnv(t), &stdout, &stderr, false, false, true /*noShellSetup*/, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	out := stdout.String()
@@ -1004,13 +1076,276 @@ func TestInstall_ShortCircuitPathNudgesWhenUnwired(t *testing.T) {
 		t.Fatalf("expected the short-circuit nothing-to-do note first, got %q", out)
 	}
 	if !strings.Contains(out, "shll shell-setup") {
-		t.Fatalf("unwired short-circuit path must nudge shell-setup, got %q", out)
+		t.Fatalf("unwired short-circuit path must nudge shell-setup when the step is opted out, got %q", out)
 	}
 	if !strings.Contains(out, "shll agent-setup") {
-		t.Fatalf("the short-circuit path must show the unconditional agent-setup nudge, got %q", out)
+		t.Fatalf("the short-circuit path must show the agent-setup opt-out nudge, got %q", out)
 	}
 	// No install-loop framing on the short-circuit path.
 	if strings.Contains(out, "==>") || strings.Contains(out, "Done —") {
 		t.Fatalf("short-circuit path must emit no install-loop header/tail, got %q", out)
+	}
+}
+
+// --- post-install auto-run steps (change gjhx) --------------------------------
+
+func TestInstall_AutoShellSetupWiresRcFile(t *testing.T) {
+	// Fresh machine on the short-circuit path: resolvable $SHELL, existing unwired
+	// rc → the auto shell-setup appends the sentinel block (shell-setup's own
+	// output announces the wire) and the Next steps block carries the exec $SHELL
+	// reminder instead of the nudge. --no-agent-setup isolates the shell step.
+	f := allInstalledRunKitState(false)
+	installFakeRunner(t, f)
+
+	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	rc, err := os.ReadFile(filepath.Join(dir, ".zshrc"))
+	if err != nil {
+		t.Fatalf("read rc: %v", err)
+	}
+	if got, want := string(rc), "export FOO=bar\n"+tNewBlockZsh; got != want {
+		t.Fatalf("rc = %q, want the sentinel block appended (%q)", got, want)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Installed shll shell integration") {
+		t.Fatalf("expected shell-setup's own install announcement, got %q", out)
+	}
+	if !strings.Contains(out, "exec $SHELL") {
+		t.Fatalf("expected the exec $SHELL reminder after a successful wire, got %q", out)
+	}
+	if strings.Contains(out, "shll shell-setup") {
+		t.Fatalf("a successful auto wire must not print the shell-setup nudge, got %q", out)
+	}
+}
+
+func TestInstall_AutoShellSetupIdempotentRewire(t *testing.T) {
+	// The auto-run inherits shell-setup's idempotency: running install twice wires
+	// the first time and silent-skips the second (the gate re-reads the now-wired
+	// rc) — the file is byte-identical and no reminder prints on the second run.
+	f := allInstalledRunKitState(false)
+	installFakeRunner(t, f)
+
+	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
+	var out1 bytes.Buffer
+	if err := runInstall(context.Background(), env, &out1, &bytes.Buffer{}, false, false, false, true /*noAgentSetup*/, nil); err != nil {
+		t.Fatalf("first runInstall err = %v, want nil", err)
+	}
+	wired, err := os.ReadFile(filepath.Join(dir, ".zshrc"))
+	if err != nil {
+		t.Fatalf("read rc: %v", err)
+	}
+	var out2 bytes.Buffer
+	if err := runInstall(context.Background(), env, &out2, &bytes.Buffer{}, false, false, false, true /*noAgentSetup*/, nil); err != nil {
+		t.Fatalf("second runInstall err = %v, want nil", err)
+	}
+	again, err := os.ReadFile(filepath.Join(dir, ".zshrc"))
+	if err != nil {
+		t.Fatalf("re-read rc: %v", err)
+	}
+	if !bytes.Equal(wired, again) {
+		t.Fatalf("second run must be a byte-identical no-op:\nfirst:  %q\nsecond: %q", wired, again)
+	}
+	if strings.Contains(out2.String(), "exec $SHELL") || strings.Contains(out2.String(), "shll shell-setup") {
+		t.Fatalf("already-wired re-run must print neither reminder nor nudge, got %q", out2.String())
+	}
+}
+
+func TestInstall_AutoShellSetupQuietSkips(t *testing.T) {
+	// The 93r2 quiet edge states survive the auto-run: an already-wired rc, an
+	// unresolvable $SHELL (e.g. fish), and a corrupt (open-without-close) block all
+	// skip the shell step silently — no write, no nudge, no reminder. --no-agent-setup
+	// isolates the shell step (its nudge is the only Next steps line).
+	corrupt := "export FOO=bar\n# >>> shll >>>\neval \"$(shll shell-init zsh)\"\n"
+	cases := map[string]struct {
+		shell     string
+		rcContent string
+	}{
+		"wired":               {"/bin/zsh", "export FOO=bar\n" + tNewBlockZsh},
+		"unresolvable $SHELL": {"/usr/bin/fish", "export FOO=bar\n"},
+		"corrupt block":       {"/bin/zsh", corrupt},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := allInstalledRunKitState(false)
+			installFakeRunner(t, f)
+
+			env, dir := installEnvDir(t, tc.shell, tc.rcContent)
+			var stdout, stderr bytes.Buffer
+			if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
+				t.Fatalf("runInstall err = %v, want nil", err)
+			}
+			rc, err := os.ReadFile(filepath.Join(dir, ".zshrc"))
+			if err != nil {
+				t.Fatalf("read rc: %v", err)
+			}
+			if got := string(rc); got != tc.rcContent {
+				t.Fatalf("quiet edge state must not modify the rc file: %q → %q", tc.rcContent, got)
+			}
+			out := stdout.String()
+			if strings.Contains(out, "shll shell-setup") || strings.Contains(out, "exec $SHELL") {
+				t.Fatalf("quiet edge state must print neither nudge nor reminder, got %q", out)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("quiet edge state must not warn, stderr = %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestInstall_AutoShellSetupFailureDegrades(t *testing.T) {
+	// Missing rc file (shell-setup never creates one): the gate is open
+	// (shellResolved && !wired — resolveWiringFact reads a missing rc as unwired),
+	// the auto-run fails with the actionable exit-2 message, the warning fires, the
+	// gated nudge is the fallback, and the install exit code is unchanged.
+	f := allInstalledRunKitState(false)
+	installFakeRunner(t, f)
+
+	dir := t.TempDir() // no .zshrc inside — the meaningful-signal case
+	env := envFunc(map[string]string{"SHELL": "/bin/zsh", "ZDOTDIR": dir, "HOME": dir})
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (a shell-setup failure must not fail the install)", err)
+	}
+	if !strings.Contains(stderr.String(), "does not exist") {
+		t.Fatalf("expected the actionable missing-rc message on stderr, got %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), shellSetupAutoRunWarn) {
+		t.Fatalf("expected the auto-run failure warning, stderr = %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "shll shell-setup") {
+		t.Fatalf("the failed step must fall back to its nudge, got %q", stdout.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".zshrc")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("install must never create the rc file")
+	}
+}
+
+func TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes(t *testing.T) {
+	// Wired rc (the shell step silent-skips) + default flags → the agent step
+	// places both skill files with the canonical bytes and delegates
+	// `run-kit agent setup --yes` foregrounded; the fully-wired happy path prints
+	// NO Next steps block at all (empty-block suppression).
+	f := allInstalledRunKitState(true /* run-kit present */)
+	installFakeRunner(t, f)
+
+	env, dir := installWiredEnvDir(t)
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	for _, rel := range []string{".agents/skills", ".claude/skills"} {
+		path := filepath.Join(dir, rel, skillDirName, skillFileName)
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("skill not placed at %s: %v", path, err)
+		}
+		if string(content) != agentSkillContent {
+			t.Fatalf("skill at %s does not hold the canonical bytes", path)
+		}
+	}
+	// The delegation ran foregrounded with --yes forwarded (so run-kit's hook
+	// confirmation cannot hang an unattended install).
+	found := false
+	for _, c := range f.recordedCalls() {
+		if c.Name == runKitToolName && c.Transport == proc.TransportForeground &&
+			len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--yes" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a foreground `run-kit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "shll agent-setup") {
+		t.Fatalf("a successful auto agent-setup must not print the nudge, got %q", out)
+	}
+	if strings.Contains(out, nextStepsHeader) {
+		t.Fatalf("the fully-wired happy path must print no Next steps header, got %q", out)
+	}
+}
+
+func TestInstall_AutoAgentSetupRunKitAbsentSilentSkip(t *testing.T) {
+	// run-kit absent → the delegation skips silently (inherited Constitution V
+	// behavior); the placement still happens and the step counts as success — no
+	// nudge, no stderr.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == runKitToolName || req.Name == "rk" {
+			return proc.Result{Err: proc.ErrNotFound}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	env, dir := installWiredEnvDir(t)
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".agents", "skills", skillDirName, skillFileName)); err != nil {
+		t.Fatalf("skill files must still be placed when run-kit is absent: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("run-kit-absent delegation must be silent, stderr = %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "shll agent-setup") {
+		t.Fatalf("run-kit-absent delegation must not fall back to the nudge, got %q", stdout.String())
+	}
+}
+
+func TestInstall_AutoAgentSetupDelegationFailureContinues(t *testing.T) {
+	// rk version skew (an installed run-kit older than v3.16.23 lacks the `agent`
+	// family and exits non-zero): the inherited warn-and-(continuing) path fires,
+	// the placement already succeeded, NO agent-setup nudge prints (re-running
+	// would hit the same delegation failure, so a nudge would dead-end), and the
+	// install is unaffected.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == runKitToolName && len(req.Args) >= 2 && req.Args[0] == "agent" && req.Args[1] == "setup" {
+			return proc.Result{ExitCode: 1}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	env, _ := installWiredEnvDir(t)
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (a delegation failure is non-fatal)", err)
+	}
+	if !strings.Contains(stderr.String(), "(continuing)") {
+		t.Fatalf("expected the warn-and-continue delegation diagnostic, stderr = %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "shll agent-setup") {
+		t.Fatalf("a delegation failure must NOT trigger the agent-setup nudge, got %q", stdout.String())
+	}
+}
+
+func TestInstall_AutoAgentSetupFailureDegrades(t *testing.T) {
+	// Unwritable skill target: the placement fails (agent-setup's own per-path
+	// diagnostic reaches stderr), the install warns and falls back to the
+	// agent-setup nudge, and the exit code is unchanged.
+	f := allInstalledRunKitState(true /* run-kit present */)
+	installFakeRunner(t, f)
+
+	env, dir := installWiredEnvDir(t)
+	// A regular FILE at ~/.agents makes the skill-dir MkdirAll fail, so placement
+	// errors on that target.
+	if err := os.WriteFile(filepath.Join(dir, ".agents"), []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("write .agents blocker: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), env, &stdout, &stderr, false, false, false, false, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (an agent-setup failure must not fail the install)", err)
+	}
+	if !strings.Contains(stderr.String(), agentSetupErrPrefix) {
+		t.Fatalf("expected agent-setup's own per-path diagnostic, stderr = %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), agentSetupAutoRunWarn) {
+		t.Fatalf("expected the auto-run failure warning, stderr = %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "shll agent-setup") {
+		t.Fatalf("the failed step must fall back to its nudge, got %q", stdout.String())
 	}
 }

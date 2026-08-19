@@ -1,0 +1,55 @@
+id: gjhx
+name: 260819-gjhx-install-auto-shell-agent-setup
+created: 2026-08-19T18:03:38Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 9
+    acceptance_count: 15
+    acceptance_completed: 15
+confidence:
+    certain: 4
+    confident: 5
+    tentative: 0
+    unresolved: 0
+    score: 4.7
+    fuzzy: true
+    dimensions:
+        signal: 73.9
+        reversibility: 85.6
+        competence: 87.2
+        disambiguation: 82.2
+stage_metrics:
+    intake: {started_at: "2026-08-19T18:03:38Z", driver: fab-new, iterations: 1, completed_at: "2026-08-19T18:09:49Z"}
+    apply: {started_at: "2026-08-19T18:09:49Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T18:55:05Z"}
+    review: {started_at: "2026-08-19T18:55:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T18:59:38Z"}
+    hydrate: {started_at: "2026-08-19T18:59:38Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T19:14:09Z"}
+    ship: {started_at: "2026-08-19T19:14:09Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-08-19T19:14:09Z"
+    computed_at_stage: hydrate
+summary: shll install auto-runs shell-setup and agent-setup --yes after the install outcome (opt-outs --no-shell-setup/--no-agent-setup; failures warn + nudge fallback, exit code unchanged); the curl bootstrap now leaves a fully wired machine
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-19T19:14:09Z
