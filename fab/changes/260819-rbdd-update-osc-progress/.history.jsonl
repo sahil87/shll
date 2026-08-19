@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-19T19:13:25Z"}
+{"args":"shll update emits OSC 9;4 terminal progress (backlog rbdd) — direct in shll update, not the producer standard","cmd":"fab-new","event":"command","ts":"2026-08-19T19:13:25Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-08-19T19:15:24Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-19T19:16:11Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-19T19:16:51Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-19T19:22:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-19T19:25:46Z"}
+{"event":"review","result":"passed","ts":"2026-08-19T19:25:46Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-19T19:27:40Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-08-19T19:29:37Z"}
+{"event":"review","result":"passed","ts":"2026-08-19T19:36:47Z"}

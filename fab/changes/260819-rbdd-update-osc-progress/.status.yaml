@@ -1,0 +1,57 @@
+id: rbdd
+name: 260819-rbdd-update-osc-progress
+created: 2026-08-19T19:13:25Z
+created_by: Sahil Ahuja
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 5
+    acceptance_count: 10
+    acceptance_completed: 10
+confidence:
+    certain: 6
+    confident: 2
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 75.6
+        reversibility: 87.5
+        competence: 85.6
+        disambiguation: 81.9
+stage_metrics:
+    intake: {started_at: "2026-08-19T19:13:25Z", driver: fab-new, iterations: 1, completed_at: "2026-08-19T19:16:51Z"}
+    apply: {started_at: "2026-08-19T19:16:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T19:22:09Z"}
+    review: {started_at: "2026-08-19T19:22:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T19:25:46Z"}
+    hydrate: {started_at: "2026-08-19T19:25:46Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T19:27:40Z"}
+    ship: {started_at: "2026-08-19T19:27:40Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-19T19:29:37Z"}
+    review-pr: {started_at: "2026-08-19T19:29:37Z", driver: git-pr, iterations: 1, completed_at: "2026-08-19T19:36:47Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/83
+change_type_source: explicit
+true_impact:
+    added: 735
+    deleted: 2
+    net: 733
+    excluding:
+        added: 365
+        deleted: 0
+        net: 365
+    tests:
+        added: 214
+        deleted: 0
+        net: 214
+    computed_at: "2026-08-19T19:29:37Z"
+    computed_at_stage: ship
+summary: 'shll update now emits OSC 9;4 terminal progress on a TTY stderr (new progress.go reporter: BEL-terminated sequences, tmux DCS-passthrough wrapping, NO_COLOR-independent TTY gate) — indeterminate through brew refresh, determinate per roster position, error pulses on failures, deferred remove on all exits'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-19T19:36:47Z
