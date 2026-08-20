@@ -45,39 +45,52 @@ const (
 	evalLineFmt = `eval "$(shll shell-init %s)"`
 )
 
+// shellSetupSub is the hidden deprecated top-level spelling of the shell half —
+// kept registered (Hidden, silent — no cobra Deprecated field) for one release
+// cycle so old binaries' cross-release invocations keep working. Named per
+// code-quality.md (no magic strings).
+const shellSetupSub = "shell-setup"
+
+// shellSetupCmdSpec carries the per-spelling surface differences between the new
+// `shll setup shell` subcommand and the hidden deprecated `shll shell-setup`
+// top-level command. Both spellings are built by buildShellSetupCmd from a spec,
+// so their flag sets and behavior share construction and cannot drift.
+type shellSetupCmdSpec struct {
+	use     string
+	aliases []string
+	short   string
+	long    string
+	hidden  bool
+}
+
+// newShellSetupCmd builds the hidden deprecated `shll shell-setup` top-level
+// command (with its `shell-install` alias). Its Short/Long carry only the rename
+// pointer — the full help moved to `shll setup shell` (setupShellLong).
 func newShellSetupCmd() *cobra.Command {
+	return buildShellSetupCmd(shellSetupCmdSpec{
+		use:     shellSetupSub + " [shell]",
+		aliases: []string{"shell-install"},
+		short:   "renamed to `shll setup shell` (hidden; kept for one release cycle)",
+		long: "Renamed to `shll setup shell`. This old spelling still works — hidden and\n" +
+			"silent — for one release cycle, then it will be removed. See `shll setup shell --help`.",
+		hidden: true,
+	})
+}
+
+// buildShellSetupCmd is the shared parameterized builder for both shell-half
+// spellings (new `setup shell` subcommand and hidden `shell-setup` top-level).
+func buildShellSetupCmd(spec shellSetupCmdSpec) *cobra.Command {
 	var (
 		printMode     bool
 		uninstallMode bool
 		rcFileFlag    string
 	)
 	cmd := &cobra.Command{
-		Use:     "shell-setup [shell]",
-		Aliases: []string{"shell-install"},
-		Short:   "append the shll shell-init eval line to your rc file",
-		Long: `Append a sentinel-wrapped eval block that wires shll shell-init into your
-shell rc file. Idempotent — re-running is a no-op when the block is already
-present. Plain O_APPEND so dotfile-manager symlinks are preserved.
-
-Also available under the legacy alias ` + "`shll shell-install`" + ` (unchanged behavior).
-
-Modes:
-  shll shell-setup [shell]            install the block (default mode)
-  shll shell-setup --print [shell]    print the block to stdout, do not modify
-  shll shell-setup --uninstall [shell] remove the block from the rc file
-
-shell-setup is pure rc-wiring — it maintains only the
-` + "`eval \"$(shll shell-init <shell>)\"`" + ` line and touches no Homebrew state.
-(Tap trust is established by ` + "`shll install`" + `, which trusts each formula it
-installs; see ` + "`shll install --help`" + `.)
-
-When [shell] is omitted, shll infers it from $SHELL. Supported shells: zsh, bash.
-
-By default, the rc file path is derived per shell:
-  zsh   → ${ZDOTDIR:-$HOME}/.zshrc
-  bash  → $HOME/.bash_profile (macOS) or $HOME/.bashrc (Linux)
-
-Use --rc-file <path> to override derivation entirely.`,
+		Use:           spec.use,
+		Aliases:       spec.aliases,
+		Short:         spec.short,
+		Long:          spec.long,
+		Hidden:        spec.hidden,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.MaximumNArgs(1),
@@ -101,14 +114,14 @@ func resolveShell(args []string, env func(string) string) (string, error) {
 	if len(args) >= 1 {
 		shell := args[0]
 		if !isSupportedShell(shell) {
-			return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: unsupported shell %q. Supported: zsh, bash", shell)}
+			return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll setup shell: unsupported shell %q. Supported: zsh, bash", shell)}
 		}
 		return shell, nil
 	}
 	raw := env("SHELL")
 	inferred := filepath.Base(raw)
 	if !isSupportedShell(inferred) {
-		return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: cannot infer shell from $SHELL=%s. Pass shell explicitly: shll shell-setup zsh", raw)}
+		return "", &errExitCode{code: 2, msg: fmt.Sprintf("shll setup shell: cannot infer shell from $SHELL=%s. Pass shell explicitly: shll setup shell zsh", raw)}
 	}
 	return inferred, nil
 }
@@ -258,7 +271,7 @@ func runShellSetup(ctx context.Context, args []string, rcFileFlag string, printM
 	}
 	_ = ctx // retained for signature stability; shell-setup performs no ctx-scoped work.
 	if printMode && uninstallMode {
-		return &errExitCode{code: 2, msg: "shll shell-setup: --print and --uninstall are mutually exclusive"}
+		return &errExitCode{code: 2, msg: "shll setup shell: --print and --uninstall are mutually exclusive"}
 	}
 	shell, err := resolveShell(args, os.Getenv)
 	if err != nil {
@@ -321,16 +334,16 @@ func runShellSetupDefault(shell, rcPath string, userProvidedPath bool, stdout, s
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			if userProvidedPath {
-				return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist.", rcPath)}
+				return &errExitCode{code: 2, msg: fmt.Sprintf("shll setup shell: %s does not exist.", rcPath)}
 			}
-			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist. shll won't create rc files. Create it first, or pass --rc-file <path>.", rcPath)}
+			return &errExitCode{code: 2, msg: fmt.Sprintf("shll setup shell: %s does not exist. shll won't create rc files. Create it first, or pass --rc-file <path>.", rcPath)}
 		}
-		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	content, err := os.ReadFile(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: read %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: read %s: %v\n", rcPath, err)
 		return errSilent
 	}
 
@@ -339,7 +352,7 @@ func runShellSetupDefault(shell, rcPath string, userProvidedPath bool, stdout, s
 		// Open-without-close sentinel — corrupted/partial. Guessing the bounds
 		// risks corrupting the user's rc file, so refuse and direct manual cleanup
 		// (deliberate divergence from the legacy short-circuit-as-"already-installed").
-		return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run.", rcPath)}
+		return &errExitCode{code: 2, msg: fmt.Sprintf("shll setup shell: %s has an shll block with an opening sentinel but no matching closing sentinel. Refusing to modify a corrupted block — fix or remove it manually, then re-run.", rcPath)}
 	}
 
 	desired := buildBlockBody(wantLines(blockMatch{}, shell))
@@ -367,16 +380,16 @@ func appendBlock(rcPath string, content, block []byte, stdout, stderr io.Writer)
 	}
 	f, err := os.OpenFile(rcPath, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: open %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: open %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	if _, werr := f.Write(block); werr != nil {
 		_ = f.Close()
-		fmt.Fprintf(stderr, "shll shell-setup: write %s: %v\n", rcPath, werr)
+		fmt.Fprintf(stderr, "shll setup shell: write %s: %v\n", rcPath, werr)
 		return errSilent
 	}
 	if cerr := f.Close(); cerr != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: close %s: %v\n", rcPath, cerr)
+		fmt.Fprintf(stderr, "shll setup shell: close %s: %v\n", rcPath, cerr)
 		return errSilent
 	}
 	fmt.Fprintf(stdout, "Installed shll shell integration to %s. Restart your shell or run: source %s\n", rcPath, rcPath)
@@ -428,27 +441,27 @@ func rewriteBlocks(rcPath string, content, block []byte, newM blockMatch, newOK 
 	merged = append(merged, work[insertAt:]...)
 
 	if bytes.Equal(merged, content) {
-		fmt.Fprintf(stderr, "shll shell-setup: already installed in %s (no changes).\n", rcPath)
+		fmt.Fprintf(stderr, "shll setup shell: already installed in %s (no changes).\n", rcPath)
 		return nil
 	}
 
 	resolved, err := filepath.EvalSymlinks(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: resolve symlink %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: resolve symlink %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	f, err := os.OpenFile(resolved, os.O_WRONLY|os.O_TRUNC, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: open %s: %v\n", resolved, err)
+		fmt.Fprintf(stderr, "shll setup shell: open %s: %v\n", resolved, err)
 		return errSilent
 	}
 	if _, werr := f.Write(merged); werr != nil {
 		_ = f.Close()
-		fmt.Fprintf(stderr, "shll shell-setup: write %s: %v\n", resolved, werr)
+		fmt.Fprintf(stderr, "shll setup shell: write %s: %v\n", resolved, werr)
 		return errSilent
 	}
 	if cerr := f.Close(); cerr != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: close %s: %v\n", resolved, cerr)
+		fmt.Fprintf(stderr, "shll setup shell: close %s: %v\n", resolved, cerr)
 		return errSilent
 	}
 	fmt.Fprintf(stdout, "Installed shll shell integration to %s. Restart your shell or run: source %s\n", rcPath, rcPath)
@@ -462,13 +475,13 @@ func rewriteBlocks(rcPath string, content, block []byte, newM blockMatch, newOK 
 func runShellSetupPrint(shell, rcPath string, stdout, stderr io.Writer) error {
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &errExitCode{code: 2, msg: fmt.Sprintf("shll shell-setup: %s does not exist.", rcPath)}
+			return &errExitCode{code: 2, msg: fmt.Sprintf("shll setup shell: %s does not exist.", rcPath)}
 		}
-		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	if _, err := stdout.Write(buildBlock(shell)); err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: write stdout: %v\n", err)
+		fmt.Fprintf(stderr, "shll setup shell: write stdout: %v\n", err)
 		return errSilent
 	}
 	return nil
@@ -488,20 +501,20 @@ func runShellSetupUninstall(shell, rcPath string, stdout, stderr io.Writer) erro
 	_ = shell // shell isn't used during uninstall — sentinels are shell-agnostic.
 	if _, err := os.Stat(rcPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			fmt.Fprintf(stderr, "shll shell-setup: %s does not exist (nothing to uninstall).\n", rcPath)
+			fmt.Fprintf(stderr, "shll setup shell: %s does not exist (nothing to uninstall).\n", rcPath)
 			return nil
 		}
-		fmt.Fprintf(stderr, "shll shell-setup: stat %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: stat %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	content, err := os.ReadFile(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: read %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: read %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	newM, newOK, legacyM, legacyOK, _ := locateBlock(content)
 	if !newOK && !legacyOK {
-		fmt.Fprintf(stderr, "shll shell-setup: not installed in %s (nothing to uninstall).\n", rcPath)
+		fmt.Fprintf(stderr, "shll setup shell: not installed in %s (nothing to uninstall).\n", rcPath)
 		return nil
 	}
 	// Splice out every shll block. Remove the later range first so earlier indices
@@ -527,21 +540,21 @@ func runShellSetupUninstall(shell, rcPath string, stdout, stderr io.Writer) erro
 	}
 	resolved, err := filepath.EvalSymlinks(rcPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: resolve symlink %s: %v\n", rcPath, err)
+		fmt.Fprintf(stderr, "shll setup shell: resolve symlink %s: %v\n", rcPath, err)
 		return errSilent
 	}
 	f, err := os.OpenFile(resolved, os.O_WRONLY|os.O_TRUNC, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: open %s: %v\n", resolved, err)
+		fmt.Fprintf(stderr, "shll setup shell: open %s: %v\n", resolved, err)
 		return errSilent
 	}
 	if _, werr := f.Write(modified); werr != nil {
 		_ = f.Close()
-		fmt.Fprintf(stderr, "shll shell-setup: write %s: %v\n", resolved, werr)
+		fmt.Fprintf(stderr, "shll setup shell: write %s: %v\n", resolved, werr)
 		return errSilent
 	}
 	if cerr := f.Close(); cerr != nil {
-		fmt.Fprintf(stderr, "shll shell-setup: close %s: %v\n", resolved, cerr)
+		fmt.Fprintf(stderr, "shll setup shell: close %s: %v\n", resolved, cerr)
 		return errSilent
 	}
 	fmt.Fprintf(stdout, "Removed shll shell integration from %s.\n", rcPath)

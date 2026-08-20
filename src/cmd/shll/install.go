@@ -42,9 +42,9 @@ idempotent, so re-runs stay clean. Pass ` + "`--no-trust`" + ` to skip the trust
 ` + "`brew trust`" + `, the trust step is skipped gracefully and the install proceeds.
 
 After the install outcome, shll install also wires the machine automatically. It
-runs the equivalent of ` + "`shll shell-setup`" + ` (adds the
+runs the equivalent of ` + "`shll setup shell`" + ` (adds the
 ` + "`eval \"$(shll shell-init <shell>)\"`" + ` line to your rc file — sentinel-managed and
-idempotent, so re-runs are no-ops), then ` + "`shll agent-setup --yes`" + ` (places the
+idempotent, so re-runs are no-ops), then ` + "`shll setup agent --yes`" + ` (places the
 shll-toolkit skill for agent harnesses and delegates run-kit's dashboard hooks,
 forwarding --yes so nothing can prompt on an unattended run). Both steps are
 best-effort: a failure warns and prints the step's manual nudge instead, and
@@ -317,7 +317,7 @@ const shllSelfInstallNote = "shll — already present / self-managed"
 //     line applies (the fully-wired happy path prints no header at all).
 //   - shellSetupNudgeFmt is the shell-setup line; the single %s is the arrow glyph
 //     (arrow(color) → `→` on a color TTY, `->` otherwise). Its wording tracks
-//     doctor's suggestNotWired ("run 'shll shell-setup' then 'exec $SHELL'"). It now
+//     doctor's suggestNotWired ("run 'shll setup shell' then 'exec $SHELL'"). It now
 //     prints only when the auto shell-setup step was opted out of or failed (and
 //     the resolveWiringFact gate is open).
 //   - agentSetupNudgeFmt is the agent-setup line; the single %s is the arrow glyph.
@@ -330,8 +330,8 @@ const shllSelfInstallNote = "shll — already present / self-managed"
 //     must exec/restart to pick it up.
 const (
 	nextStepsHeader      = "Next steps:"
-	shellSetupNudgeFmt   = "  %s shll shell-setup    # wire shell integration into your rc file, then: exec $SHELL"
-	agentSetupNudgeFmt   = "  %s shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
+	shellSetupNudgeFmt   = "  %s shll setup shell    # wire shell integration into your rc file, then: exec $SHELL"
+	agentSetupNudgeFmt   = "  %s shll setup agent    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
 	execShellReminderFmt = "  %s exec $SHELL         # load the just-wired shll integration into your current shell (or open a new terminal)"
 )
 
@@ -367,7 +367,7 @@ const (
 //     gated nudge is the fallback. The error is consumed, never propagated.
 //   - --no-shell-setup → skip the auto-run; print the gated nudge instead.
 //
-// Step 2 — agent wiring. Runs the equivalent of `shll agent-setup --yes` in-process
+// Step 2 — agent wiring. Runs the equivalent of `shll setup agent --yes` in-process
 // via runAgentSetup (placing the shll-toolkit skill files, then delegating
 // `run-kit agent setup --yes` — forwarding --yes so the delegation cannot hang on
 // run-kit's hook-wiring prompt in an unattended install). The per-path

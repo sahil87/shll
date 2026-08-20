@@ -36,17 +36,19 @@ A **Node** is recursive:
 
 ```json
 {
-  "name": "shell-setup",
-  "aliases": ["shell-install"],
-  "path": "shll shell-setup",
-  "short": "append the shll shell-init eval line to your rc file",
-  "usage": "shll shell-setup [shell] [flags]",
+  "name": "setup",
+  "aliases": ["setup-alias"],
+  "path": "shll setup",
+  "short": "wire this machine for the shll toolkit (shell + agent harnesses)",
+  "usage": "shll setup [flags]",
   "text": "<RAW -h output, byte-for-byte, newlines preserved>",
   "commands": []
 }
 ```
 
-`aliases` is **optional** and appears only on a command that has aliases (see [The optional `aliases` field](#the-optional-aliases-field)); a command with none — `install` above would be one — emits no `aliases` key. Per-node field source (programmatic, from cobra's data model — **never regex on `-h`**):
+(`aliases` shown for field placement only — the visible `setup` node carries none; see [The optional `aliases` field](#the-optional-aliases-field).)
+
+`aliases` is **optional** and appears only on a command that has aliases (see [The optional `aliases` field](#the-optional-aliases-field)); a command with none — `install` would be one — emits no `aliases` key. Per-node field source (programmatic, from cobra's data model — **never regex on `-h`**):
 
 | Field | Source |
 |-------|--------|
@@ -74,7 +76,7 @@ Applied to every node's **children**, recursively (the root is the dump anchor a
 
 - `cmd.Name() == "completion"` — cobra auto-generated (constant `cmdNameCompletion`).
 - `cmd.Name() == "help"` — cobra auto-generated (constant `cmdNameHelp`).
-- `cmd.Hidden == true` — this **self-excludes `help-dump`**, which is itself `Hidden: true`.
+- `cmd.Hidden == true` — this **self-excludes `help-dump`**, which is itself `Hidden: true`, and prunes the hidden compat spellings `shell-setup` / `agent-setup` (see [cli/setup](/cli/setup.md)), so the rendered shll.ai reference drops the old spellings and carries the visible `setup` family instead.
 - `!cmd.IsAvailableCommand()` — defensive; covers deprecated/unavailable commands.
 
 ### Prune-before-render (the text↔commands coherence rule)
@@ -114,7 +116,7 @@ A node carries an `aliases` array of the command's registered alias names, popul
 
 `aliases` uses `json:"aliases,omitempty"` and its Go struct field sits immediately after `Name` (Go struct field order pins JSON key order), so the key renders right after `name`, before `path`. Under `omitempty`, a nil or empty `cmd.Aliases` serializes to **no `aliases` key at all** — absence, never `[]` or `null`. This is the deliberate contrast with `commands`, a required v1 field that is always `[]` for a leaf: `aliases` is an *optional additive field*, so an unaliased node stays byte-identical to pre-`aliases` output and only aliased nodes change. That byte-stability is what lets the field ship with no consumer coordination.
 
-Today shll has exactly one aliased command — `shell-setup` (alias `shell-install`, registered in `src/cmd/shll/shell_setup.go`) — so its node is the only one in `help/shll.json` that carries an `aliases` key (`["shell-install"]`); every other node is unchanged. The alias already appeared inside the node's raw `text` (cobra renders an `Aliases:` help section), but structured-field consumers could not see it without regex-parsing `text` — which the contract forbids. Emitting `aliases` makes the alias a first-class structured field.
+shll's only aliased command is the HIDDEN `shell-setup` (alias `shell-install`, registered in `src/cmd/shll/shell_setup.go`), which the Hidden filter prunes from the dump — so the real-tree `help/shll.json` carries **no** `aliases` key on any node today; alias emission is pinned by the synthetic-tree contract test instead. An alias also appears inside its node's raw `text` (cobra renders an `Aliases:` help section), but structured-field consumers cannot see it without regex-parsing `text` — which the contract forbids. Emitting `aliases` makes the alias a first-class structured field.
 
 > **Design Decision: optional field vs. duplicate nodes; no `schema_version` bump.**
 > *Why a field, not extra nodes*: The alternative — emitting each alias as its own Node — would fabricate tree structure (synthesized `name`/`path` values cobra never registers as distinct commands) and break the text↔commands coherence rule: each node's `Available Commands:` block lists canonical names only, so a `commands` array padded with alias nodes would diverge from the rendered `text`, the exact incoherence prune-before-render exists to prevent.
@@ -142,7 +144,7 @@ Today shll has exactly one aliased command — `shell-setup` (alias `shell-insta
 - Version passthrough — `root.Version = "v9.9.9"` → `doc.version == "v9.9.9"`.
 - Structural determinism — the envelope carries no time-varying field, so two successive dumps of the same tree are byte-identical (`aliases` adds no time-varying data; `nodeText` is untouched, so this and the byte-for-byte `text` test are unaffected).
 - Execute-path regression — `TestHelpDump_RootTextExcludesAutoCommands` + `TestHelpDump_ExcludesAutoCommandsEverywhere`: drive via `dumpViaExecute` so cobra's lazy `completion`/`help` register exactly as on the shipped binary, then assert they appear in NEITHER `commands` NOR the rendered `text` `Available Commands:` block.
-- Real-tree aliases — `TestHelpDump_EmitsAliasesRealTree`: drives the real `rootCmd.Execute()` path via `dumpViaExecute` (per prune-before-render) and asserts the `shell-setup` node carries exactly `["shell-install"]`, pinning the shipped binary's one aliased command.
+- Hidden-spelling prune on the real tree — `TestHelpDump_HiddenOldSpellingsPrunedRealTree`: drives the real `rootCmd.Execute()` path via `dumpViaExecute` (per prune-before-render) and asserts the hidden old spellings (`shell-setup`, its `shell-install` alias, `agent-setup`) appear in NEITHER the parsed tree NOR the raw JSON, while the visible `setup` node is present with its `shell` and `agent` children. Alias *emission* coverage stays with the synthetic tree (`TestHelpDump_ContractShape`'s aliased node) — the real tree carries no visible aliased command.
 
 
 ## Cross-references

@@ -1,0 +1,16 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-19T19:52:23Z"}
+{"args":"Consolidate shll agent-setup and shll shell-setup into a single rerunnable shll setup command family, keeping old spellings as hidden deprecated commands for one release cycle","cmd":"fab-new","event":"command","ts":"2026-08-19T19:52:23Z"}
+{"delta":"+0.0","event":"confidence","score":0,"trigger":"calc-score","ts":"2026-08-19T19:55:58Z"}
+{"delta":"+0.0","event":"confidence","score":0,"trigger":"calc-score","ts":"2026-08-19T19:56:27Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-08-19T19:57:59Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-19T19:59:47Z"}
+{"delta":"+1.4","event":"confidence","score":1.4,"trigger":"calc-score","ts":"2026-08-20T03:46:31Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-08-20T03:46:31Z"}
+{"delta":"+2.4","event":"confidence","score":3.8,"trigger":"calc-score","ts":"2026-08-20T03:47:42Z"}
+{"delta":"+0.8","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-08-20T07:16:28Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-20T07:16:40Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-20T07:16:54Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-20T07:42:09Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-20T07:47:54Z"}
+{"event":"review","result":"passed","ts":"2026-08-20T07:47:54Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-20T08:19:23Z"}

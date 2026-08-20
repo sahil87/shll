@@ -8,7 +8,7 @@ description: "`shll skill [tool] [topic]` — the skill-bundle composer: bare fo
 
 Source: `src/cmd/shll/skill.go` (+ `skill_test.go`). (agst)
 
-> This is the **composer** (`shll skill`). The `skill` **standard document** it adopts (the ≤150-line static-bundle contract, `run-kit context` precedent, the `skill`-not-`agent` name decision) is [cli/standards-content §the skill standard](/cli/standards-content.md#the-skill-standard); shll's audited conformance to it is [cli/standards-conformance](/cli/standards-conformance.md). The bootstrap-skill placement command that points agents *at* this two-step is [cli/agent-setup](/cli/agent-setup.md).
+> This is the **composer** (`shll skill`). The `skill` **standard document** it adopts (the ≤150-line static-bundle contract, `run-kit context` precedent, the `skill`-not-`agent` name decision) is [cli/standards-content §the skill standard](/cli/standards-content.md#the-skill-standard); shll's audited conformance to it is [cli/standards-conformance](/cli/standards-conformance.md). The bootstrap-skill placement command that points agents *at* this two-step is [cli/setup](/cli/setup.md) (`shll setup agent`).
 
 ## The grammar (three shapes, one subcommand)
 
@@ -138,7 +138,7 @@ shll's own bundle is authored canonically at **`docs/site/skill.md`** (the [stan
 - **Sync step** — `scripts/sync-standards.sh` gained a second section (`docs/site/skill.md` → `src/cmd/shll/skill/skill.md`) alongside the standards copy loop; the `//go:generate ../../../scripts/sync-standards.sh` directive is also in `skill.go`. See [cli/standards §the build-time embed mechanism](/cli/standards.md#the-build-time-embed-mechanism).
 - **Drift guard** — `TestSkillEmbedMatchesCanonical` (`skill_test.go`) keeps the embedded copy byte-honest against `docs/site/skill.md` on every `go test`, mirroring `TestStandardsEmbedMatchesCanonical`. A budget test asserts ≤150 lines (the bundle is 53 lines today).
 
-The bundle's `shll agent-setup` capability line describes **skills placement** (place the `shll-toolkit` skill at the two global skill paths, then delegate run-kit hooks), NEVER stanza injection — a wording correctness requirement of the current design (the rejected stanza mechanism, see [cli/agent-setup](/cli/agent-setup.md)).
+The bundle's `shll setup agent` capability line describes **skills placement** (place the `shll-toolkit` skill at the two global skill paths, then delegate run-kit hooks), NEVER stanza injection — a wording correctness requirement of the current design (the rejected stanza mechanism, see [cli/setup](/cli/setup.md)).
 
 ## Named constants (code-quality.md — no magic strings)
 
@@ -177,7 +177,7 @@ All in `skill.go`: `skillEmbedPath` (`"skill/skill.md"`), `skillSubcommand` (`"s
 ## Cross-references
 
 - The subprocess transport it relies on: [internal/proc §RunCaptured / TransportCaptureAll](/internal/proc.md#runcaptured--transportcaptureall).
-- The bootstrap-skill placement command that teaches agents this two-step: [cli/agent-setup](/cli/agent-setup.md).
+- The bootstrap-skill placement command that teaches agents this two-step: [cli/setup](/cli/setup.md).
 - The `skill` standard document it adopts: [cli/standards-content §the skill standard](/cli/standards-content.md#the-skill-standard), [cli/standards-conformance §the skill standard](/cli/standards-conformance.md#the-skill-standard-adopted).
 - The embed/sync/drift-guard precedent: [cli/standards](/cli/standards.md).
 - Root wiring (`newSkillCmd`), the shll-first ordering principle, the `legacyAliases`/`rosterTool`/`validTargets` resolver, `shllSelf`: [cli/commands](/cli/commands.md).

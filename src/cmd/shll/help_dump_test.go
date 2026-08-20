@@ -266,21 +266,35 @@ func TestHelpDump_ExcludesAutoCommandsEverywhere(t *testing.T) {
 	check(doc.Root)
 }
 
-// TestHelpDump_EmitsAliasesRealTree pins the real-tree behavior: shll's one
-// aliased command, `shell-setup` (alias `shell-install`, src/cmd/shll/shell_setup.go),
-// carries exactly ["shell-install"] in the dumped node. It drives the dump
-// through the real rootCmd.Execute() path (dumpViaExecute) per the
-// prune-before-render design decision, so the assertion reflects the shipped
-// binary's tree, not a bare walk.
-func TestHelpDump_EmitsAliasesRealTree(t *testing.T) {
-	_, doc := dumpViaExecute(t)
+// TestHelpDump_HiddenOldSpellingsPrunedRealTree pins the real-tree behavior after
+// the setup-command consolidation: the hidden deprecated top-level spellings
+// (`shell-setup`, its `shell-install` alias, `agent-setup`) are pruned from the
+// dump by the Hidden filter, and the visible `setup` family (parent + shell +
+// agent subcommands) is dumped instead. Alias EMISSION coverage stays with the
+// synthetic tree (TestHelpDump_ContractShape's aliased node) — the real tree no
+// longer carries a visible aliased command. It drives the dump through the real
+// rootCmd.Execute() path (dumpViaExecute) per the prune-before-render design
+// decision, so the assertion reflects the shipped binary's tree, not a bare walk.
+func TestHelpDump_HiddenOldSpellingsPrunedRealTree(t *testing.T) {
+	raw, doc := dumpViaExecute(t)
 
-	node, ok := childByName(doc.Root, "shell-setup")
-	if !ok {
-		t.Fatalf("shell-setup node missing from real-tree dump; commands: %+v", doc.Root.Commands)
+	for _, hidden := range []string{"shell-setup", "shell-install", "agent-setup"} {
+		if _, ok := childByName(doc.Root, hidden); ok {
+			t.Errorf("hidden old spelling %q must be pruned from the dump; commands: %+v", hidden, doc.Root.Commands)
+		}
+		if bytes.Contains(raw, []byte(`"name": "`+hidden+`"`)) {
+			t.Errorf("dump must not contain hidden old spelling %q; output:\n%s", hidden, raw)
+		}
 	}
-	if len(node.Aliases) != 1 || node.Aliases[0] != "shell-install" {
-		t.Errorf("shell-setup.aliases = %v, want [shell-install]", node.Aliases)
+
+	setup, ok := childByName(doc.Root, setupSub)
+	if !ok {
+		t.Fatalf("setup node missing from real-tree dump; commands: %+v", doc.Root.Commands)
+	}
+	for _, leaf := range []string{setupShellLeaf, setupAgentLeaf} {
+		if _, ok := childByName(setup, leaf); !ok {
+			t.Errorf("setup.%s missing from real-tree dump; setup children: %+v", leaf, setup.Commands)
+		}
 	}
 }
 

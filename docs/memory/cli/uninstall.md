@@ -104,7 +104,7 @@ Follows the `per-tool-output-separation` conventions via the shared `ui.go` help
 After the removal loop, `shll uninstall` prints (never executes — Constitution III) up to two hints:
 
 - **run-kit daemon stop** (`runKitDaemonStopHintFmt`): when run-kit was **successfully removed**, note that a running daemon is not stopped (`<tool> serve --stop`). The hint is keyed on the removed roster entry's name matching the `runKitToolName` named constant (`a.tool.Name == runKitToolName` on the success path) — `runKitName` records the name from that entry, not a `"run-kit"` string literal (no magic string).
-- **rc-file unwire** (`shellUnwireHint`): when shell-integrated tools (`tu`/`hop`/`wt` — those with a non-empty `Tool.ShellInit`) were **successfully removed roster-wide**, point at `shll shell-setup --uninstall` for the rc-file block.
+- **rc-file unwire** (`shellUnwireHint`): when shell-integrated tools (`tu`/`hop`/`wt` — those with a non-empty `Tool.ShellInit`) were **successfully removed roster-wide**, point at `shll setup shell --uninstall` for the rc-file block.
 
 Two load-bearing properties:
 

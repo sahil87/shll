@@ -17,6 +17,7 @@ fkf_version: "0.1"
 
 | Domain | Description |
 |--------|-------------|
+| [_shared](_shared/index.md) | — |
 | [ci](ci/index.md) | — |
 | [cli](cli/index.md) | — |
 | [internal](internal/index.md) | — |

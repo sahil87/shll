@@ -142,6 +142,6 @@ Covered scenarios:
 - Roster definition and `<shell>` placeholder: [cli/commands](/cli/commands.md#hardcoded-tool-roster).
 - Subprocess wrapper conventions: [internal/proc](/internal/proc.md) — including `proc.ErrNotFound` semantics.
 - Brew detection (`isInstalled`) — used by `install` and `update` only, not here: [cli/update](/cli/update.md#detection).
-- Rc-file installer: [cli/shell-setup](/cli/shell-setup.md) (`shll shell-setup`, formerly `shll shell-install` — retained as an alias) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
+- Rc-file installer: [cli/setup](/cli/setup.md) (`shll setup shell` — the visible spelling; the hidden `shll shell-setup` and its `shll shell-install` alias dispatch identically) — wraps `shll shell-init <shell>` in an `eval` line and writes it to the user's rc file (idempotent install / `--print` dry-run / `--uninstall` removal).
 - Shared UI helper (`ui.go`): [cli/commands](/cli/commands.md#file-layout-srccmdshll). `shell-init` consumes only `toolComment` from it — **not** the `▸`/`==>` header or color logic that `update`/`install` use (the [deliberate exception](#the-deliberate-exception--do-not-unify-onto-the--header)).
 - Constitution V (Graceful Degradation) — tools not on PATH are omitted silently; eval-safety mandates the shell-comment separator over the `▸`/`==>` header.

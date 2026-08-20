@@ -1574,7 +1574,7 @@ func TestUpdate_LegacyOnlyMachineNamedRunKitErrorsNotInstalled(t *testing.T) {
 // shllOnlyInstalledFake responds as if ONLY shll itself is brew-installed: the
 // shll-formula `brew list` probe reports a version, every other formula probe fails
 // (not installed), and everything else (brew --version, brew update, brew upgrade,
-// shll agent-setup) succeeds silently. The minimal fixture for exercising the
+// shll setup agent) succeeds silently. The minimal fixture for exercising the
 // end-of-run refresh without roster-tool noise.
 func shllOnlyInstalledFake() *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
@@ -1613,10 +1613,10 @@ func TestUpdate_RefreshesPlacedAgentSkills(t *testing.T) {
 	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	// The refresh runs as a SUBPROCESS (`shll agent-setup`) — the new binary on
+	// The refresh runs as a SUBPROCESS (`shll setup agent`) — the new binary on
 	// PATH places the new bytes, never the running (old) process in-memory.
-	if !invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub) {
-		t.Fatalf("expected an `shll agent-setup` refresh subprocess, calls: %+v", f.recordedCalls())
+	if !invocationsContain(f.recordedCalls(), shllTargetToken, setupSub, setupAgentLeaf) {
+		t.Fatalf("expected an `shll setup agent` refresh subprocess, calls: %+v", f.recordedCalls())
 	}
 	if !strings.Contains(stdout.String(), agentSkillRefreshHeader) {
 		t.Errorf("stdout must carry the refresh header %q, got:\n%s", agentSkillRefreshHeader, stdout.String())
@@ -1638,8 +1638,8 @@ func TestUpdate_NoPlacementSkipsRefresh(t *testing.T) {
 	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, false, nil); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
-	if invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub) {
-		t.Fatal("no prior placement → no unsolicited `shll agent-setup` run")
+	if invocationsContain(f.recordedCalls(), shllTargetToken, setupSub, setupAgentLeaf) {
+		t.Fatal("no prior placement → no unsolicited `shll setup agent` run")
 	}
 	if strings.Contains(stdout.String(), agentSkillRefreshHeader) {
 		t.Errorf("no placement → no refresh header, got:\n%s", stdout.String())
@@ -1656,12 +1656,12 @@ func TestUpdate_DryRunPreviewsSkillRefresh(t *testing.T) {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
 	// The preview mirrors the live path's placement guard (principle №5)…
-	if !strings.Contains(stdout.String(), fmt.Sprintf(updatePreviewSkillRefreshFmt, "shll agent-setup")) {
+	if !strings.Contains(stdout.String(), fmt.Sprintf(updatePreviewSkillRefreshFmt, "shll setup agent")) {
 		t.Errorf("dry-run with a placement must preview the refresh, got:\n%s", stdout.String())
 	}
 	// … without running it.
-	if invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub) {
-		t.Fatal("dry-run must not spawn the `shll agent-setup` refresh")
+	if invocationsContain(f.recordedCalls(), shllTargetToken, setupSub, setupAgentLeaf) {
+		t.Fatal("dry-run must not spawn the `shll setup agent` refresh")
 	}
 }
 
@@ -1674,7 +1674,7 @@ func TestUpdate_DryRunNoPlacementOmitsRefreshLine(t *testing.T) {
 	if err := runUpdate(context.Background(), env, &stdout, &stderr, true, false, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
-	if strings.Contains(stdout.String(), fmt.Sprintf(updatePreviewSkillRefreshFmt, "shll agent-setup")) {
+	if strings.Contains(stdout.String(), fmt.Sprintf(updatePreviewSkillRefreshFmt, "shll setup agent")) {
 		t.Errorf("dry-run without a placement must not preview the refresh, got:\n%s", stdout.String())
 	}
 }
@@ -1683,7 +1683,7 @@ func TestUpdate_RefreshFailureWarnsAndContinues(t *testing.T) {
 	f := shllOnlyInstalledFake()
 	base := f.respond
 	f.respond = func(req proc.Request) proc.Result {
-		if req.Name == shllTargetToken && len(req.Args) == 1 && req.Args[0] == agentSetupSub {
+		if req.Name == shllTargetToken && len(req.Args) == 2 && req.Args[0] == setupSub && req.Args[1] == setupAgentLeaf {
 			return proc.Result{ExitCode: 2} // child ran and failed; RunForeground → (2, nil)
 		}
 		return base(req)
@@ -2012,16 +2012,16 @@ func TestUpdate_YesThreadsIntoRefresh(t *testing.T) {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	// The refresh subprocess carries the forwarded flag — and ONLY then does
-	// agent-setup forward it onward to the run-kit delegation.
-	if !invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub, "--"+yesFlag) {
-		t.Fatalf("expected an `shll agent-setup --yes` refresh subprocess, calls: %+v", f.recordedCalls())
+	// the refresh forward it onward to the run-kit delegation.
+	if !invocationsContain(f.recordedCalls(), shllTargetToken, setupSub, setupAgentLeaf, "--"+yesFlag) {
+		t.Fatalf("expected an `shll setup agent --yes` refresh subprocess, calls: %+v", f.recordedCalls())
 	}
 }
 
 func TestUpdate_YesLeavesToolArgvsUntouched(t *testing.T) {
 	// run-kit is installed and advertises --skip-brew-update; --yes must not leak
 	// into the delegated per-tool update argv (its only consumption point is the
-	// end-of-run agent-setup refresh, which the missing placement suppresses here).
+	// end-of-run agent-skill refresh, which the missing placement suppresses here).
 	base := installedOnly(formulaPrefix + "run-kit")
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name == "run-kit" && isUpdateHelpProbe(req) {
@@ -2061,13 +2061,13 @@ func TestUpdate_DryRunPreviewsYesRefresh(t *testing.T) {
 		t.Fatalf("runUpdate --dry-run --yes err = %v, want nil", err)
 	}
 	// The preview renders the SAME argv the live refresh would run (refreshArgv is
-	// the single source of truth) — with the flag, that is `shll agent-setup --yes`.
-	want := fmt.Sprintf(updatePreviewSkillRefreshFmt, "shll agent-setup --"+yesFlag)
+	// the single source of truth) — with the flag, that is `shll setup agent --yes`.
+	want := fmt.Sprintf(updatePreviewSkillRefreshFmt, "shll setup agent --"+yesFlag)
 	if !strings.Contains(stdout.String(), want) {
 		t.Errorf("dry-run --yes must preview %q, got:\n%s", want, stdout.String())
 	}
-	if invocationsContain(f.recordedCalls(), shllTargetToken, agentSetupSub, "--"+yesFlag) {
-		t.Fatal("dry-run must not spawn the `shll agent-setup --yes` refresh")
+	if invocationsContain(f.recordedCalls(), shllTargetToken, setupSub, setupAgentLeaf, "--"+yesFlag) {
+		t.Fatal("dry-run must not spawn the `shll setup agent --yes` refresh")
 	}
 }
 

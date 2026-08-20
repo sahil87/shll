@@ -55,7 +55,7 @@ type Tool struct {
 	// from the managed set (Constitution III — Tool Roster Source of Truth).
 	Description string
 	// SkillHint is a short task-domain phrase ("git worktrees", "backlog ideas")
-	// woven into the generated `shll agent-setup` skill description, so an agent
+	// woven into the generated `shll setup agent` skill description, so an agent
 	// matching on task vocabulary — not just tool names — triggers the toolkit
 	// skill. Kept on the roster (not hand-written in agent_setup.go) so the skill
 	// description cannot drift from the managed set (Constitution III). Required
@@ -64,7 +64,7 @@ type Tool struct {
 	// ProactiveHint is one or more complete sentences (prose, appended verbatim)
 	// describing a capability the AGENT should reach for UNPROMPTED (without the
 	// user naming a tool) — the agent-proactive trigger vocabulary appended to
-	// the generated `shll agent-setup` skill description. Empty for every tool
+	// the generated `shll setup agent` skill description. Empty for every tool
 	// except run-kit (the sprawl guard: only agent-proactive capabilities earn
 	// description space; reactive tools stay behind the two-step router because
 	// the user's words name them). Kept on the Roster (Constitution III) so the

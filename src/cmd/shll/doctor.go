@@ -49,14 +49,14 @@ const (
 	// suggestUnreportableFmt takes (tool name, tool formula).
 	suggestUnreportableFmt = "installed but '%s --version' failed — try 'brew reinstall %s'"
 	// suggestNotWired is fixed text (no interpolation).
-	suggestNotWired = "not wired — run 'shll shell-setup' then 'exec $SHELL'"
+	suggestNotWired = "not wired — run 'shll setup shell' then 'exec $SHELL'"
 	// suggestShellUnresolvableFmt takes the raw $SHELL value.
-	suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll shell-setup zsh'"
+	suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll setup shell zsh'"
 	// suggestCorruptBlock is fixed text for a corrupted shll block (open sentinel
 	// without a matching close). doctor must NOT tell the user to run
-	// `shll shell-setup` here, because shell-setup refuses to modify a corrupted
+	// `shll setup shell` here, because it refuses to modify a corrupted
 	// block (exit 2) — the actionable fix is manual cleanup first.
-	suggestCorruptBlock = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll shell-setup'"
+	suggestCorruptBlock = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll setup shell'"
 	// suggestNotTrustedFmt takes the tool's formula (e.g. "sahil87/tap/hop"). An
 	// installed-but-untrusted tool still runs today, but its next `brew upgrade`
 	// (via `shll update` or plain brew) is refused on Homebrew 6.0+, so doctor
@@ -67,7 +67,7 @@ const (
 	// placement from an older shll). The skill still loads, but describes a stale
 	// toolkit — WARN, not FAIL. Absent placement is OK silently (agent-setup is
 	// opt-in; doctor never nags a user who never opted in).
-	suggestSkillStale = "placed agent skill is stale — run 'shll agent-setup'"
+	suggestSkillStale = "placed agent skill is stale — run 'shll setup agent'"
 )
 
 // doctorResult is the typed per-tool record. It is the single source for BOTH the
@@ -103,8 +103,8 @@ WARN (it still works when invoked directly). doctor exits non-zero if ANY tool i
 FAIL, so it is scriptable in CI.
 
 The leading shll row additionally checks any agent skill placed by
-'shll agent-setup': a placed skill whose content is stale (from an older shll) is
-WARN with a refresh pointer. No placement means no check — agent-setup is opt-in.
+'shll setup agent': a placed skill whose content is stale (from an older shll) is
+WARN with a refresh pointer. No placement means no check — agent setup is opt-in.
 
 The trust sub-check queries 'brew trust --json=v1' read-only; if your Homebrew is
 too old to ship 'brew trust' (where trust isn't required anyway), it is skipped
@@ -196,9 +196,9 @@ type wiringFact struct {
 	shellResolved bool
 	wired         bool
 	// corrupt is true when the rc file holds an shll block with an opening
-	// sentinel but no matching close (locateBlock's partial signal). shell-setup
+	// sentinel but no matching close (locateBlock's partial signal). shell setup
 	// refuses to touch such a block, so doctor surfaces a distinct WARN rather
-	// than the plain "not wired, run shll shell-setup" hint that would mislead.
+	// than the plain "not wired, run shll setup shell" hint that would mislead.
 	corrupt  bool
 	rawShell string
 }
@@ -223,8 +223,8 @@ func resolveWiringFact(env func(string) string) wiringFact {
 	}
 	m, newOK, legacyM, legacyOK, partial := locateBlock(content)
 	if partial {
-		// Open-without-close sentinel — shell-setup would refuse to modify it, so
-		// "not wired, run shll shell-setup" would send the user down a dead end.
+		// Open-without-close sentinel — shell setup would refuse to modify it, so
+		// "not wired, run shll setup shell" would send the user down a dead end.
 		return wiringFact{shellResolved: true, corrupt: true}
 	}
 	wired := (newOK && m.hasEval) || (legacyOK && legacyM.hasEval)
@@ -340,7 +340,7 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFa
 		return res
 	}
 	if fact.corrupt {
-		// Corrupted shll block — distinct from plain "not wired": shell-setup
+		// Corrupted shll block — distinct from plain "not wired": shell setup
 		// would refuse to repair it, so the suggestion points at manual cleanup.
 		res.Status = markerWarn
 		res.Suggestion = suggestCorruptBlock
@@ -365,8 +365,8 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFa
 //
 // The one check the row carries is the agent-skill placement (shll owns the
 // placed SKILL.md): a placed skill whose bytes differ from this binary's
-// canonical content is WARN with an `shll agent-setup` pointer; an absent
-// placement is OK silently (agent-setup is opt-in), and an unreadable target is
+// canonical content is WARN with an `shll setup agent` pointer; an absent
+// placement is OK silently (agent setup is opt-in), and an unreadable target is
 // never reported stale (Constitution V — agentSkillPlacementState's contract).
 // The row can thus at worst WARN, and the caller deliberately keeps it out of
 // the anyFail tally so it cannot perturb the exit-1-on-any-FAIL contract. Both

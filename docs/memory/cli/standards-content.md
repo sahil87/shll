@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` directory restructure (genre separation, URL mirrors the command), the naming decisions (plain filenames, `skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), and `install-composition` (no inter-tool `depends_on` + runtime probing, install docs centralized on shll.ai; shll-README carve-out)."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (no inter-tool `depends_on`, runtime probing, centralized install docs, shll-README carve-out, the install→setup composition), and principles' idempotency line naming `shll setup`."
 ---
 # cli/standards-content
 
@@ -51,7 +51,7 @@ Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ 
 
 `docs/site/standards/help-dump.md`'s **Output shape** documents an optional `aliases` node field: producers SHOULD emit it when the framework exposes alias metadata (e.g. Cobra `cmd.Aliases`) and MUST omit the key entirely — never `[]` or `null` — for a command with no aliases; consumers MUST treat an alias-form invocation (the `path` with its `name` replaced by any listed alias) as a valid command. The Node example carries an `"aliases": ["mk"]` line with an `omitted when none` comment, and a normative sentence beside it cross-links [Schema evolution](https://shll.ai/shll/standards/help-dump#schema-evolution).
 
-`aliases` is the **first field defined under the standard's § Schema evolution clause** — its rule that new fields MUST be optional so each tool adopts on its own release cadence (no seven-repo flag-day, no `schema_version` bump, older captures keep validating). shll emits the field (its `shell-setup`/`shell-install` command); the other six tools adopt on their own cadence. The producer-side contract and shll's implementation live in [cli/help-dump-contract](/cli/help-dump-contract.md).
+`aliases` is the **first field defined under the standard's § Schema evolution clause** — its rule that new fields MUST be optional so each tool adopts on its own release cadence (no seven-repo flag-day, no `schema_version` bump, older captures keep validating). shll implements the field on its `shell-setup` command's `shell-install` alias — but that command is `Hidden`, so the filter prunes it from shll's own dump and the emitted field is pinned by the synthetic-tree contract test (see [cli/help-dump-contract](/cli/help-dump-contract.md)); the other six tools adopt on their own cadence.
 
 *Introduced by*: `260718-whd7-help-dump-emit-aliases`.
 
@@ -73,7 +73,7 @@ A `<tool> skill` bundle is offline (embedded), present on every machine with the
 
 - **Command name exactly `skill`.** Prints raw markdown to stdout, byte-identical to the repo's canonical `docs/site/skill.md`; stderr empty; exit 0; no rendering, pager, or added framing.
 - **Static-only bundle.** The bytes are identical on every invocation, on every machine, for a given release — no timestamps, no environment lookups, no session state. This is the load the standard draws vs. its precedent (below).
-- **≤150-line hard budget** (principle №9). Agents pull a bundle into a paying context at use time via `shll skill <tool>` (see [Landed design](#landed-design-shll-agent-setup-skills-placement-not-context-aggregation)), and the bare `shll skill` glossary lists one line per installed tool — so a bloated bundle taxes every conversation that pulls it. Over budget means it is trying to be a README.
+- **≤150-line hard budget** (principle №9). Agents pull a bundle into a paying context at use time via `shll skill <tool>` (see [Landed design](#landed-design-shll-setup-agent-skills-placement-not-context-aggregation)), and the bare `shll skill` glossary lists one line per installed tool — so a bloated bundle taxes every conversation that pulls it. Over budget means it is trying to be a README.
 - **Genre discipline.** A usage briefing — when-to-use, capabilities map, composition patterns, output/exit-code contracts, gotchas. NOT a second README, NOT flag reference (defer to `-h` and the shll.ai commands page).
 - **Sync + drift-guard embed.** Content is embedded at build via committed copies + a sync script + a drift-guard test — the exact mechanism `shll standards` established (see [cli/standards §the build-time embed mechanism](/cli/standards.md#the-build-time-embed-mechanism)); each adopting repo reuses it.
 - **Renders on the site for free** at `/<tool>/skill` (part of the pulled `docs/site/**` tree).
@@ -96,15 +96,15 @@ Rollout is per-repo, like help-dump's. A tool without a `skill` subcommand is no
 
 > **shll ships `skill`** — the `shll skill` composer AND shll's own `docs/site/skill.md` bundle (served by `shll skill shll`) (agst). The **six other tools' `<tool> skill` bundles remain the per-repo waves' work.** (The `shll standards` roster's `skill` entry is the *reader-side* row for the standard document; `shll skill` is the *producer-side* command.) See [cli/skill](/cli/skill.md) and [cli/standards-conformance §the skill standard](/cli/standards-conformance.md#the-skill-standard-adopted).
 
-### Landed design: `shll agent-setup` (skills placement, not context aggregation)
+### Landed design: `shll setup agent` (skills placement, not context aggregation)
 
-*(Recorded here because it is why bundles must stay small and static; the standard document's own `` ## Landed design: `shll agent-setup` `` section describes the skills-placement design + the runtime two-step.)*
+*(Recorded here because it is why bundles must stay small and static; the standard document's own `` ## Landed design: `shll setup agent` `` section describes the skills-placement design + the runtime two-step.)*
 
-`shll agent-setup` + `shll skill` realize the design (agst). Two load-bearing clarifications:
+`shll setup agent` + `shll skill` realize the design (agst). Two load-bearing clarifications:
 
-- **The mechanism is skills PLACEMENT, not context aggregation.** `shll agent-setup` places ONE thin bootstrap Agent Skill (`shll-toolkit`) that *points at* a runtime **two-step** (`shll skill` glossary → `shll skill <tool>` bundle on demand); the aggregation/glossary role belongs to the separate `shll skill` composer. **Rejected**: aggregating every installed tool's `<tool> skill` output into the agent's context, and placing per-tool bundles as skill files (they go stale between updates and multiply listing lines) — the thin bootstrap + runtime two-step keeps bundles version-locked by construction. See [cli/agent-setup](/cli/agent-setup.md) and [cli/skill](/cli/skill.md).
+- **The mechanism is skills PLACEMENT, not context aggregation.** `shll setup agent` places ONE thin bootstrap Agent Skill (`shll-toolkit`) that *points at* a runtime **two-step** (`shll skill` glossary → `shll skill <tool>` bundle on demand); the aggregation/glossary role belongs to the separate `shll skill` composer. **Rejected**: aggregating every installed tool's `<tool> skill` output into the agent's context, and placing per-tool bundles as skill files (they go stale between updates and multiply listing lines) — the thin bootstrap + runtime two-step keeps bundles version-locked by construction. See [cli/setup](/cli/setup.md) and [cli/skill](/cli/skill.md).
 - **The ≤150-line budget and static-only rule hold.** Bundles are fetched on demand by the two-step into a paying context, so a bloated bundle is paid repeatedly. The bare `shll skill` glossary is deliberately one line per tool, never a dump of all bundles, precisely so N bundles are never concatenated at once (toolkit principle №9).
-- **run-kit hook delegation:** `shll agent-setup` delegates run-kit's dashboard hooks to `run-kit agent setup` (Constitution III/IV). The coordinated run-kit slim (removing run-kit's own context-injection stanza, moving that guidance into `run-kit skill`) is external run-kit-repo work.
+- **run-kit hook delegation:** `shll setup agent` delegates run-kit's dashboard hooks to `run-kit agent setup` (Constitution III/IV). The coordinated run-kit slim (removing run-kit's own context-injection stanza, moving that guidance into `run-kit skill`) is external run-kit-repo work.
 
 *Introduced by*: `260718-agst-agent-setup-skill-commands`; the standard document's § reflects it (fw9d).
 
@@ -164,6 +164,8 @@ Binds the tools that expose shell integration — today `tu`, `hop`, `wt`; `shll
 - **Policy A — no inter-tool formula dependencies (and probe at runtime).** Toolkit formulas MUST NOT declare `depends_on` on sibling toolkit formulas — a formula edge duplicates the roster knowledge `shll install` already owns and forces lockstep installs/uninstalls. Its binary half: a tool that invokes a sibling at runtime MUST probe first (`command -v <tool>` in shell/skill code, `exec.LookPath` in Go) and degrade gracefully on a missing sibling with an actionable install hint — never crash. The hint format is verbatim: `wt is not installed. Install it: brew install sahil87/tap/wt`. The page carries the precedent receipt: `fab-kit` and `hop` previously declared `depends_on` on `wt`/`idea`; those edges are removed, and the `all` meta-formula is retired in favor of `shll install`.
 - **Policy B — install documentation is centralized on shll.ai.** Per-tool READMEs and the tap README MUST NOT carry per-formula `brew install` instructions; they link to https://shll.ai (the curl bootstrap / `shll install`). The supported-vs-unsupported line is explicit: individual formula installs remain **supported** (`brew install sahil87/tap/<tool>` works, `shll install` accepts a subset) — what is unsupported is **documenting** them per-repo, which drifts (seven copies of the install dance, each chased on every install-story change).
 
+A third, shll-half section — **Install runs the machine wiring in-process** — documents the install→setup composition: `shll install` ends every non-`--dry-run` install by running the setup halves in-process (the sentinel-managed rc block, then the skill placement + `run-kit agent setup --yes` delegation), best-effort with `--no-shell-setup`/`--no-agent-setup` opt-outs, and **`shll setup` is the consolidated, re-runnable entry point** — bare `shll setup` runs both halves (both always run; worst-wins exit), `shll setup shell [shell]` / `shll setup agent` run one half each — the recovery path when a shell or an agent harness is added later. The section binds shll's own manager behavior only, imposing no obligation on the six roster tools. (`principles.md`'s idempotency line likewise names the pair: "`shll install` and `shll setup` are idempotent by contract".) The hidden pre-consolidation spellings (`shll shell-setup`, alias `shll shell-install`; `shll agent-setup`) get a one-paragraph compat note there — see [cli/setup](/cli/setup.md).
+
 The page follows the house register (single `#` H1 `Standard: install-composition`, implements-principle line, per-policy MUST sections, closing `## Verifying conformance` checklist), staying at or under `update.md`'s length.
 
 ### Design Decisions
@@ -182,7 +184,7 @@ The page follows the house register (single `#` H1 `Standard: install-compositio
 
 ## Cross-references
 
-- The command that ADOPTS this `skill` standard — the `shll skill` composer + shll's own `docs/site/skill.md` bundle (agst): [cli/skill](/cli/skill.md). The harness-wiring command: [cli/agent-setup](/cli/agent-setup.md).
+- The command that ADOPTS this `skill` standard — the `shll skill` composer + shll's own `docs/site/skill.md` bundle (agst): [cli/skill](/cli/skill.md). The harness-wiring command: [cli/setup](/cli/setup.md) (`shll setup agent`).
 - shll's audited conformance against these standards documents (per-standard PASS/gap disposition): [cli/standards-conformance](/cli/standards-conformance.md).
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
