@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `ErrNotFound` sentinel, `Runner` test seam."
+description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `RunStreamedTail` (null stdin; live tee to caller writers + bounded interleaved tail for failure framing), `ErrNotFound` sentinel, `Runner` test seam."
 ---
 # internal/proc
 
@@ -25,6 +25,15 @@ func Run(ctx context.Context, name string, args ...string) ([]byte, error)
 // exec fails before the subprocess starts.
 func RunForeground(ctx context.Context, name string, args ...string) (int, error)
 
+// RunStreamedTail streams the child's stdout/stderr LIVE to the given writers
+// (tee'd, never buffered-until-exit) while capturing a bounded interleaved
+// tail (last ~4KB), and runs the child with stdin from the null device
+// (cmd.Stdin = nil) so an attempted interactive prompt reads EOF and fails
+// fast. Exit-code semantics mirror RunForeground: (code, tail, nil) on
+// completion (a non-zero exit is NOT an error); (-1, tail, err) when exec
+// fails before the subprocess starts (binary missing → ErrNotFound).
+func RunStreamedTail(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) (code int, tail []byte, err error)
+
 // RunCaptured captures BOTH stdout and stderr into separate buffers and reports
 // the child's exit code, passing NEITHER stream through to the parent. (agst)
 // ErrNotFound (code -1) when the binary is missing; (err == nil, code) when the
@@ -45,6 +54,7 @@ That is the entire surface command code uses. Callers never import `os/exec` dir
 type Result struct {
     Stdout   []byte
     Stderr   []byte // populated ONLY by TransportCaptureAll (nil otherwise); agst
+    Tail     []byte // populated ONLY by TransportStreamTail (nil otherwise); yud0
     ExitCode int
     Err      error
 }
@@ -54,13 +64,16 @@ const (
     TransportCapture    Transport = iota // buffer stdout; pass stderr THROUGH to parent
     TransportForeground                  // inherit stdin/stdout/stderr
     TransportCaptureAll                  // buffer BOTH streams; pass NEITHER through (agst)
+    TransportStreamTail                  // null stdin; tee BOTH streams live to caller writers + a bounded tail ring (yud0)
 )
 
 type Request struct {
     Name      string
     Args      []string
     Transport Transport
-    Dir       string  // optional working dir; "" inherits parent cwd
+    Dir       string     // optional working dir; "" inherits parent cwd
+    Stdout    io.Writer // live-tee destination, TransportStreamTail ONLY (both must be non-nil)
+    Stderr    io.Writer
 }
 
 type RunnerFunc func(ctx context.Context, req Request) Result
@@ -117,7 +130,7 @@ These properties are tested at the source level (acceptance A-029, A-044, A-049,
 - On any other error (I/O failure pre-spawn) → return `Result{ExitCode: -1, Err: err}`.
 - On success → return `Result{ExitCode: 0}`.
 
-`exitCode(err) (int, bool)` (`src/internal/proc/proc.go`) is the small helper that unwraps `*exec.ExitError` to its `ExitCode()` — shared by the `TransportForeground` and `TransportCaptureAll` branches.
+`exitCode(err) (int, bool)` (`src/internal/proc/proc.go`) is the small helper that unwraps `*exec.ExitError` to its `ExitCode()` — shared by the `TransportForeground`, `TransportCaptureAll`, and `TransportStreamTail` branches.
 
 ### `TransportCaptureAll` (used by `proc.RunCaptured`)
 
@@ -132,6 +145,14 @@ These properties are tested at the source level (acceptance A-029, A-044, A-049,
 ### `RunCaptured` / `TransportCaptureAll`
 
 `RunCaptured(ctx, name, args...) (stdout, stderr []byte, code int, err error)` is the public helper over `TransportCaptureAll` (agst). It returns four values (not `([]byte, error)` like `Run`, nor `(int, error)` like `RunForeground`) because its callers need all of: the captured stdout to stream on success, the captured stderr (to suppress *or* propagate per caller), the exit code to classify a completed child (and to detect the `< 0` deadline-kill sentinel), and the error to distinguish `ErrNotFound`. The `Result.Stderr` field was added to the struct specifically for this transport — it is `nil` for `Run`/`RunForeground`. The two `shll skill` callers use the captured stderr differently: the one-arg bundle form **discards** it (`out, _, code, err := proc.RunCaptured(...)` — it suppresses the child's stderr in favor of its own notice), while the two-arg topic form **binds** it (`out, childErr, code, err := ...`) so it can write the child's bytes through verbatim on a `code > 0` failure.
+
+### `TransportStreamTail` (used by `proc.RunStreamedTail`)
+
+- `cmd.Stdin` is left **nil** — Go documents a nil `Stdin` as reading from the null device, so a child that attempts an interactive prompt reads EOF and fails fast instead of hanging. This enforces the toolkit's prompt-free standard for the install/update write phases; no interactive accommodation is added.
+- `cmd.Stdout = io.MultiWriter(req.Stdout, ring)`, `cmd.Stderr = io.MultiWriter(req.Stderr, ring)` — both streams tee **live** to the caller-supplied writers (never buffered-until-exit) AND into one shared bounded ring, so the captured tail preserves the stdout/stderr interleaving the user saw.
+- The ring is `tailRing`, a fixed-capacity (`tailRingSize = 4096`) byte ring keeping the most recent writes in order; its `Write` is mutex-guarded (the two exec copy goroutines race) and never blocks or fails, and `Bytes()` copies the tail out oldest-first. The bound is deliberate: a chatty child cannot grow memory unbounded. The tail lands in `Result.Tail` (`nil` for every other transport) so a failed child's last lines can be re-printed after they scrolled out of a DECSTBM region — see [cli/update §null-stdin streamed children](/cli/update.md#null-stdin-streamed-children--the-failure-tail).
+- Exit-code semantics mirror `TransportForeground` exactly: on `exec.ErrNotFound` → `Result{Tail, ExitCode: -1, Err: ErrNotFound}`; on `*exec.ExitError` → `Result{Tail, ExitCode: <code>}` with **`Err == nil`** (the caller branches on the code); on any other pre-spawn error → `Result{Tail, ExitCode: -1, Err: err}`; on success → `Result{Tail, ExitCode: 0}`.
+- The `Request.Stdout`/`Request.Stderr` writer fields exist solely for this transport (ignored by all others; both must be non-nil for it). Its consumers are the `shll install`/`shll update` write phases via the shared `runStreamedChild` helper in `brew.go` (yud0).
 
 ## No per-request environment override
 
@@ -167,12 +188,14 @@ If a future shll subcommand needs cwd scoping, the path forward is to either (a)
 - `TestRunForeground_ExitCode` — fake returns `ExitCode: 7` → `RunForeground` returns `(7, nil)`.
 - `TestRunForeground_ErrNotFound` — fake returns `ErrNotFound` → `(-1, ErrNotFound)`.
 - `TestRunner_RecordsTransportSelection` — `Run` records `TransportCapture`, `RunForeground` records `TransportForeground`.
+- `TestRunStreamedTail_Seams` / `TestRunStreamedTail_ErrNotFound` (yud0) — the fake records `TransportStreamTail` plus the writer fields; `ErrNotFound` maps to `(-1, tail, ErrNotFound)`.
+- `TestDefaultRunner_StreamTail*` (yud0) — the production path: `…StdinReadsEOF` (a `sh -c 'read x'` child fails fast instead of hanging), `…LiveTee` (the caller's writer receives bytes as the child runs), `…Bounded` (a chatty child's tail never exceeds `tailRingSize` and interleaves both streams), `…ExitCodeMapping` (non-zero exit → `(code, tail, nil)`, mirroring Foreground).
 - `TestDefaultRunner_RealBinary` — exercises the production path with `true`, `false`, and a missing binary; the only test that spawns real processes (and never spawns project tools).
 
 
 ## Cross-references
 
-- All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md).
+- All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md). The `RunStreamedTail`/`TransportStreamTail` consumers are the `shll install`/`shll update` write-phase children (brew trust/install/update/upgrade/link, delegated `<tool> update`, `rk desktop install|update`), all routed through the shared `runStreamedChild` helper in `brew.go` (yud0): [cli/update §null-stdin streamed children](/cli/update.md#null-stdin-streamed-children--the-failure-tail), [cli/install §pinned status region + OSC 9;4](/cli/install.md#pinned-status-region--determinate-osc-94-tty-write-phase).
 - The sole `RunCaptured`/`TransportCaptureAll` consumer, `shll skill` — byte-identical stdout passthrough, with the one-arg form suppressing the child's stderr ([cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured)) and the two-arg topic form propagating it + mirroring the child's exit code ([cli/skill §a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)). The `run-kit agent setup` delegation uses `RunForeground`: [cli/setup §run-kit delegation](/cli/setup.md#run-kit-delegation).
 - Constitution I (Security First) — the principle this package enforces.
 - spec.md Design Decision #7 — package-level `Runner` is the chosen test seam.

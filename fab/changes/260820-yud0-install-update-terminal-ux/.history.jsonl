@@ -2,3 +2,13 @@
 {"args":"Change C from fab/plans/sahil/desktop-roster-and-install-ux.md: two-region terminal experience for shll install/update in Go — pinned status header, streaming child output, prompt-hang hardening, determinate OSC 9;4 progress","cmd":"fab-new","event":"command","ts":"2026-08-20T18:13:29Z"}
 {"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-08-20T18:14:12Z"}
 {"cmd":"fab-draft","event":"command","ts":"2026-08-20T18:14:12Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-08-20T20:23:04Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-20T20:25:05Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-20T20:26:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-20T20:41:32Z"}
+{"event":"review","result":"failed","ts":"2026-08-20T20:45:11Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-20T20:45:11Z"}
+{"action":"re-entry","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-20T20:52:44Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-20T20:54:37Z"}
+{"event":"review","result":"passed","ts":"2026-08-20T20:54:37Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-20T21:03:26Z"}

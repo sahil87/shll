@@ -185,7 +185,143 @@ func TestDefaultRunner_CaptureAllRealBinary(t *testing.T) {
 	}
 }
 
-// TestDefaultRunner_RealBinary exercises the production runner end-to-end with
+// TestRunStreamedTail_Seams covers the RunStreamedTail wrapper's Runner
+// indirection: transport selection, writer threading, and the
+// Foreground-style (code, err) mapping including ErrNotFound.
+func TestRunStreamedTail_Seams(t *testing.T) {
+	calls := withFakeRunner(t, func(req Request) Result {
+		if req.Transport != TransportStreamTail {
+			t.Errorf("transport = %v, want TransportStreamTail", req.Transport)
+		}
+		return Result{Tail: []byte("tail-bytes"), ExitCode: 5}
+	})
+	var stdout, stderr strings.Builder
+	code, tail, err := RunStreamedTail(context.Background(), &stdout, &stderr, "brew", "install", "x")
+	if err != nil {
+		t.Fatalf("err = %v, want nil (non-zero exit is not a proc error)", err)
+	}
+	if code != 5 {
+		t.Fatalf("code = %d, want 5", code)
+	}
+	if string(tail) != "tail-bytes" {
+		t.Fatalf("tail = %q, want %q", tail, "tail-bytes")
+	}
+	got := (*calls)[0]
+	if got.Stdout != &stdout || got.Stderr != &stderr {
+		t.Fatalf("writers not threaded into request: %+v", got)
+	}
+}
+
+func TestRunStreamedTail_ErrNotFound(t *testing.T) {
+	withFakeRunner(t, func(req Request) Result {
+		return Result{ExitCode: -1, Err: ErrNotFound}
+	})
+	var stdout, stderr strings.Builder
+	code, _, err := RunStreamedTail(context.Background(), &stdout, &stderr, "nonesuch")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if code != -1 {
+		t.Fatalf("code = %d, want -1", code)
+	}
+}
+
+// TestDefaultRunner_StreamTailStdinReadsEOF is the prompt-hang hardening: a
+// child that tries to read a confirmation from stdin must read EOF (null
+// device) and fail fast rather than hang. `read x` with no input fails
+// immediately under a null stdin; with an inherited/pipe stdin this test would
+// block instead.
+func TestDefaultRunner_StreamTailStdinReadsEOF(t *testing.T) {
+	var stdout, stderr strings.Builder
+	res := defaultRunner(context.Background(), Request{
+		Name:      "sh",
+		Args:      []string{"-c", "read x || exit 42"},
+		Transport: TransportStreamTail,
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if res.Err != nil {
+		t.Fatalf("err = %v, want nil (read-EOF is a clean non-zero exit)", res.Err)
+	}
+	if res.ExitCode != 42 {
+		t.Fatalf("code = %d, want 42 (read hit EOF instead of hanging)", res.ExitCode)
+	}
+}
+
+// TestDefaultRunner_StreamTailLiveTee verifies both child streams reach the
+// caller's writers live (the tee) and land interleaved in the bounded tail.
+func TestDefaultRunner_StreamTailLiveTee(t *testing.T) {
+	var stdout, stderr strings.Builder
+	res := defaultRunner(context.Background(), Request{
+		Name:      "sh",
+		Args:      []string{"-c", "printf out1; printf err1 1>&2; printf out2; printf err2 1>&2"},
+		Transport: TransportStreamTail,
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("err = %v code = %d, want nil/0", res.Err, res.ExitCode)
+	}
+	if stdout.String() != "out1out2" {
+		t.Fatalf("tee'd stdout = %q, want %q", stdout.String(), "out1out2")
+	}
+	if stderr.String() != "err1err2" {
+		t.Fatalf("tee'd stderr = %q, want %q", stderr.String(), "err1err2")
+	}
+	tail := string(res.Tail)
+	for _, want := range []string{"out1", "err1", "out2", "err2"} {
+		if !strings.Contains(tail, want) {
+			t.Fatalf("tail = %q, want it to contain %q (both streams interleaved)", tail, want)
+		}
+	}
+}
+
+// TestDefaultRunner_StreamTailBounded verifies a chatty child cannot grow the
+// tail unboundedly: output far past tailRingSize keeps only the most recent
+// bytes, oldest-first.
+func TestDefaultRunner_StreamTailBounded(t *testing.T) {
+	var stdout, stderr strings.Builder
+	res := defaultRunner(context.Background(), Request{
+		Name: "sh",
+		// ~8KB of 'a' then the marker — the tail must hold the END, not the start.
+		Args:      []string{"-c", "printf '%0.sa' $(seq 1 8192); printf TAIL-END"},
+		Transport: TransportStreamTail,
+		Stdout:    &stdout,
+		Stderr:    &stderr,
+	})
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("err = %v code = %d, want nil/0", res.Err, res.ExitCode)
+	}
+	if len(res.Tail) > tailRingSize {
+		t.Fatalf("tail len = %d, want <= %d (bounded)", len(res.Tail), tailRingSize)
+	}
+	if !strings.HasSuffix(string(res.Tail), "TAIL-END") {
+		t.Fatalf("tail = %q..., want it to end with the final output", string(res.Tail)[len(res.Tail)-32:])
+	}
+}
+
+// TestDefaultRunner_StreamTailExitCodeMapping exercises the Foreground-style
+// mapping on the real binary: clean non-zero exit → (code, nil); missing
+// binary → (-1, ErrNotFound).
+func TestDefaultRunner_StreamTailExitCodeMapping(t *testing.T) {
+	var stdout, stderr strings.Builder
+	res := defaultRunner(context.Background(), Request{Name: "false", Transport: TransportStreamTail, Stdout: &stdout, Stderr: &stderr})
+	if res.Err != nil {
+		t.Fatalf("false: err = %v, want nil", res.Err)
+	}
+	if res.ExitCode != 1 {
+		t.Fatalf("false: code = %d, want 1", res.ExitCode)
+	}
+
+	res = defaultRunner(context.Background(), Request{Name: "shll-nonesuch-binary-xyz", Transport: TransportStreamTail, Stdout: &stdout, Stderr: &stderr})
+	if !errors.Is(res.Err, ErrNotFound) {
+		t.Fatalf("missing binary: err = %v, want ErrNotFound", res.Err)
+	}
+	if res.ExitCode != -1 {
+		t.Fatalf("missing binary: code = %d, want -1", res.ExitCode)
+	}
+}
+
 // `true` (always succeeds) and `false` (always exits 1) — both POSIX shell
 // builtins available as standalone binaries on linux/darwin. This is the only
 // test that spawns a real process; it does NOT shell out to brew or any project
