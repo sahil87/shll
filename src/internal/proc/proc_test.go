@@ -322,6 +322,21 @@ func TestDefaultRunner_StreamTailExitCodeMapping(t *testing.T) {
 	}
 }
 
+// TestDefaultRunner_StreamTailNilWritersRejected verifies the tee-writer
+// validation: a nil Stdout or Stderr must yield a structured error (code -1),
+// not a panic inside io.MultiWriter on the child's first write.
+func TestDefaultRunner_StreamTailNilWritersRejected(t *testing.T) {
+	var w strings.Builder
+	res := defaultRunner(context.Background(), Request{Name: "true", Transport: TransportStreamTail, Stderr: &w})
+	if res.Err == nil || res.ExitCode != -1 {
+		t.Fatalf("nil Stdout: err = %v code = %d, want non-nil/-1", res.Err, res.ExitCode)
+	}
+	res = defaultRunner(context.Background(), Request{Name: "true", Transport: TransportStreamTail, Stdout: &w})
+	if res.Err == nil || res.ExitCode != -1 {
+		t.Fatalf("nil Stderr: err = %v code = %d, want non-nil/-1", res.Err, res.ExitCode)
+	}
+}
+
 // `true` (always succeeds) and `false` (always exits 1) — both POSIX shell
 // builtins available as standalone binaries on linux/darwin. This is the only
 // test that spawns a real process; it does NOT shell out to brew or any project

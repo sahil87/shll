@@ -166,3 +166,32 @@ func TestStatusRegion_HeaderTruncatedToWidth(t *testing.T) {
 	}
 	r.stop()
 }
+
+// TestTruncateHeader_RuneAndANSISafe pins the width-capping contract: cuts
+// land only on rune boundaries, escape sequences occupy no columns and are
+// never split, and a cut that drops trailing styling re-asserts ansiReset.
+func TestTruncateHeader_RuneAndANSISafe(t *testing.T) {
+	// Multi-byte runes (`·` is 2 bytes): cutting must never split one.
+	if got, want := truncateHeader("a·b·c·d", 3), "a·b"; got != want {
+		t.Fatalf("truncateHeader() = %q, want %q (no split rune)", got, want)
+	}
+	// SGR-wrapped text: escapes occupy no columns, so the full visible text
+	// plus its closing reset survives a generous width.
+	colored := ansiBoldCyan + "Updating hop (1/7)" + ansiReset
+	if got := truncateHeader(colored, 80); got != colored {
+		t.Fatalf("truncateHeader() = %q, want %q (escapes not counted)", got, colored)
+	}
+	// A mid-text cut drops the closing reset — it must be re-asserted.
+	if got, want := truncateHeader(colored, 8), ansiBoldCyan+"Updating"+ansiReset; got != want {
+		t.Fatalf("truncateHeader() = %q, want %q (reset re-asserted)", got, want)
+	}
+	// A width narrower than the SGR prefix's byte length must still pass the
+	// prefix through intact (byte slicing would have cut inside the escape).
+	if got, want := truncateHeader(colored, 1), ansiBoldCyan+"U"+ansiReset; got != want {
+		t.Fatalf("truncateHeader() = %q, want %q (escape never split)", got, want)
+	}
+	// Untruncated plain text passes through unchanged.
+	if got, want := truncateHeader("short", 10), "short"; got != want {
+		t.Fatalf("truncateHeader() = %q, want %q", got, want)
+	}
+}

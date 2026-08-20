@@ -146,7 +146,9 @@ func (r *tailRing) Bytes() []byte {
 // of arguments are passed verbatim to exec.CommandContext (Constitution I —
 // no shell interpretation). Dir is optional; empty string inherits the parent cwd.
 // Stdout/Stderr are the live-tee destinations used ONLY by TransportStreamTail
-// (ignored by every other transport); both must be non-nil for that transport.
+// (ignored by every other transport); both must be non-nil for that transport
+// (the runner rejects a nil writer with a structured error rather than
+// panicking in io.MultiWriter).
 type Request struct {
 	Name      string
 	Args      []string
@@ -277,6 +279,12 @@ func defaultRunner(ctx context.Context, req Request) Result {
 		}
 		return Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: 0}
 	case TransportStreamTail:
+		// The tee writers are mandatory for this transport: a nil writer in
+		// io.MultiWriter panics on the child's first write, so reject the
+		// request up front with a structured error instead.
+		if req.Stdout == nil || req.Stderr == nil {
+			return Result{ExitCode: -1, Err: errors.New("proc: TransportStreamTail requires non-nil Stdout and Stderr")}
+		}
 		// stdin is left nil — Go documents a nil Stdin as reading from the null
 		// device, so a child attempting an interactive prompt reads EOF and fails
 		// fast instead of hanging the walk (prompt-free enforcement). Both output

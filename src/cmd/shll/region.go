@@ -186,15 +186,57 @@ func (r *statusRegion) setHeader(text string) {
 // Caller must hold mu.
 func (r *statusRegion) paintHeaderLocked() {
 	text := r.header
-	if w := r.cols; w > 0 && len(text) > w {
-		text = text[:w]
-		// Truncation can cut through a trailing SGR span — re-assert reset so
-		// the terminal never stays styled.
-		if strings.Contains(text, "\x1b") {
-			text += ansiReset
-		}
+	if w := r.cols; w > 0 {
+		text = truncateHeader(text, w)
 	}
 	fmt.Fprint(r.w, regionCursorHome, regionEraseLine, text, regionCursorPos(regionScrollTop))
+}
+
+// truncateHeader caps text at w visible runes: ANSI escape sequences occupy no
+// terminal columns and are never counted, and cuts happen only on rune
+// boundaries so a multi-byte character (e.g. the `·` separator) is never
+// split. When a cut drops trailing styling, ansiReset is re-asserted so the
+// terminal never stays styled.
+func truncateHeader(text string, w int) string {
+	const (
+		stateNormal = iota
+		stateEsc    // ESC seen, expecting the introducer byte
+		stateCSI    // inside a CSI sequence (ESC [ … final byte)
+	)
+	state := stateNormal
+	visible := 0
+	hasEsc := false
+	for i, r := range text {
+		switch state {
+		case stateNormal:
+			if r == '\x1b' {
+				state = stateEsc
+				hasEsc = true
+				continue
+			}
+			visible++
+			if visible > w {
+				cut := text[:i] // i is a rune boundary — never splits a rune
+				if hasEsc {
+					cut += ansiReset
+				}
+				return cut
+			}
+		case stateEsc:
+			if r == '[' {
+				state = stateCSI
+			} else {
+				state = stateNormal // two-byte escape (e.g. ESC c)
+			}
+		case stateCSI:
+			// CSI final bytes are in 0x40–0x7E (ECMA-48); parameter and
+			// intermediate bytes are below 0x40.
+			if r >= 0x40 && r <= 0x7e {
+				state = stateNormal
+			}
+		}
+	}
+	return text
 }
 
 // stop restores the terminal on the normal/error return path: remove the
