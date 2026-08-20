@@ -43,14 +43,14 @@ const noToolsInstalledMsg = "No shll tools installed."
 // updatePreviewSkillRefreshFmt is the dry-run preview line for the conditional
 // end-of-run agent-skill refresh (printed only when a placement exists, mirroring
 // the live run's guard). The %s carries the exact refresh argv from refreshArgv —
-// `shll agent-setup` or `shll agent-setup --yes` — so the preview reflects the flag
+// `shll setup agent` or `shll setup agent --yes` — so the preview reflects the flag
 // (an inaccurate preview is worse than none). Named per code-quality.md.
 const updatePreviewSkillRefreshFmt = "Then: %s (refresh placed agent skills)"
 
 // updateYesUsage is the cobra usage string for --yes/-y on `shll update`. The flag's
-// single consumption point is the end-of-run agent-setup refresh (per-tool delegated
+// single consumption point is the end-of-run `shll setup agent` refresh (per-tool delegated
 // updates are already prompt-free by standard, and their argv stays fixed).
-const updateYesUsage = "forward --yes to the end-of-run shll agent-setup refresh (assume yes — for unattended runs)"
+const updateYesUsage = "forward --yes to the end-of-run shll setup agent refresh (assume yes — for unattended runs)"
 
 func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -67,8 +67,8 @@ are preserved. A roster tool that exposes no ` + "`update`" + ` is upgraded via
 itself, e.g. on a ` + "`go install`" + ` dev build) are skipped silently. Brew and per-tool
 progress output streams directly to your terminal.
 
-When agent skills were previously placed via ` + "`shll agent-setup`" + `, the run ends by
-re-running ` + "`shll agent-setup`" + ` so the placed skills track the freshly upgraded
+When agent skills were previously placed via ` + "`shll setup agent`" + `, the run ends by
+re-running ` + "`shll setup agent`" + ` so the placed skills track the freshly upgraded
 binaries (best-effort; skipped entirely when no placement exists). Pass ` + "`--yes`" + `
 (or ` + "`-y`" + `) to forward ` + "`--yes`" + ` through that refresh into the run-kit delegation,
 skipping its confirmation prompt — for unattended runs (an agent-driven pane, the
@@ -135,7 +135,7 @@ type probeResult struct {
 // end-of-run refresh) — injected so tests never touch the real ~. Production
 // passes os.Getenv.
 //
-// yes forwards --yes to the end-of-run agent-setup refresh subprocess (its ONLY
+// yes forwards --yes to the end-of-run `shll setup agent` refresh subprocess (its ONLY
 // consumption point — the per-tool delegated updates and the shll self-upgrade
 // argv are untouched; they are already prompt-free by the update standard).
 func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.Writer, dryRun, yes bool, args []string) error {
@@ -431,12 +431,12 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		progress.set(100)
 	}
 
-	// End-of-run agent-skill refresh: when a prior `shll agent-setup` placement
+	// End-of-run agent-skill refresh: when a prior `shll setup agent` placement
 	// exists, re-run it as a subprocess so the placed skills track the freshly
 	// upgraded binaries (the running process still holds the OLD embedded skill
 	// content after a self-upgrade — only the new binary on PATH has the new
 	// bytes). Runs AFTER the roster loop so the run-kit hook delegation inside
-	// agent-setup uses the just-upgraded run-kit. Placement-gated (no unsolicited
+	// the refresh uses the just-upgraded run-kit. Placement-gated (no unsolicited
 	// writes), best-effort (never changes the exit code), and idempotent — a
 	// no-change run reports each path as "unchanged".
 	refreshPlacedAgentSkills(ctx, env, yes, stdout, stderr)

@@ -281,7 +281,7 @@ func TestDoctor_UnwiredShellInitWarnsExitZero(t *testing.T) {
 func TestDoctor_CorruptBlockWarnsWithDistinctSuggestion(t *testing.T) {
 	// An rc file with an unclosed shll sentinel: shell-setup would refuse to
 	// modify it, so doctor must surface the corrupt-block suggestion (manual
-	// cleanup) — NOT the plain "run shll shell-setup" not-wired hint — and stay
+	// cleanup) — NOT the plain "run shll setup shell" not-wired hint — and stay
 	// exit 0 (WARN, not FAIL).
 	installFakeRunner(t, doctorFake(nil)) // all installed + runnable
 	dir := writeCorruptRC(t)

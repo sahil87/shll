@@ -1,6 +1,6 @@
 # Install & shell wiring
 
-The deep guide to getting `shll` and the rest of the [shll toolkit](https://shll.ai) onto a machine and wired into your shell. The README's Install section is the short version; this page covers every install path and the full `shll shell-setup` rc-wiring contract.
+The deep guide to getting `shll` and the rest of the [shll toolkit](https://shll.ai) onto a machine and wired into your shell. The README's Install section is the short version; this page covers every install path and the full `shll setup shell` rc-wiring contract.
 
 `shll` doesn't replace the per-tool CLIs — it composes them. Everything below either shells out to `brew` or invokes a sub-tool's own command; `shll` keeps no state of its own.
 
@@ -22,7 +22,7 @@ curl -fsSL https://shll.ai/install | sh -s -- hop wt
 
 The script preflights the machine before touching Homebrew — it probes git (on macOS via `xcode-select -p`, the real Command Line Tools check; the `/usr/bin/git` shim false-positives when the CLT is absent), curl, and tmux, then reports every miss at once with its per-platform fix command. Missing curl (or missing git on Linux without Homebrew) is fatal; missing tmux is a warning with its install hint, never a block.
 
-When Homebrew is absent the script **bootstraps it headlessly** — the official installer with `NONINTERACTIVE=1` (on macOS this also installs the Command Line Tools via `softwareupdate`; on Linux the preflight has already guaranteed git). A fresh Homebrew isn't on `PATH` in the current shell, so the script evals `brew shellenv` itself before handing off, and prints the rc line for your future shells — keep it (`shll shell-setup` below wires shll's own shell integration, not brew's):
+When Homebrew is absent the script **bootstraps it headlessly** — the official installer with `NONINTERACTIVE=1` (on macOS this also installs the Command Line Tools via `softwareupdate`; on Linux the preflight has already guaranteed git). A fresh Homebrew isn't on `PATH` in the current shell, so the script evals `brew shellenv` itself before handing off, and prints the rc line for your future shells — keep it (`shll setup shell` below wires shll's own shell integration, not brew's):
 
 ```sh
 eval "$(/opt/homebrew/bin/brew shellenv)"   # Apple Silicon; /usr/local/bin/brew on Intel, /home/linuxbrew/.linuxbrew/bin/brew on Linux
@@ -62,8 +62,8 @@ If your Homebrew is too old to ship `brew trust` (pre-6.0, where trust isn't req
 
 When the installs finish (or there was nothing to do), `shll install` **wires the machine automatically** — no nudges to ignore, no prompts:
 
-1. **Shell integration** — the equivalent of [`shll shell-setup`](#shll-shell-setup--wire-the-rc-file-recommended): the `eval "$(shll shell-init <shell>)"` block is appended to your rc file (sentinel-managed and idempotent, so a re-run is a no-op), followed by an `exec $SHELL` reminder. Already-wired, unresolvable-`$SHELL`, and corrupt-block states skip quietly.
-2. **Agent harnesses** — the equivalent of `shll agent-setup --yes`: the `shll-toolkit` skill is placed at the two global skill paths and run-kit's dashboard hooks are delegated, with `--yes` forwarded so run-kit's hook-wiring confirmation can't hang an unattended (`curl | sh`) run.
+1. **Shell integration** — the equivalent of [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended): the `eval "$(shll shell-init <shell>)"` block is appended to your rc file (sentinel-managed and idempotent, so a re-run is a no-op), followed by an `exec $SHELL` reminder. Already-wired, unresolvable-`$SHELL`, and corrupt-block states skip quietly.
+2. **Agent harnesses** — the equivalent of `shll setup agent --yes`: the `shll-toolkit` skill is placed at the two global skill paths and run-kit's dashboard hooks are delegated, with `--yes` forwarded so run-kit's hook-wiring confirmation can't hang an unattended (`curl | sh`) run.
 
 Both steps are best-effort: a failure warns on stderr and prints that step's manual nudge as a fallback, and never changes the install's exit code. Neither step runs under `--dry-run`. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup`:
 
@@ -71,6 +71,8 @@ Both steps are best-effort: a failure warns on stderr and prints that step's man
 shll install --no-shell-setup   # skip the rc-file wiring (wire it yourself)
 shll install --no-agent-setup   # skip the agent-harness wiring
 ```
+
+Both halves are re-runnable any time via `shll setup` (or individually as `shll setup shell` / `shll setup agent`) — e.g. after installing a new shell or a new agent harness.
 
 `shll install` does **not** upgrade — it only installs what's missing. Use [`shll update`](workflows.md#day-to-day-shll-update) for upgrades. It also runs no `brew update --quiet` first: `brew install` resolves the formula via the tap directly, so the metadata refresh that `shll update` performs is intentionally absent here.
 
@@ -88,18 +90,18 @@ just install
 
 `just install` builds the binary and copies it to `~/.local/bin/shll`. Make sure that directory is on your `$PATH`. A from-source build participates in `shll shell-init` and `shll version` exactly like a brew install — install detection is by binary-on-PATH, not by brew. One caveat: a non-brew `shll` is **not** self-upgraded by `shll update` (there's no brew formula to upgrade), and it reports its own version as whatever the build stamped (`dev` for an unstamped local build).
 
-## `shll shell-setup` — wire the rc file (recommended)
+## `shll setup shell` — wire the rc file (recommended)
 
-`shll shell-setup` maintains a single sentinel-wrapped, shll-managed block in your shell rc file. The block holds the cross-tool eval line — that's all. It is **pure rc-wiring** and touches no Homebrew state (tap trust lives in [`shll install`](#shll-install--bootstrap-the-missing-roster-tools), which trusts each formula it installs). It is the recommended way to wire your shell: you don't have to know which rc file to edit, and re-running is a no-op.
+`shll setup shell` maintains a single sentinel-wrapped, shll-managed block in your shell rc file. The block holds the cross-tool eval line — that's all. It is **pure rc-wiring** and touches no Homebrew state (tap trust lives in [`shll install`](#shll-install--bootstrap-the-missing-roster-tools), which trusts each formula it installs). It is the recommended way to wire your shell: you don't have to know which rc file to edit, and re-running is a no-op.
 
-> Still works under the legacy alias `shll shell-install` — same command, unchanged behavior.
+> Renamed from `shll shell-setup`: the old spelling (and its `shll shell-install` alias) still works — hidden, silent, for one release cycle — then it will be removed.
 
 ```sh
-shll shell-setup                          # auto-detect shell from $SHELL, append the eval block
-shll shell-setup zsh                      # explicit shell
-shll shell-setup --print                  # dry-run: print the block to stdout, modify nothing
-shll shell-setup --uninstall              # clean removal of the whole block
-shll shell-setup --rc-file ~/.zshrc.local # override the target path verbatim
+shll setup shell                          # auto-detect shell from $SHELL, append the eval block
+shll setup shell zsh                      # explicit shell
+shll setup shell --print                  # dry-run: print the block to stdout, modify nothing
+shll setup shell --uninstall              # clean removal of the whole block
+shll setup shell --rc-file ~/.zshrc.local # override the target path verbatim
 ```
 
 ### The managed block
@@ -116,7 +118,7 @@ The eval line is the cross-tool composition entry point — it runs [`shll shell
 
 ### Shell auto-detection and rc-file targets
 
-With no positional argument, `shll shell-setup` infers the shell from the basename of `$SHELL` (so `/bin/zsh` and `/usr/local/bin/zsh` both resolve to `zsh`); pass `zsh`/`bash` explicitly to override. Default rc targets:
+With no positional argument, `shll setup shell` infers the shell from the basename of `$SHELL` (so `/bin/zsh` and `/usr/local/bin/zsh` both resolve to `zsh`); pass `zsh`/`bash` explicitly to override. Default rc targets:
 
 | Shell | Default rc file |
 |-------|-----------------|
@@ -132,11 +134,11 @@ The fresh-block append uses plain `O_APPEND`, so a `~/.zshrc` symlink into a dot
 
 ### Migrating from an older shll (`--trust-tap` cleanup)
 
-Older shll versions had a `shll shell-setup --trust-tap` flag that also wrote an `export HOMEBREW_REQUIRE_TAP_TRUST=1` policy line into the block. That flag is **removed** — trust now lives in `shll install` (per-formula), and the export line merely re-set Homebrew 6.0's default (it was never what unblocked installs; the `brew trust` record is). If a previous `--trust-tap` run left that export line in your block, the next plain `shll shell-setup` run **rewrites the block to the eval line only**, dropping the stale export automatically. `--uninstall` removes the whole block as before.
+Older shll versions had a `shll shell-setup --trust-tap` flag that also wrote an `export HOMEBREW_REQUIRE_TAP_TRUST=1` policy line into the block. That flag is **removed** — trust now lives in `shll install` (per-formula), and the export line merely re-set Homebrew 6.0's default (it was never what unblocked installs; the `brew trust` record is). If a previous `--trust-tap` run left that export line in your block, the next plain `shll setup shell` run **rewrites the block to the eval line only**, dropping the stale export automatically. `--uninstall` removes the whole block as before.
 
 ## `shll shell-init <shell>` — the composed eval line
 
-If you'd rather wire the eval line by hand, this is exactly what `shll shell-setup` writes to your rc file:
+If you'd rather wire the eval line by hand, this is exactly what `shll setup shell` writes to your rc file:
 
 ```sh
 eval "$(shll shell-init zsh)"   # in ~/.zshrc

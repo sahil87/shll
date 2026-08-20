@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe (incl. its legacy-name fallback), `shell-setup`'s wiring detector, and `brew.go`'s trust list."
+description: "`shll doctor` — read-only per-tool verification (binary on PATH, reports a version, formula trusted, shell-init wired), worst-check-wins `OK`/`WARN`/`FAIL` markers, `--json` mode, any-FAIL→exit-1. Reuses `version`'s probe (incl. its legacy-name fallback), the `setup shell` wiring detector, and `brew.go`'s trust list."
 ---
 # cli/doctor
 
@@ -17,7 +17,7 @@ $ shll doctor
 shll     OK    v0.1.0
 wt       OK    v1.4.0   wired
 idea     OK    v0.3.1
-tu       WARN  v2.0.0   not wired — run 'shll shell-setup' then 'exec $SHELL'
+tu       WARN  v2.0.0   not wired — run 'shll setup shell' then 'exec $SHELL'
 run-kit  OK    v3.0.0
 hop      FAIL           run 'brew install sahil87/tap/hop'
 fab-kit  FAIL           installed but 'fab-kit --version' failed — try 'brew reinstall sahil87/tap/fab-kit'
@@ -109,13 +109,13 @@ The actionable hint on each non-OK line (and in the JSON `suggestion` field) is 
 ```go
 suggestMissingFmt           = "run 'brew install %s'"                                                                                        // %s = tool.Formula (e.g. sahil87/tap/hop)
 suggestUnreportableFmt      = "installed but '%s --version' failed — try 'brew reinstall %s'"                                                  // (tool.Name, tool.Formula)
-suggestNotWired             = "not wired — run 'shll shell-setup' then 'exec $SHELL'"                                                          // fixed text
-suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll shell-setup zsh'"   // %q = raw $SHELL value
-suggestCorruptBlock         = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll shell-setup'" // fixed text
+suggestNotWired             = "not wired — run 'shll setup shell' then 'exec $SHELL'"                                                          // fixed text
+suggestShellUnresolvableFmt = "cannot verify shell wiring — $SHELL is %q; pass a supported shell environment or run 'shll setup shell zsh'"   // %q = raw $SHELL value
+suggestCorruptBlock         = "shll block in your rc file is corrupted (unclosed sentinel) — fix or remove it manually, then run 'shll setup shell'" // fixed text
 suggestNotTrustedFmt        = "formula not trusted — run 'shll install' (or 'brew trust --formula %s'); future upgrades will fail without it"      // %s = tool.Formula (0854)
 ```
 
-`suggestCorruptBlock` is deliberately distinct from `suggestNotWired`: when `locateBlock` reports `partial` (an opening `# >>> shll >>>` sentinel with no matching close), `shll shell-setup` would **refuse** to modify the file (exit 2), so telling the user to "run `shll shell-setup`" plainly would send them into a dead end. The corrupt-block hint points at manual cleanup first.
+`suggestCorruptBlock` is deliberately distinct from `suggestNotWired`: when `locateBlock` reports `partial` (an opening `# >>> shll >>>` sentinel with no matching close), `shll setup shell` would **refuse** to modify the file (exit 2), so telling the user to "run `shll setup shell`" plainly would send them into a dead end. The corrupt-block hint points at manual cleanup first.
 
 OK tools carry no suggestion (empty string).
 
@@ -138,7 +138,7 @@ It **calls `version.go`'s `probeToolVersion(ctx, tool)` directly** (not just the
 1. `resolveShell([]string{}, env)` — infer the shell from `$SHELL` (no positional). On error → `wiringFact{shellResolved:false, rawShell:env("SHELL")}` (the unresolvable-`$SHELL` case).
 2. `resolveRcFile(shell, env)` — derive the rc path.
 3. `os.ReadFile(rcPath)` — **read-only**. A missing/unreadable rc file → `wiringFact{shellResolved:true, wired:false}` (the shell resolved fine; wiring simply isn't there yet — a plain "not wired", not the unresolvable-shell case).
-4. `locateBlock(content)` → `(m, newOK, legacyM, legacyOK, partial)`. If `partial` (an open sentinel with no matching close) → `wiringFact{shellResolved:true, corrupt:true}` (the corrupted-block case — `shell-setup` would refuse to repair it, so the plain not-wired hint would mislead). Otherwise `wired := (newOK && m.hasEval) || (legacyOK && legacyM.hasEval)` — true when shll's eval block is present under either the new or the legacy sentinel.
+4. `locateBlock(content)` → `(m, newOK, legacyM, legacyOK, partial)`. If `partial` (an open sentinel with no matching close) → `wiringFact{shellResolved:true, corrupt:true}` (the corrupted-block case — `shll setup shell` would refuse to repair it, so the plain not-wired hint would mislead). Otherwise `wired := (newOK && m.hasEval) || (legacyOK && legacyM.hasEval)` — true when shll's eval block is present under either the new or the legacy sentinel.
 
 ```go
 type wiringFact struct {
@@ -149,9 +149,9 @@ type wiringFact struct {
 }
 ```
 
-`doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` **strictly read-only** — it calls `os.ReadFile` only and NEVER any of `shell_setup.go`'s write paths (`appendBlock`/`rewriteBlocks`/`buildBlockBody`). See [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing).
+`doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` **strictly read-only** — it calls `os.ReadFile` only and NEVER any of `shell_setup.go`'s write paths (`appendBlock`/`rewriteBlocks`/`buildBlockBody`). See [cli/setup](/cli/setup.md#block-location-and-parsing).
 
-> **Also reused by `shll install`'s post-install auto-run.** `resolveWiringFact` is not doctor-only: `shll install` calls it to gate its post-install shell-setup step (act only when `shellResolved && !corrupt && !wired`). The detector reuse is in-place (same `main` package, no move) and itself strictly read-only (`os.ReadFile` only) — but when the gate reports unwired, install's auto-run then drives shell-setup's **write** path (`runShellSetupDefault`) to wire the rc file, falling back to the gated nudge on opt-out/failure. The `corrupt`/`shellResolved` edge fields carry the same meaning there (a corrupt block or unresolvable `$SHELL` quiet-skips the step, mirroring doctor's `suggestCorruptBlock`/`suggestShellUnresolvableFmt` distinction). See [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block).
+> **Also reused by `shll install`'s post-install auto-run.** `resolveWiringFact` is not doctor-only: `shll install` calls it to gate its post-install shell-setup step (act only when `shellResolved && !corrupt && !wired`). The detector reuse is in-place (same `main` package, no move) and itself strictly read-only (`os.ReadFile` only) — but when the gate reports unwired, install's auto-run then drives the shell half's **write** path (`runShellSetupDefault`) to wire the rc file, falling back to the gated nudge on opt-out/failure. The `corrupt`/`shellResolved` edge fields carry the same meaning there (a corrupt block or unresolvable `$SHELL` quiet-skips the step, mirroring doctor's `suggestCorruptBlock`/`suggestShellUnresolvableFmt` distinction). See [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block).
 
 ## The trust sub-check
 
@@ -206,7 +206,7 @@ type doctorResult struct {
 [
   {"tool": "shll", "status": "OK",   "version": "v0.1.0", "on_path": true,  "version_ok": true,  "shell_init": false, "wired": false, "suggestion": ""},
   {"tool": "wt",  "status": "OK",   "version": "v1.4.0", "on_path": true,  "version_ok": true,  "shell_init": true,  "wired": true,  "suggestion": ""},
-  {"tool": "tu",  "status": "WARN", "version": "v2.0.0", "on_path": true,  "version_ok": true,  "shell_init": true,  "wired": false, "suggestion": "not wired — run 'shll shell-setup' then 'exec $SHELL'"},
+  {"tool": "tu",  "status": "WARN", "version": "v2.0.0", "on_path": true,  "version_ok": true,  "shell_init": true,  "wired": false, "suggestion": "not wired — run 'shll setup shell' then 'exec $SHELL'"},
   {"tool": "hop", "status": "FAIL", "version": "",       "on_path": false, "version_ok": false, "shell_init": true,  "wired": false, "suggestion": "run 'brew install sahil87/tap/hop'"}
 ]
 ```
@@ -235,7 +235,7 @@ A render error (`--json` marshal failure) writes `shll doctor: <err>` to stderr 
 - **Unwired shell-init tool** (binary OK, but shll's eval block absent from the rc file) → **WARN**, exit unaffected. The tool *works* when invoked directly; wiring is a convenience, not function — so it stays green-for-CI. (`TestDoctor_UnwiredShellInitWarnsExitZero`.)
 - **Unresolvable / unsupported `$SHELL`** (e.g. CI with `$SHELL=/bin/sh`, or unset) → the wiring check cannot resolve an rc path, so shell-init tools degrade to **WARN** with the `suggestShellUnresolvableFmt` explanation; the binary checks (1+2) still run normally and the exit code is unaffected. Non-shell-init tools are untouched (still OK). (`TestDoctor_UnresolvableShellDegradesToWarn`.)
 - **Missing / unreadable rc file** (but `$SHELL` resolved) → treated as "not wired" (a plain WARN with `suggestNotWired`), distinct from the unresolvable-shell case — the shell resolved, the wiring just isn't there yet.
-- **Corrupted shll block** (rc file has an opening `# >>> shll >>>` sentinel with no matching close — `locateBlock` reports `partial`) → shell-init tools → **WARN** with `suggestCorruptBlock` (manual-cleanup hint), exit unaffected. Distinct from plain "not wired" because `shell-setup` refuses to modify a corrupted block (exit 2), so the plain "run `shll shell-setup`" hint would dead-end. (`TestDoctor_CorruptBlockWarnsWithDistinctSuggestion`.)
+- **Corrupted shll block** (rc file has an opening `# >>> shll >>>` sentinel with no matching close — `locateBlock` reports `partial`) → shell-init tools → **WARN** with `suggestCorruptBlock` (manual-cleanup hint), exit unaffected. Distinct from plain "not wired" because `shll setup shell` refuses to modify a corrupted block (exit 2), so the plain "run `shll setup shell`" hint would dead-end. (`TestDoctor_CorruptBlockWarnsWithDistinctSuggestion`.)
 - **Installed but untrusted formula** (0854) → **WARN** with `suggestNotTrustedFmt` (`run 'shll install' (or 'brew trust --formula <formula>') …`), exit unaffected. Applies to any installed roster tool (not just shell-init ones). A tap-level trust (`sahil87/tap` in the `taps` array) counts as trusting every formula → no WARN. (`TestDoctor_InstalledUntrustedWarns`, `TestDoctor_TapLevelTrustCounts`.)
 - **Trust state undeterminable** (0854) — brew absent or too old to ship `brew trust` → the trust sub-check is skipped silently; no trust WARN appears regardless of actual trust state, exit 0. (`TestDoctor_TrustUnavailableSkipsCheck`.)
 - **run-kit visible only under the legacy `rk` binary** → OK (not FAIL): `probeVersion` inherits the ErrNotFound-only legacy-name fallback from `probeToolVersion`, so `rk --version` reporting a version keeps the row green (the `rk` binary alias the run-kit formula still installs). (`TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail`.)
@@ -282,7 +282,7 @@ legacy-name fallback guard:
 
 - Subprocess wrapper conventions and `proc.ErrNotFound` semantics: [internal/proc](/internal/proc.md). All probe subprocess work routes through `internal/proc` (Constitution I).
 - Shared version probe: [cli/version](/cli/version.md) — `doctor`'s `probeVersion` reuses `version.go`'s `proc.Run`/`versionTimeout`/`normalizeVersion`, so the two share the version-probe contract and cannot drift.
-- Shared wiring detector: [cli/shell-setup](/cli/shell-setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths). `doctor`'s `resolveWiringFact` composition is **also** reused (read-only, in place) by [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block) to gate its shell-setup auto-run (which, when unwired, drives the write path).
+- Shared wiring detector: [cli/setup](/cli/setup.md#block-location-and-parsing) — `doctor` reuses `resolveShell`/`resolveRcFile`/`locateBlock`/`blockMatch.hasEval` strictly read-only (never the write paths). `doctor`'s `resolveWiringFact` composition is **also** reused (read-only, in place) by [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block) to gate its shell-setup auto-run (which, when unwired, drives the write path).
 - Shared trust-state primitives (0854): `brewTrustAvailable` + `brewTrustList` live in `brew.go` — see [cli/commands §brew.go helper inventory](/cli/commands.md#file-layout-srccmdshll). The trust-*mutating* sibling that establishes per-formula trust (so re-running it clears doctor's WARN): [cli/install §per-formula trust before install](/cli/install.md#per-formula-trust-before-install).
 - Registration, exit-code sentinels, and the `Roster`: [cli/commands](/cli/commands.md) — `doctor` is one of the twelve user-facing subcommands (the hidden `help-dump` is not counted).
 - The shared `shllSelf` descriptor + `shllSelfVersion()` (the single source of truth for the prepended shll-first row): [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor). The sibling surfaces that also prepend it: [cli/list](/cli/list.md#the-prepended-shll-first-row) (table row + `--json` `self:true`) and [cli/install](/cli/install.md#the-prepended-shll-first-informational-line) (informational line). `version`/`update` carry their own inline shll-first handling.

@@ -17,12 +17,11 @@ Subcommands:
   shll uninstall              brew uninstall shll tools (a clean-slate repair path)
   shll changelog              show release notes for shll tools (what an update would bring)
   shll shell-init <shell>     emit a single eval-safe shell-init blob for all installed tools
-  shll shell-setup [shell]    append the shell-init eval line to your rc file (idempotent)
+  shll setup [shell|agent]    wire this machine: rc-file shell integration + agent-harness skills (idempotent)
   shll version                print versions of shll and every installed shll tool
   shll list                   list the managed shll tools with install status and repo links
   shll standards [name]       read the toolkit's binding standards (list them, or print one)
   shll skill [tool] [topic]   read a tool's agent skill bundle or one of its topic pages (or list installed tools)
-  shll agent-setup            place the shll toolkit skill for agent harnesses
 
 Per-tool CLIs continue to work standalone — shll wraps them, it does not replace them.`
 
@@ -52,11 +51,17 @@ func newRootCmd() *cobra.Command {
 		newUninstallCmd(),
 		newChangelogCmd(),
 		newShellInitCmd(),
-		newShellSetupCmd(),
+		newSetupCmd(),
 		newVersionCmd(),
 		newListCmd(),
 		newStandardsCmd(),
 		newSkillCmd(),
+		// Hidden deprecated pre-consolidation spellings, kept registered (silent —
+		// no cobra Deprecated field) for one release cycle: an OLD binary's
+		// `shll update` self-refresh executes `shll agent-setup --yes` against the
+		// NEW binary across the release boundary. They share construction with the
+		// new `setup` subcommands (buildShellSetupCmd / buildAgentSetupCmd).
+		newShellSetupCmd(),
 		newAgentSetupCmd(),
 		newHelpDumpCmd(),
 	)

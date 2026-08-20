@@ -496,10 +496,10 @@ func TestUninstall_PostRunHintsPrintOnly(t *testing.T) {
 		t.Errorf("expected the run-kit daemon-stop hint, stdout: %q", out)
 	}
 	// rc-file unwire hint (roster-wide shell-integrated removal).
-	if !strings.Contains(out, "shll shell-setup --uninstall") {
+	if !strings.Contains(out, "shll setup shell --uninstall") {
 		t.Errorf("expected the shell-setup --uninstall hint, stdout: %q", out)
 	}
-	// Neither hint is executed — no `run-kit serve` and no `shll shell-setup` subprocess.
+	// Neither hint is executed — no `run-kit serve` and no `shll setup shell` subprocess.
 	for _, c := range f.recordedCalls() {
 		if c.Name == "run-kit" || c.Name == "shll" {
 			t.Errorf("post-run hints must be print-only, got a subprocess %+v", c)
@@ -520,7 +520,7 @@ func TestUninstall_ShellHintScopedToRosterWide(t *testing.T) {
 	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"hop"}); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
-	if strings.Contains(stdout.String(), "shll shell-setup --uninstall") {
+	if strings.Contains(stdout.String(), "shll setup shell --uninstall") {
 		t.Errorf("the rc-unwire hint must be scoped to a roster-wide sweep, not a partial subset")
 	}
 }
@@ -540,7 +540,7 @@ func TestUninstall_NamedFullRosterSweepPrintsShellHint(t *testing.T) {
 	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, args); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
-	if !strings.Contains(stdout.String(), "shll shell-setup --uninstall") {
+	if !strings.Contains(stdout.String(), "shll setup shell --uninstall") {
 		t.Errorf("a named full-roster sweep must print the rc-unwire hint (roster-wide keys on coverage, not !subset), stdout: %q", stdout.String())
 	}
 }
@@ -575,7 +575,7 @@ func TestUninstall_ShellHintSuppressedOnFailedRemoval(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUninstall err = %v, want errSilent (the hop uninstall failed)", err)
 	}
-	if strings.Contains(stdout.String(), "shll shell-setup --uninstall") {
+	if strings.Contains(stdout.String(), "shll setup shell --uninstall") {
 		t.Errorf("the rc-unwire hint must be success-gated — a FAILED shell-integrated removal must not print it, stdout: %q", stdout.String())
 	}
 }

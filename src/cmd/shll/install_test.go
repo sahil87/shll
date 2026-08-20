@@ -54,12 +54,12 @@ func installUnwiredEnv(t *testing.T) func(string) string {
 	return env
 }
 
-// agentSetupNudgeGolden is the plain (non-color, bytes.Buffer) shll agent-setup nudge
+// agentSetupNudgeGolden is the plain (non-color, bytes.Buffer) shll setup agent nudge
 // line as it appears in stdout, INCLUDING the trailing newline. arrow(false) yields
 // `->` on the non-TTY test writer. It GRADUATED from the former run-kit agent-setup
 // line (change agst); since the auto-run change (gjhx) it prints as the
 // --no-agent-setup / failed-step fallback.
-const agentSetupNudgeGolden = "  -> shll agent-setup    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)\n"
+const agentSetupNudgeGolden = "  -> shll setup agent    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)\n"
 
 // nextStepsAgentOnly is the whole "Next steps" block a golden test sees when the
 // shell step is quiet (wired env) and the agent step was opted out of
@@ -345,7 +345,7 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 		t.Fatalf("stdout = %q, want the partial-failure tail (5/1)", stdout.String())
 	}
 	if !strings.HasSuffix(stdout.String(), nextStepsAgentOnly) {
-		t.Fatalf("stdout = %q, want the shll agent-setup nudge after the tail (nudges fire despite failures)", stdout.String())
+		t.Fatalf("stdout = %q, want the shll setup agent nudge after the tail (nudges fire despite failures)", stdout.String())
 	}
 }
 
@@ -902,15 +902,15 @@ func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
 	if !strings.Contains(out, nextStepsHeader) {
 		t.Fatalf("expected the %q header, got %q", nextStepsHeader, out)
 	}
-	if !strings.Contains(out, "shll shell-setup") || !strings.Contains(out, "exec $SHELL") {
-		t.Fatalf("expected the shell-setup nudge (run 'shll shell-setup' … exec $SHELL), got %q", out)
+	if !strings.Contains(out, "shll setup shell") || !strings.Contains(out, "exec $SHELL") {
+		t.Fatalf("expected the shell-setup nudge (run 'shll setup shell' … exec $SHELL), got %q", out)
 	}
-	if !strings.Contains(out, "shll agent-setup") {
+	if !strings.Contains(out, "shll setup agent") {
 		t.Fatalf("expected the agent-setup nudge, got %q", out)
 	}
 	// The former run-kit agent-setup wording is gone.
 	if strings.Contains(out, "run-kit agent-setup") {
-		t.Fatalf("the nudge must point at 'shll agent-setup', not 'run-kit agent-setup', got %q", out)
+		t.Fatalf("the nudge must point at 'shll setup agent', not 'run-kit agent-setup', got %q", out)
 	}
 	// No writes: the rc file is untouched, no skill files exist under $HOME, and
 	// no run-kit delegation ran.
@@ -941,7 +941,7 @@ func TestInstall_ShellSetupNudgeHiddenWhenWired(t *testing.T) {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	out := stdout.String()
-	if strings.Contains(out, "shll shell-setup") {
+	if strings.Contains(out, "shll setup shell") {
 		t.Fatalf("wired rc must suppress the shell-setup nudge, got %q", out)
 	}
 	// The agent-setup opt-out fallback fires → the block prints agent-only.
@@ -968,8 +968,8 @@ func TestInstall_AgentSetupNudgeOnOptOut(t *testing.T) {
 				t.Fatalf("runInstall err = %v, want nil", err)
 			}
 			out := stdout.String()
-			if !strings.Contains(out, "shll agent-setup") {
-				t.Fatalf("the shll agent-setup nudge must show on opt-out, got %q", out)
+			if !strings.Contains(out, "shll setup agent") {
+				t.Fatalf("the shll setup agent nudge must show on opt-out, got %q", out)
 			}
 			if !strings.Contains(out, "optional, once per machine") {
 				t.Fatalf("agent-setup nudge must be marked 'optional, once per machine', got %q", out)
@@ -1004,7 +1004,7 @@ func TestInstall_NoNudgesOnDryRun(t *testing.T) {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
 	out := stdout.String()
-	if strings.Contains(out, nextStepsHeader) || strings.Contains(out, "shll shell-setup") || strings.Contains(out, "shll agent-setup") {
+	if strings.Contains(out, nextStepsHeader) || strings.Contains(out, "shll setup shell") || strings.Contains(out, "shll setup agent") {
 		t.Fatalf("--dry-run must print NO nudge (preview, not outcome), got %q", out)
 	}
 	// It should still be the preview table.
@@ -1075,10 +1075,10 @@ func TestInstall_ShortCircuitPathNudgesWhenUnwired(t *testing.T) {
 	if !strings.HasPrefix(out, shllSelfInstallNote+"\n"+allInstalledMsg+"\n") {
 		t.Fatalf("expected the short-circuit nothing-to-do note first, got %q", out)
 	}
-	if !strings.Contains(out, "shll shell-setup") {
+	if !strings.Contains(out, "shll setup shell") {
 		t.Fatalf("unwired short-circuit path must nudge shell-setup when the step is opted out, got %q", out)
 	}
-	if !strings.Contains(out, "shll agent-setup") {
+	if !strings.Contains(out, "shll setup agent") {
 		t.Fatalf("the short-circuit path must show the agent-setup opt-out nudge, got %q", out)
 	}
 	// No install-loop framing on the short-circuit path.
@@ -1116,7 +1116,7 @@ func TestInstall_AutoShellSetupWiresRcFile(t *testing.T) {
 	if !strings.Contains(out, "exec $SHELL") {
 		t.Fatalf("expected the exec $SHELL reminder after a successful wire, got %q", out)
 	}
-	if strings.Contains(out, "shll shell-setup") {
+	if strings.Contains(out, "shll setup shell") {
 		t.Fatalf("a successful auto wire must not print the shell-setup nudge, got %q", out)
 	}
 }
@@ -1148,7 +1148,7 @@ func TestInstall_AutoShellSetupIdempotentRewire(t *testing.T) {
 	if !bytes.Equal(wired, again) {
 		t.Fatalf("second run must be a byte-identical no-op:\nfirst:  %q\nsecond: %q", wired, again)
 	}
-	if strings.Contains(out2.String(), "exec $SHELL") || strings.Contains(out2.String(), "shll shell-setup") {
+	if strings.Contains(out2.String(), "exec $SHELL") || strings.Contains(out2.String(), "shll setup shell") {
 		t.Fatalf("already-wired re-run must print neither reminder nor nudge, got %q", out2.String())
 	}
 }
@@ -1185,7 +1185,7 @@ func TestInstall_AutoShellSetupQuietSkips(t *testing.T) {
 				t.Fatalf("quiet edge state must not modify the rc file: %q → %q", tc.rcContent, got)
 			}
 			out := stdout.String()
-			if strings.Contains(out, "shll shell-setup") || strings.Contains(out, "exec $SHELL") {
+			if strings.Contains(out, "shll setup shell") || strings.Contains(out, "exec $SHELL") {
 				t.Fatalf("quiet edge state must print neither nudge nor reminder, got %q", out)
 			}
 			if stderr.Len() != 0 {
@@ -1215,7 +1215,7 @@ func TestInstall_AutoShellSetupFailureDegrades(t *testing.T) {
 	if !strings.Contains(stderr.String(), shellSetupAutoRunWarn) {
 		t.Fatalf("expected the auto-run failure warning, stderr = %q", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "shll shell-setup") {
+	if !strings.Contains(stdout.String(), "shll setup shell") {
 		t.Fatalf("the failed step must fall back to its nudge, got %q", stdout.String())
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".zshrc")); !errors.Is(err, os.ErrNotExist) {
@@ -1259,7 +1259,7 @@ func TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes(t *testing.T) {
 		t.Fatalf("expected a foreground `run-kit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 	out := stdout.String()
-	if strings.Contains(out, "shll agent-setup") {
+	if strings.Contains(out, "shll setup agent") {
 		t.Fatalf("a successful auto agent-setup must not print the nudge, got %q", out)
 	}
 	if strings.Contains(out, nextStepsHeader) {
@@ -1290,7 +1290,7 @@ func TestInstall_AutoAgentSetupRunKitAbsentSilentSkip(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("run-kit-absent delegation must be silent, stderr = %q", stderr.String())
 	}
-	if strings.Contains(stdout.String(), "shll agent-setup") {
+	if strings.Contains(stdout.String(), "shll setup agent") {
 		t.Fatalf("run-kit-absent delegation must not fall back to the nudge, got %q", stdout.String())
 	}
 }
@@ -1317,7 +1317,7 @@ func TestInstall_AutoAgentSetupDelegationFailureContinues(t *testing.T) {
 	if !strings.Contains(stderr.String(), "(continuing)") {
 		t.Fatalf("expected the warn-and-continue delegation diagnostic, stderr = %q", stderr.String())
 	}
-	if strings.Contains(stdout.String(), "shll agent-setup") {
+	if strings.Contains(stdout.String(), "shll setup agent") {
 		t.Fatalf("a delegation failure must NOT trigger the agent-setup nudge, got %q", stdout.String())
 	}
 }
@@ -1345,7 +1345,7 @@ func TestInstall_AutoAgentSetupFailureDegrades(t *testing.T) {
 	if !strings.Contains(stderr.String(), agentSetupAutoRunWarn) {
 		t.Fatalf("expected the auto-run failure warning, stderr = %q", stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "shll agent-setup") {
+	if !strings.Contains(stdout.String(), "shll setup agent") {
 		t.Fatalf("the failed step must fall back to its nudge, got %q", stdout.String())
 	}
 }

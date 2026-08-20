@@ -63,9 +63,9 @@ const runKitDaemonStopHintFmt = "note: a running %[1]s daemon (if any) was not s
 
 // shellUnwireHint is the print-only post-run hint shown when shell-integrated tools
 // were removed roster-wide: their rc-file eval block is not touched by brew uninstall
-// (Constitution III — shll never edits the rc file here; that is `shll shell-setup
+// (Constitution III — shll never edits the rc file here; that is `shll setup shell
 // --uninstall`'s job). Print-only.
-const shellUnwireHint = "note: shell integration was not removed from your rc file — run 'shll shell-setup --uninstall' to remove the shll block"
+const shellUnwireHint = "note: shell integration was not removed from your rc file — run 'shll setup shell --uninstall' to remove the shll block"
 
 // uninstallTarget is one actionable tool in a `shll uninstall` run. self marks
 // the shll-self target (removed last, with a farewell note). Every target is a

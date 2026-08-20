@@ -15,7 +15,8 @@ import (
 	"github.com/sahil87/shll/internal/proc"
 )
 
-// agent_setup.go implements `shll agent-setup` — mechanically place ONE thin Agent
+// agent_setup.go implements the agent half of `shll setup` (`shll setup agent`;
+// hidden compat spelling `shll agent-setup`) — mechanically place ONE thin Agent
 // Skill (the toolkit bootstrap) into the harnesses' global skills directories, then
 // delegate run-kit's dashboard-hook wiring to `run-kit agent setup` (Constitution
 // III/IV — compose, don't absorb). It graduates the cross-toolkit harness wiring from
@@ -27,7 +28,7 @@ import (
 // subprocess (the run-kit delegation via internal/proc — Constitution I).
 
 // agentSetupErrPrefix is the diagnostic prefix stamped on this command's stderr.
-const agentSetupErrPrefix = "shll agent-setup"
+const agentSetupErrPrefix = "shll setup agent"
 
 // skillDirName is the Agent-Skill directory (and `name:` frontmatter value) placed at
 // each target. It satisfies the agentskills.io portable-name rule
@@ -116,11 +117,15 @@ var skillTargetRelDirs = []string{
 	".claude/skills",
 }
 
-// agentSetupSub is shll's OWN `agent-setup` subcommand name, used by the cobra `Use:`
-// line and by `shll update`'s self-refresh subprocess (refreshPlacedAgentSkills →
-// refreshArgv). The run-kit delegation no longer shares it — run-kit renamed its
-// command family to the two-token `agent setup` (runKitAgentSetupArgs). Named per
-// code-quality.md (no magic strings).
+// agentSetupSub is the hidden deprecated top-level spelling of shll's OWN agent
+// half — the cobra `Use:` token of the old `shll agent-setup` command, kept
+// registered (Hidden, silent) for one release cycle because an OLD binary's
+// `shll update` self-refresh executes `shll agent-setup --yes` against the NEW
+// binary across the release boundary. The new binary's own refreshArgv emits the
+// new spelling (`shll setup agent`, built from setupSub/setupAgentLeaf in
+// setup.go). The run-kit delegation never shared this token — run-kit renamed
+// its command family to the two-token `agent setup` (runKitAgentSetupArgs).
+// Named per code-quality.md (no magic strings).
 const agentSetupSub = "agent-setup"
 
 // runKitAgentSetupArgs is the run-kit hook-wiring command family in its post-rename
@@ -138,7 +143,9 @@ var runKitAgentSetupArgs = []string{"agent", "setup"}
 // daemon-stop hint. Named per code-quality.md (no magic strings).
 const runKitToolName = "run-kit"
 
-// agentSetupYesUsage is the cobra usage string for --yes/-y on `shll agent-setup`.
+// agentSetupYesUsage is the cobra usage string for --yes/-y on the agent-setup
+// surface (`shll setup agent`, the hidden `shll agent-setup`, and bare
+// `shll setup`, whose --yes forwards to the same place).
 // Distinct from uninstall.go's yesFlagUsage because the prompt being skipped is not
 // shll's own (the skill placement is promptless by construction) — it belongs to the
 // delegated `run-kit agent setup`, whose hook-wiring confirmation would otherwise hang
@@ -146,36 +153,43 @@ const runKitToolName = "run-kit"
 // the consent must be explicit, never TTY-derived).
 const agentSetupYesUsage = "pass --yes to the run-kit agent setup delegation (assume yes — for unattended runs)"
 
+// agentSetupCmdSpec carries the per-spelling surface differences between the new
+// `shll setup agent` subcommand and the hidden deprecated `shll agent-setup`
+// top-level command. Both spellings are built by buildAgentSetupCmd from a spec,
+// so their flag sets and behavior share construction and cannot drift.
+type agentSetupCmdSpec struct {
+	use    string
+	short  string
+	long   string
+	hidden bool
+}
+
+// newAgentSetupCmd builds the hidden deprecated `shll agent-setup` top-level
+// command. Its Short/Long carry only the rename pointer — the full help moved to
+// `shll setup agent` (setupAgentLong).
 func newAgentSetupCmd() *cobra.Command {
+	return buildAgentSetupCmd(agentSetupCmdSpec{
+		use:   agentSetupSub,
+		short: "renamed to `shll setup agent` (hidden; kept for one release cycle)",
+		long: "Renamed to `shll setup agent`. This old spelling still works — hidden and\n" +
+			"silent — for one release cycle, then it will be removed. See `shll setup agent --help`.",
+		hidden: true,
+	})
+}
+
+// buildAgentSetupCmd is the shared parameterized builder for both agent-half
+// spellings (new `setup agent` subcommand and hidden `agent-setup` top-level).
+func buildAgentSetupCmd(spec agentSetupCmdSpec) *cobra.Command {
 	var (
 		printMode     bool
 		uninstallMode bool
 		yesMode       bool
 	)
 	cmd := &cobra.Command{
-		Use:   "agent-setup",
-		Short: "place the shll toolkit skill for agent harnesses",
-		Long: `Mechanically place one thin Agent Skill — the shll toolkit bootstrap — into the
-agent harnesses' global skills directories, then delegate run-kit's dashboard-hook
-wiring to ` + "`run-kit agent setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
-driving a toolkit tool.
-
-The skill is written to exactly two global locations (covering all four harnesses):
-  ~/.agents/skills/` + skillDirName + `/SKILL.md   Codex (USER scope), Cursor + OpenCode
-  ~/.claude/skills/` + skillDirName + `/SKILL.md   Claude Code
-
-The skill directories are shll-owned, so placement is idempotent by construction —
-install writes them, a re-run overwrites them, and there is no merge, prompt, or
-sentinel machinery. A per-path written/updated/unchanged summary is printed.
-
-Modes:
-  shll agent-setup             place the skill at both locations (overwrites; idempotent)
-  shll agent-setup --print     print the SKILL.md content and both target paths, write nothing
-  shll agent-setup --uninstall remove both placed skill directories
-
-Pass ` + "`--yes`" + ` (or ` + "`-y`" + `) to forward ` + "`--yes`" + ` to the run-kit delegation so its own
-confirmation prompt is skipped — for unattended runs (shll's skill placement itself
-never prompts). With ` + "`--print`" + ` the flag is a no-op (print never delegates).`,
+		Use:           spec.use,
+		Short:         spec.short,
+		Long:          spec.long,
+		Hidden:        spec.hidden,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
@@ -380,7 +394,7 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr i
 
 // agentSkillPlacementState reports the on-disk state of the placed skills, read-only:
 // placed is true when ANY skill target file exists (the user opted in via a prior
-// `shll agent-setup`); stale is true when any EXISTING target's bytes differ from the
+// `shll setup agent`); stale is true when any EXISTING target's bytes differ from the
 // running binary's canonical content. An existing-but-unreadable target counts as
 // placed with staleness unknown (never reported stale — Constitution V: don't warn on
 // a state we can't determine). Consumed by `shll update`'s conditional refresh (placed
@@ -404,11 +418,11 @@ func agentSkillPlacementState(env func(string) string) (placed, stale bool) {
 
 // agentSkillRefreshHeader is the section line `shll update` prints before the
 // self-refresh subprocess output. Named per code-quality.md (no magic strings).
-const agentSkillRefreshHeader = "Refreshing placed agent skills (shll agent-setup)…"
+const agentSkillRefreshHeader = "Refreshing placed agent skills (shll setup agent)…"
 
 // refreshPlacedAgentSkills re-places the agent skills at the end of a `shll update`
-// run, but ONLY when a prior `shll agent-setup` placement exists — a user who never
-// opted in gets no unsolicited writes. It invokes `shll agent-setup` as a SUBPROCESS
+// run, but ONLY when a prior placement exists — a user who never
+// opted in gets no unsolicited writes. It invokes `shll setup agent` as a SUBPROCESS
 // (resolved from PATH, via internal/proc — Constitution I) rather than calling
 // runAgentSetup in-process: after a brew self-upgrade the RUNNING binary still holds
 // the OLD embedded skill content, and only the freshly installed binary on PATH can
@@ -421,7 +435,7 @@ const agentSkillRefreshHeader = "Refreshing placed agent skills (shll agent-setu
 // still surfaces staleness), and any other failure warns and continues without
 // affecting the update's exit code — the tool upgrades are the run's core work.
 //
-// yes threads `shll update --yes` through to the subprocess (`shll agent-setup --yes`),
+// yes threads `shll update --yes` through to the subprocess (`shll setup agent --yes`),
 // which in turn forwards it to the run-kit delegation — the explicit consent chain
 // that keeps an unattended `shll update` from hanging on run-kit's hook prompt.
 func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, yes bool, stdout, stderr io.Writer) {
@@ -444,11 +458,16 @@ func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, yes 
 }
 
 // refreshArgv is the exact argv the end-of-run agent-skill refresh runs
-// (`shll agent-setup [--yes]`) — the single source of truth shared by the live
+// (`shll setup agent [--yes]`) — the single source of truth shared by the live
 // subprocess above and `shll update`'s dry-run preview line, so the preview can
 // never drift from what the run would do (mirrors update.go's upgradeArgv pattern).
+//
+// Compat note: this spelling flip is exactly why the hidden `shll agent-setup`
+// top-level command must survive one release cycle — an OLD running binary's
+// refreshArgv composes `shll agent-setup [--yes]` and executes it against the
+// NEW binary on PATH after the brew self-upgrade.
 func refreshArgv(yes bool) []string {
-	argv := []string{shllTargetToken, agentSetupSub}
+	argv := []string{shllTargetToken, setupSub, setupAgentLeaf}
 	if yes {
 		argv = append(argv, "--"+yesFlag)
 	}
