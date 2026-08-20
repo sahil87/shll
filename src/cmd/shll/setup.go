@@ -155,9 +155,12 @@ func newSetupAgentCmd() *cobra.Command {
 }
 
 // runSetup is the implementation seam for bare `shll setup`, extracted from the
-// cobra factory so setup_test.go can drive it with bytes.Buffer writers and a
-// controlled env. It runs the shell half (standalone semantics — a missing rc
-// file is an exit-2 diagnostic, not install's quiet skip) then the agent half,
+// cobra factory so setup_test.go can drive it with bytes.Buffer writers. The env
+// seam reaches the AGENT half only (mirroring runAgentSetup's signature); the
+// shell half resolves shell/rc-path through os.Getenv inside runShellSetup, so
+// tests control it via t.Setenv (see setup_test.go). It runs the shell half
+// (standalone semantics — a missing rc file is an exit-2 diagnostic, not
+// install's quiet skip) then the agent half,
 // ALWAYS both (mirroring the halves' independence in install's auto-run), and
 // returns the worst of the two outcomes (worst-wins per the toolkit exit-code
 // convention). yes forwards to the agent half's run-kit delegation only.

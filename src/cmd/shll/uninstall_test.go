@@ -499,7 +499,7 @@ func TestUninstall_PostRunHintsPrintOnly(t *testing.T) {
 	if !strings.Contains(out, "shll setup shell --uninstall") {
 		t.Errorf("expected the shell-setup --uninstall hint, stdout: %q", out)
 	}
-	// Neither hint is executed — no `run-kit serve` and no `shll shell-setup` subprocess.
+	// Neither hint is executed — no `run-kit serve` and no `shll setup shell` subprocess.
 	for _, c := range f.recordedCalls() {
 		if c.Name == "run-kit" || c.Name == "shll" {
 			t.Errorf("post-run hints must be print-only, got a subprocess %+v", c)
