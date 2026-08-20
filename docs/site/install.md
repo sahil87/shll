@@ -50,7 +50,9 @@ The `brew trust` is required: shll's tap formula downloads a binary and runs a s
 shll install
 ```
 
-Iterates the hardcoded roster — in leaves-first order, `wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit` — and, for each tool you don't already have, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. On Homebrew 6.0+ trust is a hard install requirement, so trusting first is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. It is **idempotent** — safe to re-run; a second run picks up only tools added since the first.
+Iterates the hardcoded roster — `run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop` — and, for each brew-managed tool you don't already have, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. On Homebrew 6.0+ trust is a hard install requirement, so trusting first is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. It is **idempotent** — safe to re-run; a second run picks up only tools added since the first.
+
+`rk-desktop` (the run-kit desktop viewer shell) is the roster's one non-brew entry: there is no formula, so there is no trust step — `shll install` delegates to `rk desktop install` instead. It is actionable only when `rk` (run-kit) is installed and the platform supports the desktop app; on an unsupported platform (or with `rk` missing) it is **skipped with a note**, never a failure — and a targeted `shll install rk-desktop` prints the refusal explicitly. In a whole-roster run it is processed right after run-kit, and if run-kit's install failed that run, rk-desktop is skipped too.
 
 This is Homebrew's recommended **per-formula** trust granularity for third-party taps — shll knows its exact roster, so it trusts only what it actually manages (not the whole tap).
 
@@ -145,16 +147,17 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-The output is the concatenation, in roster order (leaves-first: `wt`, `idea`, `tu`, `rk`, `hop`, `fab-kit`), of every installed shll tool's own `shell-init`. What each tool contributes:
+The output is the concatenation, in roster order (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`), of every installed shll tool's own `shell-init`. What each tool contributes:
 
 | Tool | What it adds to your shell |
 |------|----------------------------|
+| `run-kit` | completion |
+| `rk-desktop` | — (no shell integration; the desktop app) |
+| `fab-kit` | completion |
 | `wt`  | `wt` shell function wrapper (so the "Open here" menu option can `cd` your shell), completion |
 | `idea` | completion |
 | `tu`  | completion |
-| `rk`  | completion |
 | `hop` | `hop` shell function (bare-name `cd`, verb dispatch, tool-form), `h` / `hi` aliases, completion |
-| `fab-kit` | completion |
 
 `hop` and `wt` are the only tools that ship *shell functions* — those need eval-time installation because a function defined inside a binary can't escape into the parent shell. Everything else is completion, sourced lazily on tab. The output is always eval-safe: a tool that isn't installed is silently omitted, and a tool whose `shell-init` errors has its output dropped (the error goes to stderr only) — so a broken sub-tool never corrupts your shell. See [Composing shell-init](workflows.md#composing-shell-init) for the composition mechanics.
 

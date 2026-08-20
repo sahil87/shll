@@ -4,7 +4,7 @@
 
 [![Latest release](https://img.shields.io/github/v/release/sahil87/shll)](https://github.com/sahil87/shll/releases) [![Downloads](https://img.shields.io/github/downloads/sahil87/shll/total)](https://github.com/sahil87/shll/releases) [![Stars](https://img.shields.io/github/stars/sahil87/shll?style=social)](https://github.com/sahil87/shll/stargazers)
 
-One command to install, update, and shell-wire every tool in the [shll toolkit](https://shll.ai) (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`). `shll` doesn't replace the per-tool CLIs — it composes them.
+One command to install, update, and shell-wire every tool in the [shll toolkit](https://shll.ai) (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
 ## Install
 
@@ -53,7 +53,7 @@ shll install --no-agent-setup  # skip the automatic agent-harness wiring
 shll install --dry-run       # preview the brew install plan, change nothing
 ```
 
-Iterates the roster in leaves-first order (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) and, for each one that's missing, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. Homebrew 6.0 makes tap-trust a hard install requirement, so this is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. Does NOT upgrade — use `shll update` for that.
+Iterates the roster (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) and, for each brew-managed one that's missing, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. Homebrew 6.0 makes tap-trust a hard install requirement, so this is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. `rk-desktop` is the one non-brew entry — it delegates to `rk desktop install` (skipped with a note when `rk` is missing or the platform is unsupported). Does NOT upgrade — use `shll update` for that.
 
 After the install outcome, `shll install` wires the machine automatically. It runs the equivalent of [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended) (appends the `eval "$(shll shell-init <shell>)"` block to your rc file — sentinel-managed and idempotent, so re-runs are no-ops), then [`shll setup agent --yes`](#shll-setup-agent--wire-agent-harnesses) (places the `shll-toolkit` agent skill and delegates run-kit's dashboard hooks, forwarding `--yes` so run-kit's hook prompt can't hang an unattended run). Both steps are best-effort: a failure warns and prints that step's manual nudge, and never changes the install's exit code. Neither runs under `--dry-run`. Opt out with `--no-shell-setup` and/or `--no-agent-setup`; after a fresh wire, restart your shell or run `exec $SHELL`.
 

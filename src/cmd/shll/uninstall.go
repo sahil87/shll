@@ -45,6 +45,12 @@ const uninstallPlanHeader = "The following will be uninstalled:"
 // Named per code-quality.md (no magic strings), mirroring install.go's allInstalledMsg.
 const uninstallNothingMsg = "Nothing to uninstall."
 
+// delegatedUninstallNote is the skip-with-note line for a delegated (non-brew)
+// roster tool (rk-desktop): there is no brew keg to remove, so `shll uninstall`
+// never acts on it — removal belongs to the tool's own manager. Named per
+// code-quality.md (no magic strings).
+const delegatedUninstallNote = "not brew-managed — remove it via its own manager (rk desktop)"
+
 // notBrewManagedFmt is the stderr error when `shll uninstall shll` is asked to remove
 // a shll that was not installed via brew (a `go install` / local-build binary — there
 // is no brew keg to uninstall). Takes the target name. Mirrors update.go's self-upgrade
@@ -84,14 +90,16 @@ func newUninstallCmd() *cobra.Command {
 		Long: `Uninstall shll toolkit tools via Homebrew — the clean-slate repair path
 that pairs with ` + "`shll install`" + `.
 
-With no arguments, shll uninstall removes every INSTALLED roster tool
-(` + "`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`" + `) in reverse-roster order
-(dependents before leaves). Tools that are not installed are skipped silently —
-uninstall is idempotent and its goal state ("gone") is a success even when a tool
-was already absent. shll itself is NOT part of the no-args sweep.
+With no arguments, shll uninstall removes every INSTALLED brew-managed roster tool
+(` + "`run-kit`, `fab-kit`, `wt`, `idea`, `tu`, `hop`" + `) in reverse-roster order.
+rk-desktop is not a brew formula — it is skipped with a note (remove it via
+` + "`rk desktop`" + ` itself), never ` + "`brew uninstall`" + `ed. Tools that are not installed
+are skipped silently — uninstall is idempotent and its goal state ("gone") is a
+success even when a tool was already absent. shll itself is NOT part of the
+no-args sweep.
 
-Pass one or more tool names to uninstall only that subset (valid targets: shll, wt,
-idea, tu, run-kit, hop, fab-kit; the legacy alias ` + "`rk`" + ` still resolves to
+Pass one or more tool names to uninstall only that subset (valid targets: shll,
+run-kit, rk-desktop, fab-kit, wt, idea, tu, hop; the legacy alias ` + "`rk`" + ` still resolves to
 run-kit). ` + "`shll uninstall shll`" + ` is legal and explicit-only — it removes shll
 itself (last, after the roster), and only when shll was installed via brew. The
 running process keeps working; a farewell note points at the reinstall command.
@@ -125,10 +133,11 @@ stop running processes (it prints hints for the daemon and rc-file cleanup inste
 //     errSilent, no brew side effect. allowShll=true: `shll uninstall shll` is legal
 //     (explicit-only). Empty args = the whole-roster sweep (shll-self excluded).
 //   - brew missing → stderr hint, errSilent (exit 1).
-//   - Build the ACTIONABLE set: probe each considered tool. A NAMED-but-not-installed
-//     target reports `not installed` and is NOT an error (repair-path semantics —
-//     absence is the goal state). The set is ordered REVERSE-roster (dependents
-//     first); shll-self is last.
+//   - Build the ACTIONABLE set: probe each considered brew-managed tool. A
+//     NAMED-but-not-installed target reports `not installed` and is NOT an error
+//     (repair-path semantics — absence is the goal state). A delegated
+//     (non-brew) tool is never actionable — it skips with a note. The set is
+//     ordered REVERSE-roster; shll-self is last.
 //   - Confirmation gate (unless --yes or --dry-run): print the removal plan then prompt
 //     `Proceed? [y/N]`. Non-TTY stdin without --yes refuses (fail-safe). A non-affirmative
 //     answer aborts at exit 0 with no write.
@@ -185,9 +194,17 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	// Build the actionable set (tools that are actually present) plus the skip lines
 	// for named-but-not-installed targets (repair-path: reported, not an error). The
 	// probes are reads, so they run in dry-run too — only the writes are skipped.
+	// A DELEGATED (non-brew) tool has no brew keg to remove, so it is never
+	// actionable: it joins the graceful-skip lines (named or sweep) with a note
+	// pointing at its own manager — `shll uninstall` is the brew clean-slate repair
+	// path, and inventing an rk-desktop removal contract is out of scope.
 	var actionable []uninstallTarget
 	var skipped []string // names reported `not installed`
 	for _, t := range consider {
+		if !t.brewManaged() {
+			skipped = append(skipped, t.Name)
+			continue
+		}
 		if installed, version := probeInstalledVersion(ctx, t.Formula); installed {
 			actionable = append(actionable, uninstallTarget{tool: t, version: version})
 		} else {
@@ -208,17 +225,21 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		actionable = append(actionable, uninstallTarget{tool: shllSelf, version: version, self: true})
 	}
 
-	// Reverse-roster order: dependents before leaves (the mirror of install's
-	// leaves-first coherence). The actionable set was built in roster order (leaves
-	// first) with shll-self appended last; reversing puts dependents first AND keeps
-	// shll-self last only if we reverse the roster part alone. So reverse just the
-	// roster tools, then re-append shll-self.
+	// Reverse-roster order (the mirror of the install walk). The actionable set was
+	// built in roster order with shll-self appended last; reversing keeps shll-self
+	// last only if we reverse the roster part alone. So reverse just the roster
+	// tools, then re-append shll-self.
 	actionable = reverseRosterOrder(actionable)
 
-	// Report the graceful skips (named-but-not-installed / not-in-a-sweep). Repair-path
-	// semantics: absence is the goal state, so this is NOT an error and does not affect
-	// the exit code. Printed before the plan/loop so the user sees the full picture.
+	// Report the graceful skips (named-but-not-installed / not-in-a-sweep /
+	// non-brew). Repair-path semantics: absence is the goal state, so this is NOT
+	// an error and does not affect the exit code. Printed before the plan/loop so
+	// the user sees the full picture.
 	for _, name := range skipped {
+		if t, ok := rosterTool(name); ok && !t.brewManaged() {
+			fmt.Fprintf(stdout, "%s: %s\n", name, delegatedUninstallNote)
+			continue
+		}
 		fmt.Fprintf(stdout, "%s: %s\n", name, notInstalledLabel)
 	}
 
@@ -335,13 +356,13 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	return nil
 }
 
-// reverseRosterOrder returns the actionable set reordered dependents-first (reverse
-// roster), keeping any shll-self target LAST. The input is built in roster order
-// (leaves first) with shll-self appended at the end; this reverses only the roster
-// portion so leaves come last among the roster tools, then re-appends shll-self so it
-// stays the final removal (the running orchestrator is removed after everything it
-// might have managed). Deriving the reverse from the single Roster-order slice keeps
-// one source of truth (no second hardcoded order to drift).
+// reverseRosterOrder returns the actionable set in REVERSE roster order, keeping
+// any shll-self target LAST. The input is built in roster order with shll-self
+// appended at the end; this reverses only the roster portion, then re-appends
+// shll-self so it stays the final removal (the running orchestrator is removed
+// after everything it might have managed). Deriving the reverse from the single
+// Roster-order slice keeps one source of truth (no second hardcoded order to
+// drift).
 func reverseRosterOrder(actionable []uninstallTarget) []uninstallTarget {
 	rosterPart := make([]uninstallTarget, 0, len(actionable))
 	var selfPart []uninstallTarget

@@ -6,57 +6,99 @@ import (
 	"testing"
 )
 
-// rosterEdge is one dependency edge in the shll toolkit, oriented
-// dependent -> dep. The leaves-first Roster invariant is that every dependent
-// appears AFTER all of its deps (a strictly greater index).
-type rosterEdge struct {
-	dependent string
-	dep       string
+// TestRosterOrder pins the exact roster contract: importance-descending with
+// dependency adjacency — run-kit first, rk-desktop immediately after it (its
+// `rk desktop …` delegations need the run-kit binary), then the rest in the
+// order the change resolved. Every roster-driven surface (install/update/
+// uninstall walk order, list/doctor/version row order, shell-init composition)
+// inherits this order from the single slice, so the exact sequence IS the
+// contract — a comment cannot fail CI, so this test guards against an
+// accidental reorder.
+func TestRosterOrder(t *testing.T) {
+	want := []string{"run-kit", "rk-desktop", "fab-kit", "wt", "idea", "tu", "hop"}
+	if len(Roster) != len(want) {
+		t.Fatalf("len(Roster) = %d, want %d", len(Roster), len(want))
+	}
+	for i, name := range want {
+		if Roster[i].Name != name {
+			t.Errorf("Roster[%d].Name = %q, want %q", i, Roster[i].Name, name)
+		}
+	}
 }
 
-// TestRosterLeavesBeforeDependents guards the toolkit's FULL ordering contract:
-// every dependent in Roster appears after all of its dependencies. The encoded
-// graph below is a SUPERSET of what output-coherence strictly needs — coherence
-// only depends on the brew-upgrade edges (a dependent's internal `brew upgrade`
-// re-touching a leaf already reported done). The runtime-invocation edges are
-// encoded too so the contract documents how the tools actually relate.
-//
-// IMPORTANT for the reader: a runtime-invocation edge (e.g. run-kit -> wt, because
-// `run-kit riff` shells out to `wt create`) does NOT mean `run-kit update` touches
-// `wt` during `shll update` — each `<tool> update` is self-update-only. Runtime
-// edges matter for install/runtime ordering, not for any update-time cascade.
-func TestRosterLeavesBeforeDependents(t *testing.T) {
-	edges := []rosterEdge{
-		{dependent: "fab-kit", dep: "wt"},   // brew-upgrade dep
-		{dependent: "fab-kit", dep: "idea"}, // brew-upgrade dep
-		// hop -> wt is BOTH a brew-upgrade dep AND a runtime-invocation dep
-		// (`hop open` delegates to wt's menu; `hop ls --trees` fans out
-		// `wt list --json`).
-		{dependent: "hop", dep: "wt"},
-		// run-kit -> wt is a runtime-invocation dep (`run-kit riff` shells out to
-		// `wt create`) — NOT a `run-kit update`-time upgrade of wt.
-		{dependent: "run-kit", dep: "wt"},
+// TestRosterBrewManagedShape pins the brew-vs-delegated split: every roster
+// entry except rk-desktop is brew-managed (Formula set, no Install argv, no
+// Probe), and the invariants the brew helpers rely on hold (a brew-managed tool
+// always has a tap-qualified formula).
+func TestRosterBrewManagedShape(t *testing.T) {
+	for _, tool := range Roster {
+		if !tool.brewManaged() {
+			continue // the delegated seam is pinned by TestRkDesktopEntry
+		}
+		if !strings.HasPrefix(tool.Formula, formulaPrefix) {
+			t.Errorf("%s: Formula = %q, want tap-qualified (%s<name>)", tool.Name, tool.Formula, formulaPrefix)
+		}
+		if len(tool.Install) != 0 {
+			t.Errorf("%s: brew-managed tool must not carry a delegated Install argv", tool.Name)
+		}
+		if tool.Probe != nil {
+			t.Errorf("%s: brew-managed tool must not carry a Probe", tool.Name)
+		}
 	}
+}
 
-	// Build name -> roster index from the live Roster (no re-listing of tool
-	// names — the test derives its map from the source of truth).
-	indexByName := make(map[string]int, len(Roster))
-	for i, tool := range Roster {
-		indexByName[tool.Name] = i
+// TestRkDesktopEntry pins the roster's first delegated (non-brew) entry: no
+// Formula (no brew helper may touch it), install/update delegating to
+// `rk desktop install`/`rk desktop update`, the installed-probe parsing the
+// `Installed:` line of `rk desktop status`, Repo pointing at run-kit (it ships
+// with run-kit — no repo of its own), no shell-init, and a SkillHint (required
+// of every entry by TestRosterSkillHints).
+func TestRkDesktopEntry(t *testing.T) {
+	tool, ok := rosterTool("rk-desktop")
+	if !ok {
+		t.Fatal("rk-desktop missing from Roster")
 	}
+	if tool.brewManaged() {
+		t.Errorf("rk-desktop Formula = %q, want empty (delegated, non-brew)", tool.Formula)
+	}
+	if got := strings.Join(tool.Install, " "); got != "rk desktop install" {
+		t.Errorf("rk-desktop Install = %q, want %q", got, "rk desktop install")
+	}
+	if got := strings.Join(tool.Update, " "); got != "rk desktop update" {
+		t.Errorf("rk-desktop Update = %q, want %q", got, "rk desktop update")
+	}
+	if tool.Probe == nil {
+		t.Fatal("rk-desktop Probe = nil, want the `rk desktop status` probe spec")
+	}
+	if got := strings.Join(tool.Probe.Argv, " "); got != "rk desktop status" {
+		t.Errorf("rk-desktop Probe.Argv = %q, want %q", got, "rk desktop status")
+	}
+	if tool.Probe.LinePrefix != "Installed:" || tool.Probe.AbsentValue != "not installed" {
+		t.Errorf("rk-desktop Probe = %+v, want LinePrefix %q / AbsentValue %q", tool.Probe, "Installed:", "not installed")
+	}
+	if tool.Repo != "run-kit" {
+		t.Errorf("rk-desktop Repo = %q, want %q (it ships with run-kit)", tool.Repo, "run-kit")
+	}
+	if len(tool.ShellInit) != 0 {
+		t.Errorf("rk-desktop must not carry ShellInit (no shell integration)")
+	}
+	if tool.SkillHint == "" {
+		t.Error("rk-desktop SkillHint must be non-empty (TestRosterSkillHints contract)")
+	}
+}
 
-	for _, e := range edges {
-		depIdx, ok := indexByName[e.dep]
-		if !ok {
-			t.Fatalf("edge %s -> %s: dep %q not found in Roster", e.dependent, e.dep, e.dep)
-		}
-		dependentIdx, ok := indexByName[e.dependent]
-		if !ok {
-			t.Fatalf("edge %s -> %s: dependent %q not found in Roster", e.dependent, e.dep, e.dependent)
-		}
-		if dependentIdx <= depIdx {
-			t.Errorf("%s (index %d) must come after %s (index %d)", e.dependent, dependentIdx, e.dep, depIdx)
-		}
+// TestIsRkDesktopRefusal pins the unsupported-platform refusal matcher: it keys
+// on run-kit's errDesktopMacOnly message substring — never a hardcoded darwin
+// check — so a platform refusal is distinguishable from a real failure.
+func TestIsRkDesktopRefusal(t *testing.T) {
+	if !isRkDesktopRefusal([]byte("Error: rk desktop is macOS-only (the shell is packaged as a macOS .app)\n")) {
+		t.Error("refusal message not detected")
+	}
+	if isRkDesktopRefusal([]byte("Installed: v1.2.3\n")) {
+		t.Error("ordinary status output misdetected as a refusal")
+	}
+	if isRkDesktopRefusal(nil) {
+		t.Error("empty output misdetected as a refusal")
 	}
 }
 
@@ -82,9 +124,10 @@ func TestShllSelf_Descriptor(t *testing.T) {
 
 func TestShllSelf_NotInRoster(t *testing.T) {
 	// The descriptor must NOT have leaked into Roster (Constitution III +
-	// leaves-first invariant). Roster stays exactly the 6 managed sub-tools.
-	if len(Roster) != 6 {
-		t.Errorf("len(Roster) = %d, want 6 (managed sub-tools only)", len(Roster))
+	// roster-order invariant). Roster stays exactly the 7 managed sub-tools
+	// (6 brew-managed + the delegated rk-desktop).
+	if len(Roster) != 7 {
+		t.Errorf("len(Roster) = %d, want 7 (managed sub-tools only)", len(Roster))
 	}
 	if rosterHas(shllTargetToken) {
 		t.Error("shll must NOT be a Roster entry")
@@ -113,9 +156,9 @@ func toolNames(tools []Tool) []string {
 }
 
 func TestResolveTargets_RosterOrderRegardlessOfArgOrder(t *testing.T) {
-	// Args in reverse roster order must still resolve to roster (leaves-first)
-	// order: fab-kit, wt → wt, fab-kit.
-	selected, self, aliased, err := resolveTargets([]string{"fab-kit", "wt"}, true)
+	// Args in reverse roster order must still resolve to roster order: fab-kit
+	// precedes wt in the new importance-descending roster.
+	selected, self, aliased, err := resolveTargets([]string{"wt", "fab-kit"}, true)
 	if err != nil {
 		t.Fatalf("resolveTargets err = %v, want nil", err)
 	}
@@ -126,7 +169,7 @@ func TestResolveTargets_RosterOrderRegardlessOfArgOrder(t *testing.T) {
 		t.Errorf("aliased = %v, want empty (no legacy alias named)", aliased)
 	}
 	got := toolNames(selected)
-	want := []string{"wt", "fab-kit"}
+	want := []string{"fab-kit", "wt"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("selected = %v, want %v (roster order, not arg order)", got, want)
 	}

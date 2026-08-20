@@ -56,13 +56,15 @@ func newUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update [tool...]",
 		Short: "brew update + per-tool update for shll and every installed shll tool",
-		Long: `Update shll itself and every installed shll tool via Homebrew.
+		Long: `Update shll itself and every installed shll tool.
 
 shll update runs ` + "`brew update --quiet`" + ` once, then ` + "`brew upgrade sahil87/tap/shll`" + `
 (when shll itself was installed via brew), then delegates to each installed roster
 tool's own ` + "`update`" + ` subcommand (with ` + "`--skip-brew-update`" + ` when the tool
 advertises it) so each tool's post-upgrade side effects (e.g. rk's daemon restart)
-are preserved. A roster tool that exposes no ` + "`update`" + ` is upgraded via
+are preserved. rk-desktop is not a brew formula — it delegates to ` + "`rk desktop update`" + `
+(and is skipped when ` + "`rk`" + ` is absent or the platform is unsupported). A
+brew-managed roster tool that exposes no ` + "`update`" + ` is upgraded via
 ` + "`brew upgrade sahil87/tap/<formula>`" + ` instead. Uninstalled tools (including shll
 itself, e.g. on a ` + "`go install`" + ` dev build) are skipped silently. Brew and per-tool
 progress output streams directly to your terminal.
@@ -75,9 +77,9 @@ skipping its confirmation prompt — for unattended runs (an agent-driven pane, 
 run-kit dashboard's update button). Nothing else about the run prompts.
 
 With no arguments, shll update processes the whole roster as above. Pass one or
-more tool names to update only that subset (valid targets: shll, wt, idea, tu,
-run-kit, hop, fab-kit; the legacy alias ` + "`rk`" + ` still resolves to run-kit) — e.g.
-` + "`shll update shll`" + ` to bump only shll itself, or
+more tool names to update only that subset (valid targets: shll, run-kit,
+rk-desktop, fab-kit, wt, idea, tu, hop; the legacy alias ` + "`rk`" + ` still resolves to
+run-kit) — e.g. ` + "`shll update shll`" + ` to bump only shll itself, or
 ` + "`shll update hop wt`" + ` for a pair. The subset is always processed in roster order
 regardless of the order given. An unknown name, or a named tool that is not
 installed, is a hard error (a named tool, unlike the whole-roster sweep, is not
@@ -417,8 +419,10 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		}
 		succeeded++
 		// Re-query the new version (a cheap captured read) and record a bump when
-		// it actually changed from the pre-upgrade probe value.
-		if b, ok := makeBump(t.Name, t.Repo, probes[i].beforeVersion, installedVersion(ctx, t.Formula)); ok {
+		// it actually changed from the pre-upgrade probe value. probeToolInstalledVersion
+		// takes the brew read for brew-managed tools and the delegated Probe spec
+		// otherwise, so rk-desktop's after-version comes from `rk desktop status`.
+		if b, ok := makeBump(t.Name, t.Repo, probes[i].beforeVersion, toolAfterVersion(ctx, t)); ok {
 			bumps = append(bumps, b)
 		}
 	}
@@ -464,6 +468,15 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		return errSilent
 	}
 	return nil
+}
+
+// toolAfterVersion returns just the post-upgrade version for a tool ("" when
+// unknown) — the digest re-query. Thin wrapper over probeToolInstalledVersion
+// so brew-managed tools re-read the brew keg version and delegated tools re-run
+// their Probe spec (never a brew read for a formula-less tool).
+func toolAfterVersion(ctx context.Context, t Tool) string {
+	_, v := probeToolInstalledVersion(ctx, t)
+	return v
 }
 
 // versionBump is one tool whose version changed during a `shll update` run — the
@@ -520,20 +533,21 @@ func probeRoster(ctx context.Context) []probeResult {
 }
 
 // probeTool performs the read-only capability probes for a single tool: install
-// status, plus `--skip-brew-update` support for installed tools that have an
-// Update argv. The help probe is skipped for uninstalled tools and tools with no
-// Update argv.
+// status, plus `--skip-brew-update` support for installed BREW-MANAGED tools
+// that have an Update argv. The help probe is skipped for uninstalled tools,
+// tools with no Update argv, and delegated (non-brew) tools — the flag exists
+// to skip a tool's internal brew refresh, which a non-brew tool never runs.
 func probeTool(ctx context.Context, t Tool) probeResult {
-	// One `brew list --formula --versions` read yields the exit-code install fact
-	// (empty stdout with exit 0 still counts as installed) and the before-version.
-	// The before-version is best-effort: "" means "unknown" and suppresses only
-	// this tool's digest entry, never its upgrade.
-	installed, before := probeInstalledVersion(ctx, t.Formula)
+	// One probe read yields the install fact and the before-version (brew
+	// `brew list --versions` for brew-managed tools, the delegated Probe spec
+	// otherwise). The before-version is best-effort: "" means "unknown" and
+	// suppresses only this tool's digest entry, never its upgrade.
+	installed, before := probeToolInstalledVersion(ctx, t)
 	if !installed {
 		return probeResult{}
 	}
 	res := probeResult{installed: true, beforeVersion: before}
-	if len(t.Update) > 0 {
+	if t.brewManaged() && len(t.Update) > 0 {
 		res.supportsSkipFlag = toolSupportsSkipFlag(ctx, t)
 	}
 	return res
@@ -602,7 +616,7 @@ const fallbackNoteFmt = "note: %s's own update failed (%s) — falling back to '
 func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeResult) (int, error) {
 	argv := upgradeArgv(t, p.supportsSkipFlag)
 	code, err := proc.RunForeground(ctx, argv[0], argv[1:]...)
-	if errors.Is(err, proc.ErrNotFound) && len(t.Update) > 0 {
+	if errors.Is(err, proc.ErrNotFound) && len(t.Update) > 0 && t.brewManaged() {
 		if lcode, lerr := proc.RunForeground(ctx, brewBinary, "link", t.Name); lerr != nil {
 			fmt.Fprintf(stderr, "shll update: %s: brew link failed: %v\n", t.Name, lerr)
 		} else if lcode != 0 {
@@ -614,8 +628,10 @@ func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeR
 	}
 	// ctx.Err() guard: a canceled/deadline-exceeded context reports the RUN's
 	// failure, not the tool's — a fallback there would print a misleading note
-	// and attempt a brew upgrade doomed by the same dead ctx.
-	if (err != nil || code != 0) && len(t.Update) > 0 && ctx.Err() == nil {
+	// and attempt a brew upgrade doomed by the same dead ctx. The fallback is
+	// brew-managed-only: a delegated (non-brew) tool has no formula to upgrade,
+	// so its delegation failure is surfaced as-is (no fallbackNote, no brew call).
+	if (err != nil || code != 0) && len(t.Update) > 0 && t.brewManaged() && ctx.Err() == nil {
 		detail := fmt.Sprintf("exit code %d", code)
 		if err != nil {
 			detail = err.Error()
@@ -628,9 +644,11 @@ func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeR
 
 // upgradeArgv returns the exact argv `shll update` would run for an installed roster
 // tool, per the same dispatch upgradeTool uses:
+//   - delegated (non-brew) tool → its delegated Update argv verbatim
+//     (e.g. `rk desktop update`) — no flag probe, no brew fallback
 //   - has Update argv + supports the flag → `<tool> update --skip-brew-update`
 //   - has Update argv, no flag (version skew) → `<tool> update`
-//   - no Update argv (hypothetical future tool) → `brew upgrade <formula>`
+//   - no Update argv (hypothetical future brew tool) → `brew upgrade <formula>`
 //
 // It is the single source of truth shared by the live upgrade (upgradeTool) and the
 // dry-run preview, so the preview can never drift from what the run would do.
@@ -640,7 +658,9 @@ func upgradeArgv(t Tool, supportsSkipFlag bool) []string {
 	}
 	// Copy the shared, read-only Update argv into a fresh slice before optionally
 	// appending the flag — never mutate the roster's backing array (same
-	// slice-aliasing guard as appendArg).
+	// slice-aliasing guard as appendArg). For a delegated tool this copy IS the
+	// whole argv — supportsSkipFlag is never probed for it (probeTool), so the
+	// flag is never appended to a non-brew update.
 	argv := make([]string, len(t.Update))
 	copy(argv, t.Update)
 	if supportsSkipFlag {

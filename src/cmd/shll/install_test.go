@@ -98,6 +98,9 @@ func TestInstall_BrewMissing(t *testing.T) {
 func TestInstall_AllAlreadyInstalled(t *testing.T) {
 	// Every brew list/--version succeeds → every roster tool already installed.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -114,6 +117,9 @@ func TestInstall_AllAlreadyInstalled(t *testing.T) {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 	for _, tool := range Roster {
+		if !tool.brewManaged() {
+			continue // delegated tools are never brew-installed
+		}
 		if invocationsContain(f.calls, brewBinary, "install", tool.Formula) {
 			t.Errorf("brew install for %s should NOT be invoked when already installed", tool.Formula)
 		}
@@ -132,6 +138,8 @@ func TestInstall_NoneInstalled(t *testing.T) {
 			return proc.Result{Stdout: []byte("Homebrew 4.0\n")}
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
 			return proc.Result{Err: errors.New("not installed")}
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(false)
 		}
 		return proc.Result{}
 	}}
@@ -142,6 +150,13 @@ func TestInstall_NoneInstalled(t *testing.T) {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	for _, tool := range Roster {
+		if !tool.brewManaged() {
+			// The delegated entry installs via its delegated argv, never brew.
+			if !invocationsContain(f.calls, tool.Install[0], tool.Install[1:]...) {
+				t.Errorf("expected delegated install `%s`, calls: %+v", argvString(tool.Install...), f.calls)
+			}
+			continue
+		}
 		if !invocationsContain(f.calls, brewBinary, "install", tool.Formula) {
 			t.Errorf("expected brew install %s, calls: %+v", tool.Formula, f.calls)
 		}
@@ -251,8 +266,12 @@ func TestInstall_OneInstallFails(t *testing.T) {
 			gotInstalls++
 		}
 	}
-	if gotInstalls != len(Roster) {
-		t.Fatalf("install attempts = %d, want %d (must continue through failure)", gotInstalls, len(Roster))
+	if gotInstalls != len(Roster)-1 {
+		t.Fatalf("brew install attempts = %d, want %d (every brew-managed tool; must continue through failure)", gotInstalls, len(Roster)-1)
+	}
+	// The delegated (non-brew) entry is attempted too, via its delegated argv.
+	if !invocationsContain(f.calls, rkBinary, "desktop", "install") {
+		t.Errorf("expected the delegated `rk desktop install`, calls: %+v", f.calls)
 	}
 }
 
@@ -271,14 +290,15 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	// Headers carry the [N/M] counter over the missing subset (M=4), each header
-	// after the first is preceded by a blank line, and a blank line precedes the
-	// duration-bearing tail.
+	// Headers carry the [N/M] counter over the missing subset (M=4: the four
+	// missing brew tools; the fake reports the delegated rk-desktop installed),
+	// each header after the first is preceded by a blank line, and a blank line
+	// precedes the duration-bearing tail.
 	want := shllSelfInstallNote + "\n" +
-		"==> [1/4] idea\n" +
-		"\n==> [2/4] tu\n" +
-		"\n==> [3/4] run-kit\n" +
-		"\n==> [4/4] fab-kit\n" +
+		"==> [1/4] run-kit\n" +
+		"\n==> [2/4] fab-kit\n" +
+		"\n==> [3/4] idea\n" +
+		"\n==> [4/4] tu\n" +
 		"\nDone — 4 of 4 tools succeeded in 1m12s.\n" +
 		nextStepsAgentOnly // wired env → shell step silent-skips; --no-agent-setup → the agent nudge prints as the opt-out fallback (change gjhx)
 	if got := stdout.String(); got != want {
@@ -297,6 +317,9 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 	// shell step — change gjhx). The nudge carries neither a `==>` header nor a
 	// `Done —` tail, so the no-loop-framing assertion still holds.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -314,12 +337,15 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 }
 
 func TestInstall_PartialFailureTail(t *testing.T) {
-	// All six missing; fab-kit's install fails, the rest succeed → partial-failure
-	// tail with counts 5 succeeded, 1 failed. Exit stays errSilent.
+	// All missing; fab-kit's install fails, the rest succeed (incl. the delegated
+	// rk-desktop) → partial-failure tail with counts 6 succeeded, 1 failed.
+	// Exit stays errSilent.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		switch {
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
 			return proc.Result{Err: errors.New("not installed")}
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(false)
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "install":
 			if len(req.Args) >= 2 && req.Args[1] == formulaPrefix+"fab-kit" {
 				return proc.Result{ExitCode: 1}
@@ -341,8 +367,8 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 	// nudge (opt-out fallback) follows the tail — the post-install block is
 	// orthogonal to install outcome, so it prints regardless of anyFailed — so
 	// assert the tail appears mid-stream and the nudge is the true suffix.
-	if !strings.Contains(stdout.String(), "5 succeeded, 1 failed in 1m12s — see above.\n") {
-		t.Fatalf("stdout = %q, want the partial-failure tail (5/1)", stdout.String())
+	if !strings.Contains(stdout.String(), "6 succeeded, 1 failed in 1m12s — see above.\n") {
+		t.Fatalf("stdout = %q, want the partial-failure tail (6/1)", stdout.String())
 	}
 	if !strings.HasSuffix(stdout.String(), nextStepsAgentOnly) {
 		t.Fatalf("stdout = %q, want the shll setup agent nudge after the tail (nudges fire despite failures)", stdout.String())
@@ -350,9 +376,10 @@ func TestInstall_PartialFailureTail(t *testing.T) {
 }
 
 func TestInstall_DryRunPreview(t *testing.T) {
-	// hop and wt installed; idea, tu, rk, fab-kit missing. Dry-run prints the
-	// aligned-column preview of the `brew install` commands, in roster order, with
-	// NO install performed.
+	// hop and wt installed; the other four brew tools missing (the fake reports
+	// the delegated rk-desktop installed). Dry-run prints the aligned-column
+	// preview of the exact install commands, in roster order, with NO install
+	// performed.
 	f := &fakeRunner{respond: installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")}
 	installFakeRunner(t, f)
 
@@ -360,14 +387,14 @@ func TestInstall_DryRunPreview(t *testing.T) {
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
-	// Longest missing label is "fab-kit" (7); shorter labels pad to 7. The shll-
-	// first informational line precedes the preview.
+	// Longest missing label is "run-kit"/"fab-kit" (7); shorter labels pad to 7.
+	// The shll-first informational line precedes the preview.
 	want := shllSelfInstallNote + "\n" +
 		"Would install 4 tools:\n" +
-		"  idea     brew install sahil87/tap/idea\n" +
-		"  tu       brew install sahil87/tap/tu\n" +
 		"  run-kit  brew install sahil87/tap/run-kit\n" +
-		"  fab-kit  brew install sahil87/tap/fab-kit\n"
+		"  fab-kit  brew install sahil87/tap/fab-kit\n" +
+		"  idea     brew install sahil87/tap/idea\n" +
+		"  tu       brew install sahil87/tap/tu\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("dry-run preview =\n%q\nwant\n%q", got, want)
 	}
@@ -416,6 +443,9 @@ func TestInstall_DryRunEmptyCase(t *testing.T) {
 	// Everything already installed → dry-run mirrors the non-dry-run nothing-to-do
 	// message, exit 0, no preview table, no installs.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -541,8 +571,8 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	if wtIdx == -1 || fabIdx == -1 {
 		t.Fatalf("missing wt/fab-kit installs (wt=%d, fab-kit=%d), calls: %+v", wtIdx, fabIdx, calls)
 	}
-	if wtIdx >= fabIdx {
-		t.Fatalf("wt (%d) must be installed before fab-kit (%d) — roster order, not arg order", wtIdx, fabIdx)
+	if fabIdx >= wtIdx {
+		t.Fatalf("fab-kit (%d) must be installed before wt (%d) — roster order, not arg order", fabIdx, wtIdx)
 	}
 	// Unnamed tools are NOT installed.
 	for _, name := range []string{"idea", "tu", "run-kit", "hop"} {
@@ -555,8 +585,8 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	// agent-setup nudge prints as the opt-out fallback after the tail (wired env →
 	// the shell step silent-skips).
 	want := shllSelfInstallNote + "\n" +
-		"==> [1/2] wt\n" +
-		"\n==> [2/2] fab-kit\n" +
+		"==> [1/2] fab-kit\n" +
+		"\n==> [2/2] wt\n" +
 		"\nDone — 2 of 2 tools succeeded in 1m12s.\n" +
 		nextStepsAgentOnly
 	if got := stdout.String(); got != want {
@@ -605,8 +635,8 @@ func TestInstall_SubsetDryRunPreviewFiltered(t *testing.T) {
 	}
 	want := shllSelfInstallNote + "\n" +
 		"Would install 2 tools:\n" +
-		"  idea     brew install sahil87/tap/idea\n" +
-		"  fab-kit  brew install sahil87/tap/fab-kit\n"
+		"  fab-kit  brew install sahil87/tap/fab-kit\n" +
+		"  idea     brew install sahil87/tap/idea\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("subset dry-run preview =\n%q\nwant\n%q", got, want)
 	}
@@ -618,8 +648,9 @@ func TestInstall_SubsetDryRunPreviewFiltered(t *testing.T) {
 }
 
 func TestInstall_CounterPartialInstall(t *testing.T) {
-	// Counter correctness: only idea installed → missing subset is wt, tu, run-kit,
-	// hop, fab-kit (5 tools, roster order), so headers read [1/5]..[5/5].
+	// Counter correctness: only idea installed → the missing subset is the five
+	// brew tools (roster order; the fake reports the delegated rk-desktop
+	// installed), so headers read [1/5]..[5/5].
 	f := &fakeRunner{respond: installedOnly(formulaPrefix + "idea")}
 	installFakeRunner(t, f)
 	t0 := time.Unix(1000, 0)
@@ -630,11 +661,11 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	want := shllSelfInstallNote + "\n" +
-		"==> [1/5] wt\n" +
-		"\n==> [2/5] tu\n" +
-		"\n==> [3/5] run-kit\n" +
-		"\n==> [4/5] hop\n" +
-		"\n==> [5/5] fab-kit\n" +
+		"==> [1/5] run-kit\n" +
+		"\n==> [2/5] fab-kit\n" +
+		"\n==> [3/5] wt\n" +
+		"\n==> [4/5] tu\n" +
+		"\n==> [5/5] hop\n" +
 		"\nDone — 5 of 5 tools succeeded in 1m12s.\n" +
 		nextStepsAgentOnly // --no-agent-setup → the agent nudge prints as the opt-out fallback; wired env → shell step silent-skips (change gjhx)
 	if got := stdout.String(); got != want {
@@ -646,8 +677,10 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 
 // noneInstalledTrustRunner reports brew present, `brew trust` available (so the
 // trust step runs by default), and every roster formula not-installed (so every
-// tool gets a `brew trust --formula` + `brew install`). trustResult lets a test
-// override the per-formula trust ceremony outcome.
+// tool gets a `brew trust --formula` + `brew install`). rk-desktop's delegated
+// probe reports absent, so it takes its delegated install path (no trust — it
+// has no formula). trustResult lets a test override the per-formula trust
+// ceremony outcome.
 func noneInstalledTrustRunner(trustResult proc.Result) func(proc.Request) proc.Result {
 	return func(req proc.Request) proc.Result {
 		switch {
@@ -657,6 +690,8 @@ func noneInstalledTrustRunner(trustResult proc.Result) func(proc.Request) proc.R
 			return trustResult
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
 			return proc.Result{Err: errors.New("not installed")}
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(false)
 		}
 		return proc.Result{}
 	}
@@ -674,6 +709,13 @@ func TestInstall_TrustsEachFormulaBeforeInstall(t *testing.T) {
 	}
 	calls := f.recordedCalls()
 	for _, tool := range Roster {
+		if !tool.brewManaged() {
+			// The delegated entry has no formula: no trust call, no brew install.
+			if invocationsContain(calls, brewBinary, "trust", "--formula", tool.Formula) {
+				t.Errorf("delegated %s must never receive a brew trust call", tool.Name)
+			}
+			continue
+		}
 		if !invocationsContain(calls, brewBinary, "trust", "--formula", tool.Formula) {
 			t.Errorf("expected `brew trust --formula %s`, calls: %+v", tool.Formula, calls)
 		}
@@ -719,8 +761,11 @@ func TestInstall_NoTrustSkipsTrustStep(t *testing.T) {
 			t.Fatalf("--no-trust must record no `brew trust` call, got %+v", c)
 		}
 	}
-	// Installs still happen for every missing tool.
+	// Installs still happen for every missing brew-managed tool.
 	for _, tool := range Roster {
+		if !tool.brewManaged() {
+			continue
+		}
 		if !invocationsContain(calls, brewBinary, "install", tool.Formula) {
 			t.Errorf("expected brew install %s under --no-trust", tool.Formula)
 		}
@@ -736,6 +781,8 @@ func TestInstall_TrustUnavailableSkipsGracefully(t *testing.T) {
 			return proc.Result{Err: errors.New("Error: Unknown command: trust")}
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
 			return proc.Result{Err: errors.New("not installed")}
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(true) // installed — this test is about brew trust
 		}
 		return proc.Result{}
 	}}
@@ -771,6 +818,9 @@ func TestInstall_TrustFailureContinues(t *testing.T) {
 	calls := f.recordedCalls()
 	// Installs were still attempted despite the trust failures.
 	for _, tool := range Roster {
+		if !tool.brewManaged() {
+			continue
+		}
 		if !invocationsContain(calls, brewBinary, "install", tool.Formula) {
 			t.Errorf("expected brew install %s despite trust failure", tool.Formula)
 		}
@@ -807,6 +857,8 @@ func installRunKitMissingFake() *fakeRunner {
 		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "install" && req.Args[1] == formulaPrefix+"run-kit":
 			installed = true
 			return proc.Result{}
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(true) // installed — the targeted run installs run-kit only
 		}
 		return proc.Result{}
 	}}
@@ -860,6 +912,176 @@ func TestInstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 	assertNoLegacyFormulaReference(t, f.recordedCalls())
 }
 
+// --- rk-desktop delegated install (change t26g) ------------------------------
+
+// rkDesktopRefusalResult is run-kit's unsupported-platform refusal, as cobra
+// prints it: the message on stderr, exit 1 (errDesktopMacOnly in run-kit's
+// cmd/rk/desktop.go).
+var rkDesktopRefusalResult = proc.Result{
+	Stderr:   []byte("Error: rk desktop is macOS-only (the shell is packaged as a macOS .app)\n"),
+	ExitCode: 1,
+}
+
+// allInstalledButRkDesktop builds a fake where every brew formula is installed,
+// rk-desktop's probe answers with statusResult, and `rk desktop install`
+// succeeds. Tests override the probe/install behavior by wrapping.
+func allInstalledButRkDesktop(statusResult proc.Result) *fakeRunner {
+	base := installedOnly(brewFormulas()...)
+	return &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return statusResult
+		}
+		return base(req)
+	}}
+}
+
+// brewFormulas returns every brew-managed roster formula (the install set minus
+// the delegated rk-desktop).
+func brewFormulas() []string {
+	var out []string
+	for _, t := range Roster {
+		if t.brewManaged() {
+			out = append(out, t.Formula)
+		}
+	}
+	return out
+}
+
+func TestInstall_RkDesktopWholeRosterRefusalSkipsWithNote(t *testing.T) {
+	// Whole-roster run on an unsupported platform: every brew tool installed,
+	// rk-desktop's probe REFUSES (the errDesktopMacOnly message) → rk-desktop is
+	// skipped with a note, NO `rk desktop install` runs, and the exit is
+	// unaffected (nil — a refusal is not a failure).
+	f := allInstalledButRkDesktop(rkDesktopRefusalResult)
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (a platform refusal is a skip, not a failure)", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rk-desktop") || !strings.Contains(out, rkDesktopRefusalToken) {
+		t.Fatalf("stdout = %q, want the rk-desktop skip note naming the refusal", out)
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
+		t.Fatal("`rk desktop install` must NOT run when the platform refuses")
+	}
+}
+
+func TestInstall_RkDesktopTargetedRefusalPrintsExplicitMessage(t *testing.T) {
+	// Targeted `shll install rk-desktop` on an unsupported platform: the refusal
+	// is printed explicitly (the same note text — the targeted run's answer),
+	// still distinguished from a failure: exit 0, no install attempt.
+	f := allInstalledButRkDesktop(rkDesktopRefusalResult)
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true, []string{"rk-desktop"}); err != nil {
+		t.Fatalf("runInstall err = %v, want nil (targeted refusal is an explicit message, not a failure)", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rk-desktop") || !strings.Contains(out, rkDesktopRefusalToken) {
+		t.Fatalf("stdout = %q, want the explicit refusal message for the targeted run", out)
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
+		t.Fatal("`rk desktop install` must NOT run when the platform refuses")
+	}
+}
+
+func TestInstall_RkDesktopTargetedInstallDelegates(t *testing.T) {
+	// Targeted `shll install rk-desktop` with the app absent and the platform
+	// fine → the run delegates to `rk desktop install` (no brew, no trust).
+	f := allInstalledButRkDesktop(rkDesktopStatusResult(false))
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true, []string{"rk-desktop"}); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	if !invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
+		t.Fatalf("expected the delegated `rk desktop install`, calls: %+v", f.recordedCalls())
+	}
+	if invocationsContain(f.recordedCalls(), brewBinary, "install") {
+		t.Fatal("a delegated install must never touch brew")
+	}
+}
+
+func TestInstall_RkDesktopRunKitFailedCascadeSkips(t *testing.T) {
+	// Whole-roster run where run-kit's install FAILS: rk-desktop (processed after
+	// run-kit) is skipped with a note — the prerequisite is absent, so no
+	// `rk desktop install` is attempted. run-kit's failure still drives exit 1.
+	// The probe is STATEFUL: once the run attempts the run-kit install (which
+	// fails), `rk` stays off PATH, so the delegated re-probe reports the
+	// prerequisite missing.
+	rkInstalled := true // pre-run: run-kit present (hypothetically), rk-desktop absent
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
+			return proc.Result{Err: errors.New("not installed")}
+		case isRkDesktopProbe(req):
+			if !rkInstalled {
+				return proc.Result{Err: proc.ErrNotFound} // rk binary absent → prerequisite unavailable
+			}
+			return rkDesktopStatusResult(false)
+		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "install" && req.Args[1] == formulaPrefix+"run-kit":
+			rkInstalled = false // the failed install leaves the machine without run-kit
+			return proc.Result{ExitCode: 1}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true, nil)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runInstall err = %v, want errSilent (run-kit failed)", err)
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
+		t.Fatal("`rk desktop install` must NOT run when run-kit's install failed this run")
+	}
+	if !strings.Contains(stdout.String(), "rk-desktop") {
+		t.Fatalf("stdout = %q, want the rk-desktop cascade skip note", stdout.String())
+	}
+}
+
+func TestInstall_RkDesktopAlreadyInstalledSkips(t *testing.T) {
+	// rk-desktop already installed (per its probe) → idempotent skip: no
+	// `rk desktop install`, and the whole-roster run takes the nothing-to-do
+	// short-circuit when everything else is installed too.
+	f := allInstalledButRkDesktop(rkDesktopStatusResult(true))
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true, nil); err != nil {
+		t.Fatalf("runInstall err = %v, want nil", err)
+	}
+	if !strings.Contains(stdout.String(), allInstalledMsg) {
+		t.Fatalf("stdout = %q, want the nothing-to-do note", stdout.String())
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
+		t.Fatal("an installed rk-desktop must NOT be re-installed")
+	}
+}
+
+func TestInstall_RkDesktopDryRunPreviewsDelegatedArgv(t *testing.T) {
+	// --dry-run with rk-desktop absent previews the DELEGATED argv (never a
+	// brew command) and performs no write.
+	f := allInstalledButRkDesktop(rkDesktopStatusResult(false))
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, nil); err != nil {
+		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rk desktop install") {
+		t.Fatalf("dry-run preview = %q, want the delegated `rk desktop install` row", out)
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
+		t.Fatal("dry-run must NOT execute `rk desktop install`")
+	}
+}
+
 // --- post-install auto-run steps + "Next steps" block (93r2, agst, gjhx) --------
 
 // allInstalledRunKitState builds a fake where every roster formula is already
@@ -879,6 +1101,12 @@ func allInstalledRunKitState(runKitOnPath bool) *fakeRunner {
 				return proc.Result{Stdout: []byte("run-kit 3.0.0\n")}
 			}
 			return proc.Result{Err: proc.ErrNotFound}
+		}
+		// rk-desktop's delegated probe: the pre-rk-desktop default fake's
+		// empty-success answer read as "installed", so keep that default —
+		// rk-desktop reports installed and the short-circuit goldens hold.
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
 		}
 		// Everything else (brew --version, brew list, other tools' --version)
 		// succeeds → every roster tool already installed → short-circuit.

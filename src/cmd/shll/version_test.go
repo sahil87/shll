@@ -11,19 +11,45 @@ import (
 	"github.com/sahil87/shll/internal/proc"
 )
 
+// installKey is the key a fake builder's installed-map uses for a tool: its
+// Formula for brew-managed tools, its Name for delegated (formula-less) tools.
+func installKey(t Tool) string {
+	if t.brewManaged() {
+		return t.Formula
+	}
+	return t.Name
+}
+
 // versionFake constructs a fakeRunner that simulates per-tool installation and
-// version output. For a tool whose formula is absent from installedFormulas,
+// version output. For a tool whose installKey is absent from installedFormulas,
 // the fake returns proc.ErrNotFound from `<tool> --version`, mirroring real
-// exec.LookPath behavior when the binary is missing from PATH.
+// exec.LookPath behavior when the binary is missing from PATH. The delegated
+// (non-brew) rk-desktop entry has no formula: its simulated install state keys
+// on its Name, and its probe (`rk desktop status`) answers with an `Installed:`
+// line or the absent value.
 func versionFake(installedFormulas map[string]bool, versions map[string]string) *fakeRunner {
 	formulaByName := map[string]string{}
+	var delegated *Tool
 	for _, t := range Roster {
-		formulaByName[t.Name] = t.Formula
+		if t.brewManaged() {
+			formulaByName[t.Name] = t.Formula
+		} else {
+			t := t
+			delegated = &t
+		}
 	}
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		// Simulate ErrNotFound for tools whose formula isn't installed.
 		if formula, ok := formulaByName[req.Name]; ok && !installedFormulas[formula] {
 			return proc.Result{Err: proc.ErrNotFound}
+		}
+		// Delegated probe: `rk desktop status`. rk itself stays on the simulated
+		// PATH; the rk-desktop install state drives the `Installed:` line.
+		if delegated != nil && req.Name == delegated.Probe.Argv[0] && strings.Join(req.Args, " ") == strings.Join(delegated.Probe.Argv[1:], " ") {
+			if installedFormulas[delegated.Name] {
+				return proc.Result{Stdout: []byte(delegated.Probe.LinePrefix + " v0.1.0\n")}
+			}
+			return proc.Result{Stdout: []byte(delegated.Probe.LinePrefix + " " + delegated.Probe.AbsentValue + "\n")}
 		}
 		// Match per-tool --version invocations: req.Name is the tool name,
 		// args[0] is "--version".
@@ -40,7 +66,7 @@ func TestVersion_AllInstalled(t *testing.T) {
 	installed := map[string]bool{}
 	versions := map[string]string{}
 	for _, tool := range Roster {
-		installed[tool.Formula] = true
+		installed[installKey(tool)] = true
 		versions[tool.Name] = tool.Name + " v0.1.0\n"
 	}
 	installFakeRunner(t, versionFake(installed, versions))
@@ -140,7 +166,7 @@ func TestVersion_NoANSI(t *testing.T) {
 	installed := map[string]bool{}
 	versions := map[string]string{}
 	for _, tool := range Roster {
-		installed[tool.Formula] = true
+		installed[installKey(tool)] = true
 		versions[tool.Name] = tool.Name + " v0.1.0\n"
 	}
 	installFakeRunner(t, versionFake(installed, versions))
@@ -339,6 +365,95 @@ func TestProbeToolVersion_NoFallbackOnNonErrNotFound(t *testing.T) {
 	}
 	if toolInstalled(context.Background(), rk) {
 		t.Error("toolInstalled = true, want false (present-but-broken run-kit is not installed via fallback)")
+	}
+}
+
+// --- delegated (non-brew) probe seam (rk-desktop) ----------------------------
+
+// rkDesktopTool returns the live rk-desktop roster entry (the delegated,
+// formula-less tool carrying the `rk desktop status` Probe spec).
+func rkDesktopTool(t *testing.T) Tool {
+	t.Helper()
+	tool, ok := rosterTool("rk-desktop")
+	if !ok {
+		t.Fatal("rk-desktop not found in Roster")
+	}
+	return tool
+}
+
+// rkDesktopFake builds a fakeRunner whose `rk desktop status` answers with the
+// given stdout and exit code.
+func rkDesktopFake(t *testing.T, tool Tool, statusOut string, statusCode int) *fakeRunner {
+	t.Helper()
+	return &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == tool.Probe.Argv[0] && strings.Join(req.Args, " ") == strings.Join(tool.Probe.Argv[1:], " ") {
+			return proc.Result{Stdout: []byte(statusOut), ExitCode: statusCode}
+		}
+		return proc.Result{}
+	}}
+}
+
+func TestProbeToolVersion_DelegatedInstalled(t *testing.T) {
+	tool := rkDesktopTool(t)
+	installFakeRunner(t, rkDesktopFake(t, tool, "Run Kit Desktop\nInstalled: v1.2.3\nLatest: v1.2.3\n", 0))
+
+	if !toolInstalled(context.Background(), tool) {
+		t.Error("toolInstalled = false, want true (`Installed: v1.2.3`)")
+	}
+	if got := toolVersion(context.Background(), tool); got != "v1.2.3" {
+		t.Errorf("toolVersion = %q, want v1.2.3 (parsed from the Installed: line)", got)
+	}
+}
+
+func TestProbeToolVersion_DelegatedAbsent(t *testing.T) {
+	tool := rkDesktopTool(t)
+	installFakeRunner(t, rkDesktopFake(t, tool, "Installed: not installed\n", 0))
+
+	if toolInstalled(context.Background(), tool) {
+		t.Error("toolInstalled = true, want false (`Installed: not installed`)")
+	}
+	if got := toolVersion(context.Background(), tool); got != notInstalledLabel {
+		t.Errorf("toolVersion = %q, want %q", got, notInstalledLabel)
+	}
+}
+
+func TestProbeToolVersion_DelegatedRefusalIsNotInstalled(t *testing.T) {
+	// An unsupported-platform refusal (non-zero exit + the errDesktopMacOnly
+	// message) collapses to not-installed on the display surfaces — never a
+	// crash, never a panic.
+	tool := rkDesktopTool(t)
+	installFakeRunner(t, rkDesktopFake(t, tool, "Error: rk desktop is macOS-only (the shell is packaged as a macOS .app)\n", 1))
+
+	if toolInstalled(context.Background(), tool) {
+		t.Error("toolInstalled = true, want false (platform refusal)")
+	}
+	if got := toolVersion(context.Background(), tool); got != notInstalledLabel {
+		t.Errorf("toolVersion = %q, want %q", got, notInstalledLabel)
+	}
+}
+
+func TestVersion_RkDesktopRow(t *testing.T) {
+	// End-to-end through runVersion: the rk-desktop row reads its installed
+	// version from the `rk desktop status` Installed: line, in roster position.
+	tool := rkDesktopTool(t)
+	installFakeRunner(t, &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == tool.Probe.Argv[0] && strings.Join(req.Args, " ") == strings.Join(tool.Probe.Argv[1:], " ") {
+			return proc.Result{Stdout: []byte("Installed: v3.1.4\n")}
+		}
+		return proc.Result{Err: proc.ErrNotFound}
+	}})
+
+	var stdout bytes.Buffer
+	if err := runVersion(context.Background(), &stdout); err != nil {
+		t.Fatalf("runVersion err = %v", err)
+	}
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(line, "rk-desktop") && !strings.Contains(line, "v3.1.4") {
+			t.Fatalf("rk-desktop row = %q, want to contain v3.1.4", line)
+		}
+	}
+	if !strings.Contains(stdout.String(), "rk-desktop") {
+		t.Fatalf("output missing the rk-desktop row, got:\n%s", stdout.String())
 	}
 }
 

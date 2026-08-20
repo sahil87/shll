@@ -383,16 +383,20 @@ func repoForSpec(s changelogSpec) string {
 }
 
 // installedVersionForSpec returns the installed version for a no-range spec's
-// tool from BREW: shll-self reads its brew-formula version (symmetric with the
-// roster tools and with `shll update`'s shll-self anchor — NOT the running
-// process's ldflags shllSelfVersion(), which reports the live binary, not the
-// on-disk brew formula the changelog range should span). A roster tool reads brew
-// via installedVersion. "" means not installed (or brew could not report it).
+// tool: shll-self reads its brew-formula version (symmetric with the roster
+// tools and with `shll update`'s shll-self anchor — NOT the running process's
+// ldflags shllSelfVersion(), which reports the live binary, not the on-disk
+// brew formula the changelog range should span). A roster tool resolves through
+// probeToolInstalledVersion — the brew read for a brew-managed tool, the
+// delegated Probe spec (`rk desktop status`) for a non-brew one (never a brew
+// read on a formula-less entry). "" means not installed (or the probe could not
+// report it).
 func installedVersionForSpec(ctx context.Context, s changelogSpec) string {
 	if s.self {
 		return installedVersion(ctx, shllFormula)
 	}
-	return installedVersion(ctx, Roster[s.rosterIx].Formula)
+	_, v := probeToolInstalledVersion(ctx, Roster[s.rosterIx])
+	return v
 }
 
 // renderChangelogResult renders one tool's full changelog BODY (the per-tool

@@ -140,7 +140,7 @@ func TestUninstall_UnknownTargetHardErrors(t *testing.T) {
 		t.Errorf("stderr = %q, want unknown-target diagnostic", stderr.String())
 	}
 	// Valid-target list includes shll (allowShll=true) but never rk.
-	if !strings.Contains(stderr.String(), "shll, wt, idea, tu, run-kit, hop, fab-kit") {
+	if !strings.Contains(stderr.String(), "shll, run-kit, rk-desktop, fab-kit, wt, idea, tu, hop") {
 		t.Errorf("stderr = %q, want the canonical valid-target list", stderr.String())
 	}
 	// No brew work at all — resolution happens before hasBrew.
@@ -528,7 +528,7 @@ func TestUninstall_ShellHintScopedToRosterWide(t *testing.T) {
 // --- R14 (A-013a): a NAMED full-roster sweep counts as roster-wide and prints the hint ---
 
 func TestUninstall_NamedFullRosterSweepPrintsShellHint(t *testing.T) {
-	// All six roster tools named explicitly (NOT the no-args case). hop is installed and
+	// All seven roster tools named explicitly (NOT the no-args case). hop is installed and
 	// shell-integrated. "Roster-wide" must key on coverage of the roster set, not !subset,
 	// so this named-all sweep must print the rc-unwire hint just like a no-args sweep.
 	f := installedFormulasFake(map[string]bool{formulaPrefix + "hop": true})
@@ -536,7 +536,7 @@ func TestUninstall_NamedFullRosterSweepPrintsShellHint(t *testing.T) {
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
-	args := []string{"wt", "idea", "tu", "run-kit", "hop", "fab-kit"}
+	args := []string{"run-kit", "rk-desktop", "fab-kit", "wt", "idea", "tu", "hop"}
 	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, args); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
@@ -681,5 +681,58 @@ func TestUninstall_BrewMissing(t *testing.T) {
 	// The hint must say "shll uninstall", not "shll update"/"shll install".
 	if strings.Contains(stderr.String(), "shll update requires") || strings.Contains(stderr.String(), "shll install requires") {
 		t.Errorf("stderr = %q, must not use another command's brew-missing hint", stderr.String())
+	}
+}
+
+// --- rk-desktop delegated exclusion (change t26g) ----------------------------
+
+func TestUninstall_RkDesktopTargetedSkipsWithNote(t *testing.T) {
+	// `shll uninstall rk-desktop`: a valid named target, but non-brew — skipped
+	// with a note pointing at its own manager, exit 0 (repair-path semantics:
+	// absence is the goal state), NO `brew uninstall` of anything.
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "hop": true})
+	installFakeRunner(t, f)
+	fixedClock(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"rk-desktop"}); err != nil {
+		t.Fatalf("runUninstall err = %v, want nil (a non-brew target is a skip, not an error)", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rk-desktop") || !strings.Contains(out, delegatedUninstallNote) {
+		t.Fatalf("stdout = %q, want the rk-desktop skip-with-note", out)
+	}
+	if !strings.Contains(out, uninstallNothingMsg) {
+		t.Fatalf("stdout = %q, want the nothing-to-do message (nothing actionable)", out)
+	}
+	for _, c := range f.recordedCalls() {
+		if c.Name == brewBinary && len(c.Args) > 0 && c.Args[0] == "uninstall" {
+			t.Fatalf("no brew uninstall must run for rk-desktop, got %+v", c)
+		}
+	}
+}
+
+func TestUninstall_WholeRosterSweepSkipsRkDesktop(t *testing.T) {
+	// The no-args sweep never brew-touches rk-desktop: it prints the skip note
+	// alongside the not-installed lines and still removes the installed brew
+	// tools.
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "hop": true})
+	installFakeRunner(t, f)
+	fixedClock(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, nil); err != nil {
+		t.Fatalf("runUninstall err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "rk-desktop: "+delegatedUninstallNote) {
+		t.Fatalf("stdout = %q, want the rk-desktop skip note in the sweep", out)
+	}
+	for _, c := range f.recordedCalls() {
+		if c.Name == brewBinary && len(c.Args) >= 2 && c.Args[0] == "uninstall" {
+			if c.Args[1] == "" || !strings.HasPrefix(c.Args[1], formulaPrefix) {
+				t.Fatalf("brew uninstall with a non-formula target: %+v", c)
+			}
+		}
 	}
 }

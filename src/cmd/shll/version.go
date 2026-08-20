@@ -63,13 +63,24 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 }
 
 // probeToolVersion is the single definition of the install-mechanism-agnostic
-// "installed = runnable on PATH" probe shared by toolVersion and toolInstalled.
-// It invokes `<tool.Name> --version` via proc.Run (Constitution I — subprocess via
-// internal/proc), bounded by versionTimeout, and returns the captured output and
-// any error. ANY error (proc.ErrNotFound for a missing binary, non-zero exit,
-// timeout) means "not installed"; callers map that to their own representation
-// (notInstalledLabel for version, a bool for toolInstalled). This is NOT the
-// brew probe (isInstalled in brew.go) used by install/update.
+// "installed = runnable" probe shared by toolVersion and toolInstalled. For a
+// BREW-MANAGED tool it invokes `<tool.Name> --version` via proc.Run
+// (Constitution I — subprocess via internal/proc), bounded by versionTimeout,
+// and returns the captured output and any error. ANY error (proc.ErrNotFound
+// for a missing binary, non-zero exit, timeout) means "not installed"; callers
+// map that to their own representation (notInstalledLabel for version, a bool
+// for toolInstalled). This is NOT the brew probe (isInstalled in brew.go) used
+// by install/update.
+//
+// DELEGATED (NON-BREW) SEAM: for a tool with a Probe spec (rk-desktop) there is
+// no `--version` surface — the probe runs the spec's Argv
+// (`rk desktop status`) via proc.RunCaptured under the same versionTimeout
+// bound, parses the LinePrefix line (`Installed:`), and returns a synthetic
+// `<Name> version <value>` line on success (which normalizeVersion's
+// prefix-strip renders as the raw value — run-kit's `v<X>` passes through
+// verbatim). Any failure — transport error, non-zero exit (including an
+// unsupported-platform refusal), a missing line, or the AbsentValue — returns
+// an error, which every caller maps to its not-installed representation.
 //
 // LEGACY-NAME FALLBACK (rk→run-kit rename): when the primary probe fails with
 // proc.ErrNotFound ONLY — i.e. `<tool.Name>` is not on PATH — AND the tool declares
@@ -81,11 +92,85 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 // tool.Name regardless of which probe name succeeded. A retained LegacyName
 // surface — the run-kit formula still installs `rk` as an interchangeable alias.
 func probeToolVersion(ctx context.Context, tool Tool) ([]byte, error) {
+	if tool.Probe != nil {
+		return probeDelegatedVersion(ctx, tool)
+	}
 	out, err := probeVersionByName(ctx, tool.Name)
 	if errors.Is(err, proc.ErrNotFound) && tool.LegacyName != "" {
 		return probeVersionByName(ctx, tool.LegacyName)
 	}
 	return out, err
+}
+
+// probeDelegatedVersion runs a delegated (non-brew) tool's Probe spec and maps
+// the outcome onto probeToolVersion's ([]byte, error) contract (see its doc
+// comment). Both streams are captured (proc.RunCaptured) so a refusal/status
+// message on stderr is visible to the refusal matcher, and the invocation is
+// bounded by the same versionTimeout as the `--version` path.
+func probeDelegatedVersion(ctx context.Context, tool Tool) ([]byte, error) {
+	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
+	defer cancel()
+	stdout, stderr, code, err := proc.RunCaptured(subCtx, tool.Probe.Argv[0], tool.Probe.Argv[1:]...)
+	if err != nil {
+		return nil, err
+	}
+	if code != 0 {
+		// A non-zero exit (e.g. run-kit's unsupported-platform refusal) means
+		// "not actionable here" — collapse to the not-installed signal; callers
+		// that need the refusal detail re-run the spec (see install.go).
+		return nil, errors.New(string(stderr))
+	}
+	value, installed := parseProbeStatusLine(string(stdout), tool.Probe)
+	if !installed {
+		return nil, errors.New(tool.Name + ": " + notInstalledLabel)
+	}
+	// Synthetic `<Name> version <value>` line: normalizeVersion's prefix-strip
+	// renders the raw value (run-kit's `v<X>` passes through verbatim).
+	return []byte(tool.Name + " version " + value + "\n"), nil
+}
+
+// probeToolInstalledVersion is the update-surface counterpart of brew.go's
+// probeInstalledVersion: a single probe read yielding BOTH the install fact and
+// the pre-upgrade version. Brew-managed tools take the brew probe; delegated
+// (non-brew) tools take the Probe spec via probeToolVersion (the version is
+// normalizeVersion's render of the `Installed:` line, "" when absent — best-
+// effort, suppressing only a digest entry, never the upgrade).
+func probeToolInstalledVersion(ctx context.Context, t Tool) (installed bool, version string) {
+	if !t.brewManaged() {
+		out, err := probeToolVersion(ctx, t)
+		if err != nil {
+			return false, ""
+		}
+		return true, normalizeVersion(string(out))
+	}
+	return probeInstalledVersion(ctx, t.Formula)
+}
+
+// parseProbeStatusLine scans captured probe output for a line whose FIRST
+// whitespace field is the spec's LinePrefix (trimmed) and classifies it: the
+// remaining value == AbsentValue → not installed; any other value → installed,
+// and the value is the installed version; a missing line (or a prefix line with
+// no value) reports ("", false). Whitespace-separated prefix/value, never a
+// regex (code-quality.md anti-pattern). Callers distinguish the three outcomes
+// via (value, installed): ("", false) = no status line found;
+// (AbsentValue, false) = cleanly reported absent; (version, true) = installed.
+func parseProbeStatusLine(out string, spec *ToolProbe) (value string, installed bool) {
+	prefix := strings.TrimSpace(spec.LinePrefix)
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != prefix {
+			continue
+		}
+		if len(fields) == 1 {
+			return "", false
+		}
+		value = strings.Join(fields[1:], " ")
+		if value == spec.AbsentValue {
+			return value, false
+		}
+		return value, true
+	}
+	return "", false
 }
 
 // probeVersionByName runs `<name> --version` under a versionTimeout deadline via

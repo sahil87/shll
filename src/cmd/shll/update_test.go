@@ -158,9 +158,12 @@ func isUpdateHelpProbe(req proc.Request) bool {
 func TestUpdate_AllInstalled(t *testing.T) {
 	// Every brew list/--version call succeeds → shll itself plus every roster
 	// tool are all installed. Help probes return empty stdout (no
-	// --skip-brew-update), so each tool delegates to `<tool> update` with no
-	// flag.
+	// --skip-brew-update), so each brew tool delegates to `<tool> update` with no
+	// flag; rk-desktop takes its delegated `rk desktop update` path (no probe).
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -176,13 +179,13 @@ func TestUpdate_AllInstalled(t *testing.T) {
 	if !invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
 		t.Fatalf("expected self-upgrade brew upgrade %s, calls: %+v", shllFormula, calls)
 	}
-	// Each roster tool is upgraded via its own `update` (no flag), and NOT via
-	// brew upgrade <formula>.
+	// Each roster tool is upgraded via its own Update argv (no flag for the brew
+	// tools here), and NOT via brew upgrade <formula>.
 	for _, tool := range Roster {
-		if !invocationsContain(calls, tool.Update[0], tool.Update[1]) {
-			t.Errorf("expected delegated %s update, calls: %+v", tool.Name, calls)
+		if !invocationsContain(calls, tool.Update[0], tool.Update[1:]...) {
+			t.Errorf("expected delegated %s update (%s), calls: %+v", tool.Name, argvString(tool.Update...), calls)
 		}
-		if invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
+		if tool.brewManaged() && invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
 			t.Errorf("did NOT expect brew upgrade %s — should delegate to `%s update`", tool.Formula, tool.Name)
 		}
 	}
@@ -193,6 +196,9 @@ func TestUpdate_SelfUpgradeOrdering(t *testing.T) {
 	// invocation picks up the new binary.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		// shll itself + full roster all installed.
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -243,6 +249,9 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 			}
 			return proc.Result{Stdout: []byte(req.Args[3] + " 1.0.0\n")}
 		}
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
@@ -255,10 +264,10 @@ func TestUpdate_SelfNotBrewInstalled(t *testing.T) {
 	if invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
 		t.Fatal("brew upgrade for shll should NOT run when shll itself isn't brew-installed")
 	}
-	// Roster upgrades still happen — delegated to each tool's own `update`.
+	// Roster upgrades still happen — delegated to each tool's own Update argv.
 	for _, tool := range Roster {
-		if !invocationsContain(calls, tool.Update[0], tool.Update[1]) {
-			t.Errorf("expected delegated %s update", tool.Name)
+		if !invocationsContain(calls, tool.Update[0], tool.Update[1:]...) {
+			t.Errorf("expected delegated %s update (%s)", tool.Name, argvString(tool.Update...))
 		}
 	}
 }
@@ -273,6 +282,9 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 				return proc.Result{Stdout: []byte(shllFormula + " 1.0.0\n")}
 			}
 			return proc.Result{Err: errors.New("not installed")}
+		}
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(false)
 		}
 		return proc.Result{}
 	}}
@@ -291,10 +303,10 @@ func TestUpdate_OnlyShllInstalled(t *testing.T) {
 	}
 	// No roster upgrades — neither brew upgrade nor delegated `<tool> update`.
 	for _, tool := range Roster {
-		if invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
+		if tool.brewManaged() && invocationsContain(calls, brewBinary, "upgrade", tool.Formula) {
 			t.Errorf("brew upgrade for uninstalled %s should NOT run", tool.Formula)
 		}
-		if invocationsContain(calls, tool.Update[0], tool.Update[1]) {
+		if invocationsContain(calls, tool.Update[0], tool.Update[1:]...) {
 			t.Errorf("delegated update for uninstalled %s should NOT run", tool.Name)
 		}
 	}
@@ -400,6 +412,8 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 		// and its fallback `brew upgrade <formula>`, so the tool genuinely fails.
 		// Self-upgrade (brew upgrade shll) and the rest of the roster succeed.
 		switch {
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(true)
 		case req.Name == first.Update[0] && len(req.Args) == 1 && req.Args[0] == first.Update[1]:
 			return proc.Result{ExitCode: 1}
 		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == first.Formula:
@@ -429,10 +443,15 @@ func TestUpdate_OneUpgradeFails(t *testing.T) {
 		}
 	}
 	// +1 for the shll self-upgrade (brew upgrade), +1 for roster[0]'s failed
-	// delegation triggering its one fallback brew upgrade.
-	want := len(Roster) + 2
+	// delegation triggering its one fallback brew upgrade, −1 for rk-desktop's
+	// two-token delegated argv (`rk desktop update`) not matching the
+	// single-`update`-arg count above.
+	want := len(Roster) + 1
 	if gotUpgrades != want {
-		t.Fatalf("upgrade attempts = %d, want %d (self + roster + one fallback, must continue through failure)", gotUpgrades, want)
+		t.Fatalf("upgrade attempts = %d, want %d (self + brew roster + one fallback, must continue through failure)", gotUpgrades, want)
+	}
+	if !invocationsContain(calls, rkBinary, "desktop", "update") {
+		t.Errorf("expected the delegated `rk desktop update`, calls: %+v", calls)
 	}
 }
 
@@ -451,18 +470,51 @@ func allInstalledResponder() func(proc.Request) proc.Result {
 	}
 }
 
+// rkDesktopStatusResult renders a fake `rk desktop status` probe result from the
+// tool's Probe spec: the `Installed:` line carries a version when installed is
+// true, the spec's absent value otherwise.
+func rkDesktopStatusResult(installed bool) proc.Result {
+	tool, ok := rosterTool("rk-desktop")
+	if !ok {
+		return proc.Result{}
+	}
+	if installed {
+		return proc.Result{Stdout: []byte(tool.Probe.LinePrefix + " 1.0.0\n")}
+	}
+	return proc.Result{Stdout: []byte(tool.Probe.LinePrefix + " " + tool.Probe.AbsentValue + "\n")}
+}
+
+// isRkDesktopProbe reports whether the request is rk-desktop's delegated
+// installed-probe invocation (`rk desktop status`).
+func isRkDesktopProbe(req proc.Request) bool {
+	tool, ok := rosterTool("rk-desktop")
+	if !ok {
+		return false
+	}
+	return req.Name == tool.Probe.Argv[0] && strings.Join(req.Args, " ") == strings.Join(tool.Probe.Argv[1:], " ")
+}
+
 // installedOnly returns a respond function where only the named formulas report
 // installed (via `brew list`), with all other requests succeeding (empty stdout).
 // shll itself is reported not-brew-installed so the self-upgrade is skipped and
 // the test stays focused on roster delegation. The `brew list` stdout emits the
 // keg name (matching real brew output like `run-kit 3.0.0`, not the
 // fully-qualified formula).
+//
+// The delegated rk-desktop probe (`rk desktop status`) is answered
+// installed=TRUE by default — the pre-rk-desktop default fake's empty-success
+// answer read as "installed" (no absent line), and keeping that default holds
+// the existing goldens steady. Tests that exercise the rk-desktop skip/gate
+// paths intercept isRkDesktopProbe BEFORE delegating to this responder.
 func installedOnly(formulas ...string) func(proc.Request) proc.Result {
 	set := make(map[string]bool, len(formulas))
 	for _, f := range formulas {
 		set[f] = true
 	}
 	return func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
 		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
 			if set[req.Args[3]] {
 				leaf := strings.TrimPrefix(req.Args[3], formulaPrefix)
@@ -617,16 +669,16 @@ func TestUpdate_HeadersAndTail(t *testing.T) {
 
 	// Headers now carry the [N/M] counter (shll (self) is [1/7] and first), each
 	// header after the first is preceded by a blank line, and a blank line precedes
-	// the duration-bearing tail. run-kit is migrated (no legacy keg), so no
-	// migration/dual-rack note appears.
+	// the duration-bearing tail. rk-desktop's probe reports absent (the responder's
+	// default), so the seven are shll + the six brew tools in roster order.
 	want := updateStatusLine + "\n" +
 		"==> [1/7] shll (self)\n" +
-		"\n==> [2/7] wt\n" +
-		"\n==> [3/7] idea\n" +
-		"\n==> [4/7] tu\n" +
-		"\n==> [5/7] run-kit\n" +
-		"\n==> [6/7] hop\n" +
-		"\n==> [7/7] fab-kit\n" +
+		"\n==> [2/7] run-kit\n" +
+		"\n==> [3/7] fab-kit\n" +
+		"\n==> [4/7] wt\n" +
+		"\n==> [5/7] idea\n" +
+		"\n==> [6/7] tu\n" +
+		"\n==> [7/7] hop\n" +
 		"\nDone — 7 of 7 tools succeeded in 1m12s.\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
@@ -646,6 +698,11 @@ func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	var seenAtHopUpgrade string
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		// rk-desktop's probe reports absent so it stays out of the actionable set
+		// (installedOnly defaults it installed — M would be 2).
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(false)
+		}
 		// Delegated `hop update` (foreground), not the `hop update --help` probe.
 		if req.Name == "hop" && req.Transport == proc.TransportForeground {
 			seenAtHopUpgrade = stdout.String()
@@ -673,6 +730,8 @@ func TestUpdate_PartialFailureTail(t *testing.T) {
 	base := installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		switch {
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(false) // keep rk-desktop out of the count
 		case req.Name == "hop" && req.Transport == proc.TransportForeground:
 			return proc.Result{ExitCode: 1}
 		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == formulaPrefix+"hop":
@@ -736,6 +795,9 @@ func TestUpdate_DryRunPreview(t *testing.T) {
 		formulaPrefix+"run-kit", formulaPrefix+"hop", formulaPrefix+"fab-kit",
 	)
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(false) // keep rk-desktop out of the preview golden
+		}
 		if (req.Name == "run-kit" || req.Name == "hop") && isUpdateHelpProbe(req) {
 			return helpAdvertisesSkipFlag()
 		}
@@ -747,16 +809,16 @@ func TestUpdate_DryRunPreview(t *testing.T) {
 	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, false, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
-	// Longest label is "fab-kit" (7) since shll (self) is absent here; labels are
-	// padded to 7. run-kit and hop carry the flag; wt/idea/tu/fab-kit do not.
+	// Longest label is "fab-kit"/"run-kit" (7) since shll (self) is absent here;
+	// labels are padded to 7. run-kit and hop carry the flag; the rest do not.
 	want := updateStatusLine + "\n" +
 		"Would update 6 tools (brew metadata refresh first):\n" +
+		"  run-kit  run-kit update --skip-brew-update\n" +
+		"  fab-kit  fab-kit update\n" +
 		"  wt       wt update\n" +
 		"  idea     idea update\n" +
 		"  tu       tu update\n" +
-		"  run-kit  run-kit update --skip-brew-update\n" +
-		"  hop      hop update --skip-brew-update\n" +
-		"  fab-kit  fab-kit update\n"
+		"  hop      hop update --skip-brew-update\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("dry-run preview =\n%q\nwant\n%q", got, want)
 	}
@@ -781,12 +843,12 @@ func TestUpdate_DryRunPreviewWithSelf(t *testing.T) {
 	want := updateStatusLine + "\n" +
 		"Would update 7 tools (brew metadata refresh first):\n" +
 		"  shll (self)  brew upgrade sahil87/tap/shll\n" +
+		"  run-kit      run-kit update\n" +
+		"  fab-kit      fab-kit update\n" +
 		"  wt           wt update\n" +
 		"  idea         idea update\n" +
 		"  tu           tu update\n" +
-		"  run-kit      run-kit update\n" +
-		"  hop          hop update\n" +
-		"  fab-kit      fab-kit update\n"
+		"  hop          hop update\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("dry-run preview with self =\n%q\nwant\n%q", got, want)
 	}
@@ -848,7 +910,12 @@ func TestUpdate_DryRunNoWrites(t *testing.T) {
 func TestUpdate_DryRunGracefulDegradation(t *testing.T) {
 	// Only hop and wt installed, shll not brew-installed → the preview lists exactly
 	// those two (roster order: wt then hop), counter M=2 in the header.
-	f := &fakeRunner{respond: installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")}
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(false)
+		}
+		return installedOnly(formulaPrefix+"hop", formulaPrefix+"wt")(req)
+	}}
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -1057,8 +1124,8 @@ func TestUpdate_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	if wtIdx == -1 || fabIdx == -1 {
 		t.Fatalf("missing wt/fab-kit upgrades (wt=%d, fab-kit=%d), calls: %+v", wtIdx, fabIdx, calls)
 	}
-	if wtIdx >= fabIdx {
-		t.Fatalf("wt (%d) must be processed before fab-kit (%d) — roster order, not arg order", wtIdx, fabIdx)
+	if fabIdx >= wtIdx {
+		t.Fatalf("fab-kit (%d) must be processed before wt (%d) — roster order, not arg order", fabIdx, wtIdx)
 	}
 	// Only the two named tools are acted on (shll not named → no self-upgrade; idea/tu/rk/hop untouched).
 	if invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
@@ -1070,8 +1137,8 @@ func TestUpdate_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 		}
 	}
 	// Counter denominator M=2.
-	if !strings.Contains(stdout.String(), "==> [1/2] wt\n") || !strings.Contains(stdout.String(), "==> [2/2] fab-kit\n") {
-		t.Errorf("stdout = %q, want [1/2] wt and [2/2] fab-kit headers", stdout.String())
+	if !strings.Contains(stdout.String(), "==> [1/2] fab-kit\n") || !strings.Contains(stdout.String(), "==> [2/2] wt\n") {
+		t.Errorf("stdout = %q, want [1/2] fab-kit and [2/2] wt headers", stdout.String())
 	}
 	if !strings.HasSuffix(stdout.String(), "Done — 2 of 2 tools succeeded in 0s.\n") {
 		t.Errorf("stdout = %q, want `Done — 2 of 2 …` tail (M = subset size)", stdout.String())
@@ -1095,6 +1162,143 @@ func TestUpdate_SubsetBrewUpdateRunsOnce(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("brew update --quiet ran %d times for a single-tool subset, want exactly 1", count)
+	}
+}
+
+// --- rk-desktop delegated update (change t26g) -------------------------------
+
+func TestUpdate_RkDesktopDelegatesToRkDesktopUpdate(t *testing.T) {
+	// rk-desktop installed (per its probe) → the run foregrounds
+	// `rk desktop update` — never a brew upgrade (no formula), never a
+	// `--skip-brew-update` help probe (the flag is a brew concern).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")} // nothing brew-installed (shll included)
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	calls := f.recordedCalls()
+	if !invocationsContain(calls, rkBinary, "desktop", "update") {
+		t.Fatalf("expected the delegated `rk desktop update`, calls: %+v", calls)
+	}
+	if invocationsContain(calls, rkBinary, "desktop", "update", "--help") {
+		t.Fatal("a delegated tool must NOT get a `--skip-brew-update` help probe")
+	}
+	if invocationsContain(calls, brewBinary, "upgrade") {
+		t.Fatal("rk-desktop must never be brew-upgraded (no formula)")
+	}
+}
+
+func TestUpdate_RkDesktopAbsentIsSkipped(t *testing.T) {
+	// rk-desktop not installed (probe reports the absent value) → skipped
+	// gracefully: no `rk desktop update`, exit 0 (the nothing-to-do case when
+	// nothing else is installed either).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(false)
+		}
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "update") {
+		t.Fatal("`rk desktop update` must NOT run when rk-desktop is not installed")
+	}
+}
+
+func TestUpdate_RkDesktopRefusalSkipsSilently(t *testing.T) {
+	// Unsupported platform: the probe itself refuses (errDesktopMacOnly) →
+	// rk-desktop is skipped gracefully (probe error = not installed), no update
+	// attempt, exit 0 — graceful degradation (Constitution V).
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopRefusalResult
+		}
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil (a platform refusal degrades to a skip)", err)
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "update") {
+		t.Fatal("`rk desktop update` must NOT run when the platform refuses")
+	}
+}
+
+func TestUpdate_RkDesktopFailureNoBrewFallback(t *testing.T) {
+	// rk-desktop installed but `rk desktop update` FAILS → the failure is
+	// surfaced (exit 1) with NO brew-upgrade fallback and NO relink heal — a
+	// delegated tool has no formula and no keg.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(true)
+		case req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list":
+			return proc.Result{Err: errors.New("not installed")}
+		case req.Name == rkBinary && len(req.Args) == 2 && req.Args[0] == "desktop" && req.Args[1] == "update":
+			return proc.Result{ExitCode: 1}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("runUpdate err = %v, want errSilent (rk desktop update failed)", err)
+	}
+	calls := f.recordedCalls()
+	if invocationsContain(calls, brewBinary, "upgrade") {
+		t.Fatal("a delegated tool's failure must NOT fall back to brew upgrade")
+	}
+	if invocationsContain(calls, brewBinary, "link") {
+		t.Fatal("a delegated tool's failure must NOT trigger the brew-link relink heal")
+	}
+}
+
+func TestUpdate_RkDesktopDryRunPreview(t *testing.T) {
+	// --dry-run previews the delegated argv (`rk desktop update`), no write.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(true)
+		}
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
+			return proc.Result{Err: errors.New("not installed")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, false, nil); err != nil {
+		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
+	}
+	if !strings.Contains(stdout.String(), "rk desktop update") {
+		t.Fatalf("dry-run preview = %q, want the `rk desktop update` row", stdout.String())
+	}
+	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "update") {
+		t.Fatal("dry-run must NOT execute `rk desktop update`")
 	}
 }
 
@@ -1172,6 +1376,13 @@ type versionTransitionRunner struct {
 func (r *versionTransitionRunner) respond(req proc.Request) proc.Result {
 	if req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "--version" {
 		return proc.Result{Stdout: []byte("Homebrew 4.0\n")}
+	}
+	// The delegated rk-desktop probe answers absent — digest tests are about the
+	// brew tools; intercepting here keeps rk-desktop out of their actionable sets
+	// (the pre-rk-desktop default's empty-success read as INSTALLED via the new
+	// delegated probe, which would pull an extra tool into every golden).
+	if isRkDesktopProbe(req) {
+		return rkDesktopStatusResult(false)
 	}
 	if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
 		formula := req.Args[3]
@@ -1267,12 +1478,12 @@ func TestUpdate_NoDigestWhenNothingBumped(t *testing.T) {
 	}
 	want := updateStatusLine + "\n" +
 		"==> [1/7] shll (self)\n" +
-		"\n==> [2/7] wt\n" +
-		"\n==> [3/7] idea\n" +
-		"\n==> [4/7] tu\n" +
-		"\n==> [5/7] run-kit\n" +
-		"\n==> [6/7] hop\n" +
-		"\n==> [7/7] fab-kit\n" +
+		"\n==> [2/7] run-kit\n" +
+		"\n==> [3/7] fab-kit\n" +
+		"\n==> [4/7] wt\n" +
+		"\n==> [5/7] idea\n" +
+		"\n==> [6/7] tu\n" +
+		"\n==> [7/7] hop\n" +
 		"\nDone — 7 of 7 tools succeeded in 1m12s.\n"
 	if got := stdout.String(); got != want {
 		t.Fatalf("stdout with no bumps must equal the pre-change golden.\n got=%q\nwant=%q", got, want)
@@ -1390,16 +1601,16 @@ func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
 	if !strings.Contains(out, "run-kit 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("run-kit", "0.1.0", "0.2.0")) {
 		t.Fatalf("out missing unavailable run-kit fallback:\n%s", out)
 	}
-	// wt precedes run-kit (roster order).
-	if strings.Index(out, "wt 1.0.0") > strings.Index(out, "run-kit 0.1.0") {
-		t.Fatalf("digest must render wt before run-kit (roster order):\n%s", out)
+	// run-kit precedes wt (roster order).
+	if strings.Index(out, "run-kit 0.1.0") > strings.Index(out, "wt 1.0.0") {
+		t.Fatalf("digest must render run-kit before wt (roster order):\n%s", out)
 	}
 	// Tool blocks are blank-line separated (mirroring runChangelog's per-tool
-	// separation): wt's last body line ("b") is followed by a blank line before
-	// run-kit's transition line — tools are never separated more weakly than the
-	// releases within one tool.
-	if !strings.Contains(out, "b\n\n  run-kit 0.1.0") {
-		t.Fatalf("out missing blank line between wt and run-kit digest blocks:\n%s", out)
+	// separation): run-kit's transition line is followed by a blank line before
+	// wt's — tools are never separated more weakly than the releases within one
+	// tool.
+	if !strings.Contains(out, "\n\n  wt 1.0.0") {
+		t.Fatalf("out missing blank line between run-kit and wt digest blocks:\n%s", out)
 	}
 }
 

@@ -1,16 +1,16 @@
 ---
 type: memory
-description: "`shll uninstall [tool...]` — the clean-slate repair counterpart to `shll install`: reverse-roster removal with shll-self last, a `Proceed? [y/N]` confirmation gate (`--yes`/`-y`, non-TTY refusal, `--dry-run` bypass), shll-self brew-managed gating, best-effort failure aggregation (named-missing exits 0), print-only daemon/rc-unwire hints, and the single-source `brewUninstallArgv` builder."
+description: "`shll uninstall [tool...]` — the clean-slate repair counterpart to `shll install`: reverse-roster brew removal with shll-self last and delegated (non-brew) entries like rk-desktop skipped with a note, a `Proceed? [y/N]` confirmation gate (`--yes`/`-y`, non-TTY refusal, `--dry-run` bypass), shll-self brew-managed gating, best-effort failure aggregation (named-missing exits 0), print-only daemon/rc-unwire hints, and the single-source `brewUninstallArgv` builder."
 ---
 # cli/uninstall
 
-`shll uninstall [tool...]` — brew-uninstalls shll toolkit tools. It is the **clean-slate repair path** that pairs with [`shll install`](/cli/install.md): when brew state gets wedged (an unlinked keg, a half-failed upgrade), `shll uninstall` removes it cleanly so `shll install` can bootstrap fresh. Absence is a *success* state — the goal "gone" is already met — so a named-but-missing target is not an error (the inverse of `shll update`'s precondition).
+`shll uninstall [tool...]` — brew-uninstalls shll toolkit tools. It is the **clean-slate repair path** that pairs with [`shll install`](/cli/install.md): when brew state gets wedged (an unlinked keg, a half-failed upgrade), `shll uninstall` removes it cleanly so `shll install` can bootstrap fresh. Absence is a *success* state — the goal "gone" is already met — so a named-but-missing target is not an error (the inverse of `shll update`'s precondition). Delegated (non-brew) roster entries — rk-desktop — carry no brew keg, so they are excluded from removal: naming one (or hitting it in the sweep) prints a skip-with-note line and never runs `brew uninstall`.
 
 Source: `src/cmd/shll/uninstall.go`, with the `stdinIsTTY` seam + `printUninstallPreview` in `src/cmd/shll/ui.go`, the `uninstallBrewMissingHint` in `src/cmd/shll/brew.go`, and wiring in `src/cmd/shll/root.go`.
 
 ## Behavior contract
 
-The full happy/unhappy paths, in the order `runUninstall(ctx, stdin io.Reader, stdout, stderr io.Writer, dryRun, yes bool, args []string) error` evaluates them (`src/cmd/shll/uninstall.go:156`):
+The full happy/unhappy paths, in the order `runUninstall(ctx, stdin io.Reader, stdout, stderr io.Writer, dryRun, yes bool, args []string) error` evaluates them (`src/cmd/shll/uninstall.go:154`):
 
 1. **Resolve targets up front — before `hasBrew` and any probe.** `resolveTargets(args, true)` (`allowShll=true`) validates the positional args and returns `(selected, selfSelected, aliased, err)`. An unknown target → `shll uninstall: <detail>` on stderr + `errSilent` (exit 1) with **no brew side effect**. `subset := len(args) > 0`; empty args yields the whole-roster sweep. The legacy alias `rk` resolves to `run-kit` and is recorded in `aliased` for the notice (below). See [cli/commands §the legacy target alias](/cli/commands.md#the-legacy-target-alias-rk--run-kit) and [cli/update §positional args](/cli/update.md#positional-tool-name-args--subset-targeting).
 
@@ -18,13 +18,13 @@ The full happy/unhappy paths, in the order `runUninstall(ctx, stdin io.Reader, s
 
 3. **Alias notice.** `printAliasNotices(stdout, aliased)` writes one `note: rk is now run-kit` line per aliased token (shared wording with `update`/`install`), before any framing. `resolveTargets` is IO-free; the caller prints.
 
-4. **Build the actionable set + graceful skips.** Iterate `consider` (the full `Roster` for a whole-roster sweep, or `selected` for a subset — both in leaves-first roster order). For each tool — run-kit included — `probeInstalledVersion(ctx, t.Formula)`: installed → actionable `uninstallTarget{tool, version}`; not installed → recorded in `skipped`. A legacy-`rk`-keg-only machine reports `sahil87/tap/run-kit` not installed, so run-kit is skipped there (orphan-keg cleanup is the manual README path). The probes are **reads**, so they run in dry-run too — only the writes are gated.
+4. **Build the actionable set + graceful skips.** Iterate `consider` (the full `Roster` for a whole-roster sweep, or `selected` for a subset — both in roster order). A delegated (non-brew) tool — `!t.brewManaged()`, today only rk-desktop — has no brew keg, so it is never actionable: it is recorded in `skipped` without probing, and the skip report (step 7) prints the `delegatedUninstallNote` for it instead of `not installed`. For each brew-managed tool — run-kit included — `probeInstalledVersion(ctx, t.Formula)`: installed → actionable `uninstallTarget{tool, version}`; not installed → recorded in `skipped`. A legacy-`rk`-keg-only machine reports `sahil87/tap/run-kit` not installed, so run-kit is skipped there (orphan-keg cleanup is the manual README path). The probes are **reads**, so they run in dry-run too — only the writes are gated.
 
 5. **shll-self classification (explicit-only, gated).** Only when `selfSelected` (never in the no-args sweep). Gate on `probeInstalledVersion(ctx, shllFormula)`: a `go install`/local-build shll (no brew keg) → `shll uninstall: shll: not brew-managed` on stderr + `errSilent` (the user explicitly asked for it, so absence is a hard error here, unlike a roster tool). Brew-managed → appended **LAST** so it is processed after every roster tool. Mirrors the fact `update.go`'s self-upgrade path keys on.
 
-6. **Reverse-roster ordering.** `reverseRosterOrder(actionable)` reverses only the roster portion (dependents before leaves — the mirror of install's leaves-first coherence) and re-appends any shll-self target so it stays the final removal. The reverse is *derived* from the single leaves-first `Roster` slice — no second hardcoded dependents-first order to drift.
+6. **Reverse-roster ordering.** `reverseRosterOrder(actionable)` reverses only the roster portion and re-appends any shll-self target so it stays the final removal. The reverse is *derived* from the single importance-descending `Roster` slice — no second hardcoded order to drift.
 
-7. **Report graceful skips.** Each `skipped` name prints `<name>: not installed` to stdout (the shared `notInstalledLabel` from `version.go`). Repair-path semantics: absence is the goal state, so a skip is **not** an error and does not affect the exit code. Printed before the plan/loop so the user sees the full picture.
+7. **Report graceful skips.** Each `skipped` name prints one line to stdout: a delegated (non-brew) tool prints `<name>: not brew-managed — remove it via its own manager (rk desktop)` (`delegatedUninstallNote`); anything else prints `<name>: not installed` (the shared `notInstalledLabel` from `version.go`). Repair-path semantics: absence is the goal state, so a skip is **not** an error and does not affect the exit code. Printed before the plan/loop so the user sees the full picture.
 
 8. **Nothing actionable → short-circuit.** If the actionable set is empty (an empty roster, or every named target already gone), write `uninstallNothingMsg` (`"Nothing to uninstall."`, mirroring install's `allInstalledMsg`) and return nil (exit 0).
 
@@ -34,7 +34,7 @@ The full happy/unhappy paths, in the order `runUninstall(ctx, stdin io.Reader, s
 
 11. **Best-effort removal loop.** Compute `color := colorEnabled(stdout)` once; `total := len(actionable)`; capture `start := nowFunc()` (the clock seam) after the gate so the duration covers only the removal phase. Per actionable target: a blank line before every header except the first, then `printToolHeader(stdout, name, i+1, total, color)`, then dispatch:
     - `self` → `uninstallOne(ctx, stderr, name, shllFormula)`; on success print the farewell (`shllFarewellFmt` naming `brew install sahil87/tap/shll`).
-    - default (every roster tool, run-kit included) → `uninstallOne(ctx, stderr, name, tool.Formula)`.
+    - default (every brew-managed roster tool, run-kit included) → `uninstallOne(ctx, stderr, name, tool.Formula)`.
     A failed removal sets `anyFailed`, records nothing further, and `continue`s (skips are never failures). On success `succeeded++`, and if the removed tool's name matches `runKitToolName` the [daemon-stop hint](#post-run-hints-print-only) is armed.
 
 12. **Summary tail + print-only hints.** A blank line, then `printSummaryTail(stdout, succeeded, total, nowFunc().Sub(start), color)` (shared with `update`/`install` — exit-code counts + run duration, honesty constraint preserved). Then the [post-run hints](#post-run-hints-print-only). Finally: `anyFailed` → `errSilent` (exit 1); else nil (exit 0).
@@ -45,6 +45,7 @@ The full happy/unhappy paths, in the order `runUninstall(ctx, stdin io.Reader, s
 |-----------|-----------|
 | All removals succeeded (or nothing-to-do / prompt-abort branch) | 0 |
 | Every named target absent (all skipped, none failed) — absence is success | 0 |
+| Delegated (non-brew) target named or swept (rk-desktop) — skip-with-note, never `brew uninstall`ed | 0 |
 | Unknown/typo'd positional target | 1 (via `errSilent`, before any brew work) |
 | `brew` not on PATH | 1 (via `errSilent`, hint on stderr) |
 | `shll uninstall shll` on a non-brew dev build | 1 (via `errSilent`, `not brew-managed` on stderr) |
@@ -55,8 +56,8 @@ A prompt abort (a non-affirmative answer) is exit **0** — the user chose not t
 
 ## Target resolution and ordering
 
-- **Valid targets**: the six `Roster` names (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) **plus** `shll` (`allowShll=true` — `shll uninstall shll` is legal, explicit-only). The legacy alias `rk` resolves to `run-kit` but is never advertised in the valid-targets diagnostic (accepted-but-unadvertised, same contract as `update`/`install`). `shll` is not in `Roster` (Constitution III), so it is handled separately (step 5), never in the no-args sweep.
-- **Reverse-roster (dependents before leaves)**: `fab-kit, hop, run-kit, tu, idea, wt`, the mirror of install's leaves-first coherence rationale (removing dependents before the leaves they depend on). Derived by reversing the single leaves-first `Roster` — see [cli/commands §leaves-first Roster order](/cli/commands.md#design-decision-leaves-first-roster-order). A subset is processed in reverse-roster order regardless of arg order.
+- **Valid targets**: the seven `Roster` names (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) **plus** `shll` (`allowShll=true` — `shll uninstall shll` is legal, explicit-only). rk-desktop is a valid named target but never actionable — naming it (or hitting it in the no-args sweep) prints the `delegatedUninstallNote` skip line without affecting the exit code; there is no `rk desktop uninstall` delegation. The legacy alias `rk` resolves to `run-kit` but is never advertised in the valid-targets diagnostic (accepted-but-unadvertised, same contract as `update`/`install`). `shll` is not in `Roster` (Constitution III), so it is handled separately (step 5), never in the no-args sweep.
+- **Reverse-roster order**: `hop, tu, idea, wt, fab-kit, rk-desktop, run-kit` — the reverse of the single importance-descending `Roster` (adjacency places rk-desktop before the run-kit runtime it delegates to, though in practice it skips-with-note rather than entering the actionable set). Derived by reversing the single `Roster` slice — see [cli/commands §hardcoded tool roster](/cli/commands.md#hardcoded-tool-roster). A subset is processed in reverse-roster order regardless of arg order.
 - **shll-self last**: the running orchestrator is removed after everything it might have managed. `reverseRosterOrder` reverses only the roster portion and re-appends the shll-self target so it stays final even in a mixed `shll uninstall shll hop wt` run.
 
 ## The confirmation gate
@@ -109,7 +110,7 @@ After the removal loop, `shll uninstall` prints (never executes — Constitution
 Two load-bearing properties:
 
 - **Success-gated**: both signals are set only on a tool that actually **removed** (`!failed`), never on a merely-attempted-but-failed removal — mirroring `update`'s daemon-note success gating. shll-self carries no `ShellInit`, so it never trips the rc-unwire signal.
-- **Roster-wide keys on roster-set COVERAGE**, not `!subset`: `rosterWide := len(consider) == len(Roster)`. Because `resolveTargets` returns a de-duplicated roster-ordered set, full coverage is exactly the length equality — so a **NAMED full-roster sweep** (all six roster tools listed explicitly) qualifies alongside the no-args case. Scoping the rc-unwire hint to roster-wide avoids a misleading rc-unwiring nudge on a partial subset that may leave other integrated tools present and still wired.
+- **Roster-wide keys on roster-set COVERAGE**, not `!subset`: `rosterWide := len(consider) == len(Roster)`. Because `resolveTargets` returns a de-duplicated roster-ordered set, full coverage is exactly the length equality — so a **NAMED full-roster sweep** (all seven roster tools listed explicitly) qualifies alongside the no-args case. Scoping the rc-unwire hint to roster-wide avoids a misleading rc-unwiring nudge on a partial subset that may leave other integrated tools present and still wired.
 
 ## Non-Goals
 
@@ -117,6 +118,7 @@ Two load-bearing properties:
 - **No config/state purge** (rk daemon state, hop data, rc-file edits) — brew-uninstall semantics, not `--zap`; a purge flag can layer on later.
 - **No stopping of running processes** (run-kit daemon) — print the hint, never execute (Constitution III).
 - **No `shll uninstall` → `shll install` composite** — the repair recipe stays two explicit commands.
+- **No `rk desktop uninstall` delegation** — rk-desktop is excluded with a skip-with-note line (see the Design Decision); uninstall's contract is brew-keg removal and rk-desktop has no keg.
 - **No orphan-`rk`-keg sweep** — run-kit is a plain `sahil87/tap/run-kit` target; a residual legacy `rk` keg is manual cleanup per run-kit's README (`brew uninstall sahil87/tap/rk`), not a shll action.
 
 ## Design Decisions
@@ -128,10 +130,16 @@ Two load-bearing properties:
 *Introduced by*: `260709-kkaj-shll-uninstall-command`.
 
 ### Reverse-roster via slice iteration, not a second declared order
-**Decision**: reverse the actionable set built in leaves-first `Roster` order (`reverseRosterOrder`), keeping shll-self last.
-**Why**: one source of truth (the `Roster` slice); the dependents-first order is derived, mirroring the leaves-first coherence rationale.
-**Rejected**: a second hardcoded dependents-first slice (drift risk).
+**Decision**: reverse the actionable set built in `Roster` order (`reverseRosterOrder`), keeping shll-self last.
+**Why**: one source of truth — the reverse is derived from the single importance-descending `Roster` slice, so no second declared order can drift from it.
+**Rejected**: a second hardcoded reverse-roster slice (drift risk).
 *Introduced by*: `260709-kkaj-shll-uninstall-command`.
+
+### Delegated (non-brew) entries skip with a note, never `brew uninstall`
+**Decision**: `shll uninstall` excludes formula-less roster entries (rk-desktop) from the actionable set — a named or swept rk-desktop prints the `delegatedUninstallNote` skip line and does not affect the exit code; there is no `rk desktop uninstall` delegation.
+**Why**: uninstall is the brew clean-slate repair path — its contract is brew-keg removal, and rk-desktop has no keg. Whether `rk desktop uninstall` even exists is unverified; delegating would invent a contract.
+**Rejected**: delegating to `rk desktop uninstall` (an unverified subcommand — inventing a removal contract uninstall does not own).
+*Introduced by*: `260820-t26g-roster-desktop-entry`.
 
 ### run-kit is a plain reverse-roster target
 **Decision**: run-kit takes the same `probeInstalledVersion` + `uninstallOne(t.Name, t.Formula)` path as every other tool — no dedicated dual-name sweep, no leaf verification, no residual-`rk` removal.
@@ -141,7 +149,7 @@ Two load-bearing properties:
 
 ## Test seam
 
-`uninstall_test.go` drives `runUninstall` with `bytes.Buffer` writers, a `strings.Reader`/`bytes.Buffer` stdin, the shared `fakeRunner`/`installFakeRunner` seam, and `installFakeClock` for the duration tail. No real brew subprocess is spawned. Covered: no-args sweep skips missing + reverse order; targeted named-missing exits 0; unknown-target hard error; prompt abort on `n`; `--yes` bypass; non-TTY refusal; dry-run preview parity + no writes + gate bypass; run-kit as a plain target (+ `rk`-alias resolution + daemon-stop hint on successful removal + a legacy-`rk`-keg-only machine treated as run-kit not installed, no `sahil87/tap/rk` reference); self-uninstall brew-managed + not-brew-managed gating + farewell; failure aggregation → exit 1 (skips not failures); post-run hints print-only.
+`uninstall_test.go` drives `runUninstall` with `bytes.Buffer` writers, a `strings.Reader`/`bytes.Buffer` stdin, the shared `fakeRunner`/`installFakeRunner` seam, and `installFakeClock` for the duration tail. No real brew subprocess is spawned. Covered: no-args sweep skips missing + reverse order; targeted named-missing exits 0; unknown-target hard error; prompt abort on `n`; `--yes` bypass; non-TTY refusal; dry-run preview parity + no writes + gate bypass; run-kit as a plain target (+ `rk`-alias resolution + daemon-stop hint on successful removal + a legacy-`rk`-keg-only machine treated as run-kit not installed, no `sahil87/tap/rk` reference); the rk-desktop delegated exclusion — a targeted `shll uninstall rk-desktop` prints the skip-with-note line, exits 0, and runs no `brew uninstall` (`TestUninstall_RkDesktopTargetedSkipsWithNote`), and the no-args sweep prints the note alongside the not-installed lines while still removing the installed brew tools (`TestUninstall_WholeRosterSweepSkipsRkDesktop`); self-uninstall brew-managed + not-brew-managed gating + farewell; failure aggregation → exit 1 (skips not failures); post-run hints print-only.
 
 ## Cross-references
 

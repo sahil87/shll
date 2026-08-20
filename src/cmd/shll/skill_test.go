@@ -58,7 +58,7 @@ func TestSkill_Glossary_InstalledOnlyShllFirst(t *testing.T) {
 	if !strings.Contains(lines[0], shllSelf.Description) {
 		t.Errorf("shll row must carry its description, got %q", lines[0])
 	}
-	// Roster order: wt precedes hop (leaves-first).
+	// Roster order assertion below is index-paired to the live Roster.
 	if !strings.HasPrefix(lines[1], "wt") || !strings.HasPrefix(lines[2], "hop") {
 		t.Errorf("installed rows must be wt then hop (roster order), got %q, %q", lines[1], lines[2])
 	}

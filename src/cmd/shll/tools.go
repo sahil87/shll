@@ -26,6 +26,8 @@ type Tool struct {
 	// label printed by `shll version`).
 	Name string
 	// Formula is the fully-qualified Homebrew formula name passed to brew.
+	// EMPTY for a delegated (non-brew) tool — see the Install/Probe fields;
+	// every brew-centric helper MUST branch on brewManaged() before using it.
 	Formula string
 	// ShellInit is the argv of the tool's shell-init invocation, with `<shell>`
 	// substituted at composition time. An empty slice means the tool has no
@@ -40,8 +42,10 @@ type Tool struct {
 	// "update"}`). `shll update` delegates to this rather than calling `brew
 	// upgrade <formula>` directly, so each tool's post-upgrade side effects
 	// (e.g. rk's daemon restart) are preserved (Constitution IV — Composition).
-	// An empty slice means the tool exposes no `update` subcommand — `shll
-	// update` falls back to `brew upgrade <formula>` for it. Every current
+	// For a delegated (non-brew) tool this IS the update path (e.g. rk-desktop's
+	// `{"rk", "desktop", "update"}`) — there is no brew fallback. An empty slice
+	// on a BREW-MANAGED tool means the tool exposes no `update` subcommand —
+	// `shll update` falls back to `brew upgrade <formula>` for it. Every current
 	// roster tool ships an `update`, so all entries populate this field.
 	Update []string
 	// Skill is the argv of the tool's skill-bundle invocation (e.g. {"fab",
@@ -85,6 +89,71 @@ type Tool struct {
 	// install whose binary is on PATH under the old name is shown as installed by
 	// list/version/doctor. Empty for every tool except run-kit ("rk").
 	LegacyName string
+	// Install is the argv of the tool's delegated install invocation (e.g.
+	// {"rk", "desktop", "install"}). Empty for brew-managed tools, whose install
+	// path is `brew install <Formula>`. A non-empty Install marks the NON-BREW
+	// (delegated) seam: such a tool carries NO Formula, is skipped by every
+	// brew-centric helper (trust, `brew list`, `brew upgrade`, `brew uninstall`),
+	// and MUST carry a Probe. Populated today only by rk-desktop; the seam is
+	// field-driven so a future non-brew tool needs only a roster entry.
+	Install []string
+	// Probe describes how to detect a delegated (non-brew) tool's installed
+	// state and version — the non-brew counterpart of the brew
+	// `brew list --versions` probe and the `<tool> --version` PATH probe. Nil for
+	// brew-managed tools. See ToolProbe.
+	Probe *ToolProbe
+}
+
+// ToolProbe is the installed-state probe spec for a delegated (non-brew) roster
+// tool. The probe runs Argv (via proc.RunCaptured — both streams captured so a
+// platform-refusal message on either stream is detectable), then scans the
+// output for a line starting with LinePrefix:
+//
+//   - the line's value equals AbsentValue → NOT installed;
+//   - any other value → installed, and the value IS the installed version
+//     (e.g. `Installed: v1.2.3` → `v1.2.3`);
+//   - no matching line, a transport error, or a non-zero exit → not installed
+//     (callers distinguish the failure detail only when they need it).
+//
+// rk-desktop's probe is {"rk", "desktop", "status"} with LinePrefix
+// "Installed:" — run-kit's status output already distinguishes
+// `Installed: not installed` from `Installed: v<X>`.
+type ToolProbe struct {
+	// Argv is the probe invocation (binary + args).
+	Argv []string
+	// LinePrefix selects the status line to parse (e.g. "Installed:").
+	LinePrefix string
+	// AbsentValue is the line value meaning "not installed" (e.g.
+	// "not installed").
+	AbsentValue string
+}
+
+// brewManaged reports whether the tool is installed/upgraded/removed through
+// Homebrew (Formula non-empty). The delegated (non-brew) seam is the inverse:
+// brewManaged()==false means install/update delegate to Install/Update argvs
+// and detection goes through Probe, with no formula for any brew helper.
+func (t Tool) brewManaged() bool { return t.Formula != "" }
+
+// rkBinary is the run-kit CLI binary name — the argv[0] every rk-desktop
+// delegation (`rk desktop install/update/status`) runs through. Named per
+// code-quality.md (no magic strings); distinct from runKitToolName
+// (agent_setup.go), which is the ROSTER display name used for name matching.
+const rkBinary = "rk"
+
+// rkDesktopRefusalToken is the stable substring of run-kit's unsupported-platform
+// refusal (errDesktopMacOnly in run-kit's cmd/rk/desktop.go: "rk desktop is
+// macOS-only (the shell is packaged as a macOS .app)"). shll matches this token
+// to distinguish a PLATFORM REFUSAL (skip-with-note in whole-roster runs, an
+// explicit message on targeted runs) from a real failure — NEVER a hardcoded
+// darwin check, so when run-kit grows Linux support shll needs zero changes.
+// Named per code-quality.md (no magic strings).
+const rkDesktopRefusalToken = "rk desktop is macOS-only"
+
+// isRkDesktopRefusal reports whether captured `rk desktop …` output (either
+// stream) carries run-kit's unsupported-platform refusal. See
+// rkDesktopRefusalToken.
+func isRkDesktopRefusal(out []byte) bool {
+	return strings.Contains(string(out), rkDesktopRefusalToken)
 }
 
 // githubOrgBase is the GitHub organization base URL for the shll toolkit.
@@ -133,36 +202,35 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 	}
 }
 
-// Roster is the hardcoded shll toolkit list. Order matters and is declared
-// leaves-first: every tool appears after all of its dependencies, so dependents
-// are processed only once their dependencies are done.
+// Roster is the hardcoded shll toolkit list. Order matters: it is declared
+// IMPORTANCE-DESCENDING with dependency adjacency — the tools a user reaches for
+// first lead the list, and a tool sits immediately after the runtime it depends
+// on (rk-desktop directly after run-kit, whose `rk desktop …` subcommands it
+// delegates to).
 //
-// The dependency edges driving this order are:
-//   - fab-kit -> wt, fab-kit -> idea  (fab-kit's brew formula upgrades wt/idea)
-//   - hop -> wt                       (hop's brew formula upgrades wt; hop also
-//     invokes wt at runtime)
-//   - run-kit -> wt                   (run-kit invokes wt at runtime)
+// Every roster-driven surface inherits this order from the single slice:
+// install/update walk order, uninstall's reverse walk, list/doctor/version row
+// order, and shell-init composition order — no surface hardcodes a second order.
+// (This replaces the earlier leaves-first dependency-edge ordering: brew
+// resolves formula dependencies correctly and idempotently regardless of walk
+// order, so the order is output coherence and meaning, not correctness.)
 //
-// so the leaves wt, idea, tu (no outgoing edges) precede the dependents run-kit,
-// hop, fab-kit. This is OUTPUT COHERENCE, not a correctness fix: brew already
-// resolves formula dependencies correctly and idempotently, and each
-// `<tool> update` is self-update-only, so the order can neither break nor
-// improve upgrade correctness. What it buys is that each tool's per-tool output
-// section in `shll update` / `shll install` completes (and is counted) before a
-// dependent's internal `brew upgrade` can re-touch a leaf already reported done
-// under its own header. `shll shell-init` likewise concatenates output in this
-// order, so users can reason about init sequencing.
-//
-// The full ordering contract (brew-upgrade AND runtime edges) is enforced by
-// TestRosterLeavesBeforeDependents — a comment cannot fail CI, so the test
-// guards against an accidental reorder.
+// rk-desktop is the roster's first DELEGATED (non-brew) entry: it carries no
+// Formula — install/update delegate to `rk desktop install`/`rk desktop update`
+// (Constitution III/IV — wrap, don't reinvent), and its installed-probe parses
+// the `Installed:` line of `rk desktop status`. Its dependency on run-kit is
+// expressed as a runtime probe + this roster adjacency only (install-composition
+// standard, Policy A — no formula edge). The exact order is enforced by
+// TestRosterOrder — a comment cannot fail CI, so the test guards against an
+// accidental reorder.
 var Roster = []Tool{
+	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", Description: "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content (HTML, diagrams, reports, a local dev server) in a browser window, to proxy a local http port to the user's browser, or to push a notification to their devices (run-kit). The user may be viewing this session remotely through run-kit's web dashboard, where `open`/`xdg-open` and localhost URLs never reach them and publishing to a hosted artifact page (e.g. claude.ai) forces them off the dashboard — before opening any file or local port in a browser, read `shll skill run-kit` for the proxied-iframe recipe; the same applies before publishing an artifact or hosted page to show the user something."},
+	{Name: "rk-desktop", Update: []string{rkBinary, "desktop", "update"}, Install: []string{rkBinary, "desktop", "install"}, Probe: &ToolProbe{Argv: []string{rkBinary, "desktop", "status"}, LinePrefix: "Installed:", AbsentValue: "not installed"}, Repo: "run-kit", Description: "Run-kit desktop viewer shell — the macOS companion app, managed via `rk desktop install`/`rk desktop update`", SkillHint: "desktop viewer shell"},
+	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Skill: []string{"fab", "skill"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees", SkillHint: "git worktrees"},
 	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal", SkillHint: "backlog ideas"},
 	{Name: "tu", Formula: formulaPrefix + "tu", ShellInit: []string{"tu", "shell-init", shellPlaceholder}, Update: []string{"tu", "update"}, Repo: "tu", Description: "Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)", SkillHint: "AI token-usage tracking"},
-	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", Description: "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content (HTML, diagrams, reports, a local dev server) in a browser window, to proxy a local http port to the user's browser, or to push a notification to their devices (run-kit). The user may be viewing this session remotely through run-kit's web dashboard, where `open`/`xdg-open` and localhost URLs never reach them and publishing to a hosted artifact page (e.g. claude.ai) forces them off the dashboard — before opening any file or local port in a browser, read `shll skill run-kit` for the proxied-iframe recipe; the same applies before publishing an artifact or hosted page to show the user something."},
 	{Name: "hop", Formula: formulaPrefix + "hop", ShellInit: []string{"hop", "shell-init", shellPlaceholder}, Update: []string{"hop", "update"}, Repo: "hop", Description: "Fast directory/project jumping across worktrees", SkillHint: "directory/project jumping"},
-	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Skill: []string{"fab", "skill"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 }
 
 // shllTargetToken is the literal positional argument that selects shll itself as
@@ -182,13 +250,13 @@ const shllSelfDescription = "the manager for the shll toolkit"
 // displayable entry — the one source of truth reused by every command that shows
 // the toolkit as a family (`list`, `doctor`, `install`; `version`/`update`
 // already lead with shll via their own self-handling). Each such command PREPENDS
-// this descriptor, rendering shll FIRST, then the leaves-first Roster
-// (`shll, wt, idea, tu, rk, hop, fab-kit`).
+// this descriptor, rendering shll FIRST, then the Roster
+// (`shll, run-kit, rk-desktop, fab-kit, wt, idea, tu, hop`).
 //
 // It reuses the Tool struct shape but is deliberately NOT a Roster entry: Roster
 // is the *managed sub-tool* list (Constitution III — Tool Roster Source of Truth),
-// and adding shll there would break the leaves-first invariant guarded by
-// TestRosterLeavesBeforeDependents and make install/update/shell-init try to
+// and adding shll there would break the roster invariants guarded by
+// TestRosterOrder and make install/update/shell-init try to
 // operate on the running orchestrator itself (e.g. brew-install the live binary).
 // Only Name, Description, and Repo are populated: shll has no managed Formula, no
 // own ShellInit to compose (shell-init is the documented exception — its stdout is
@@ -223,7 +291,7 @@ func shllSelfVersion() string {
 // (`update` passes true; `install` passes false — shll is not installable), plus the
 // legacyAliases keys (e.g. `rk` → `run-kit`), which resolve to their canonical
 // Roster tool. The args form a SET, not a sequence: selected Tools are returned in
-// Roster (leaves-first) order regardless of the order they were supplied, and
+// Roster order regardless of the order they were supplied, and
 // selfSelected reports whether shll itself was named (the caller processes it first,
 // before the roster loop). aliased lists the legacy alias tokens the caller passed
 // (in the order encountered) so the caller can print a one-line "note: rk is now
@@ -270,7 +338,7 @@ func resolveTargets(args []string, allowShll bool) (selected []Tool, selfSelecte
 	}
 
 	// Return the selected Tools in Roster order (not arg order) so the subset is
-	// always processed leaves-first, matching the whole-roster contract.
+	// always processed in roster order, matching the whole-roster contract.
 	for _, t := range Roster {
 		if wanted[t.Name] {
 			selected = append(selected, t)
