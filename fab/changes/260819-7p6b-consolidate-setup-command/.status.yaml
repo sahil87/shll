@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 10
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-08-20T07:42:09Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-20T07:47:54Z"}
     hydrate: {started_at: "2026-08-20T07:47:54Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-20T08:19:23Z"}
     ship: {started_at: "2026-08-20T08:19:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-20T08:23:08Z"}
-    review-pr: {started_at: "2026-08-20T08:23:08Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-08-20T08:23:08Z", driver: git-pr, iterations: 1, completed_at: "2026-08-20T08:33:12Z"}
 prs:
     - https://github.com/sahil87/shll/pull/84
 true_impact:
@@ -53,4 +53,4 @@ true_impact:
     computed_at_stage: ship
 summary: Consolidate shell-setup/agent-setup into the shll setup family (setup shell / setup agent / runnable parent, hidden old spellings for one release, refreshArgv flips to shll setup agent)
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-08-20T08:23:08Z
+last_updated: 2026-08-20T08:33:12Z
