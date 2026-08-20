@@ -414,9 +414,11 @@ func shllDoctorResult(env func(string) string) doctorResult {
 // evaluateDelegatedTool composes the doctor row for a delegated (non-brew)
 // roster tool (rk-desktop). The Probe spec is the only check: installed +
 // version → OK; absent (the probe's absent value) → FAIL with the delegated
-// install hint; a probe failure (prerequisite binary missing, transport error,
-// an unsupported-platform refusal, or a missing status line) → FAIL with the
-// unreportable hint. No trust sub-check (no formula — the whole tap-trust
+// install hint; an unanswerable probe (prerequisite binary missing, transport
+// error, or a non-zero exit incl. an unsupported-platform refusal) → FAIL with
+// the same delegated install hint (the install command prints the fuller
+// explanation); an unreportable probe (clean exit but no parseable status
+// line) → FAIL with the unreportable hint. No trust sub-check (no formula — the whole tap-trust
 // concern is brew's) and no wiring check (ShellInit is empty by construction,
 // so the row reports shell_init:false like idea/run-kit/fab-kit). The exit-code
 // contract is unchanged: a FAIL here sets anyFail in the caller exactly like a
