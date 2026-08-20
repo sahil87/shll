@@ -11,12 +11,21 @@ import (
 )
 
 // listFake constructs a fakeRunner for `shll list`'s install probe. The probe is
-// the same `<tool> --version` invocation `shll version` uses, so the fake keys
-// off req.Name and the "--version" arg: a tool present in installed responds
-// with success; an absent tool returns proc.ErrNotFound (mirroring exec.LookPath
-// when the binary is missing from PATH).
+// the same `<tool> --version` invocation `shll version` uses for brew-managed
+// tools, so the fake keys off req.Name and the "--version" arg: a tool present
+// in installed responds with success; an absent tool returns proc.ErrNotFound
+// (mirroring exec.LookPath when the binary is missing from PATH). The delegated
+// rk-desktop probe (`rk desktop status`) answers from the same map, keyed on
+// the tool name.
 func listFake(installed map[string]bool) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
+		// Delegated (non-brew) probe: rk-desktop's `rk desktop status`.
+		if tool, ok := rosterTool("rk-desktop"); ok && req.Name == tool.Probe.Argv[0] && strings.Join(req.Args, " ") == strings.Join(tool.Probe.Argv[1:], " ") {
+			if installed[tool.Name] {
+				return proc.Result{Stdout: []byte(tool.Probe.LinePrefix + " v0.1.0\n")}
+			}
+			return proc.Result{Stdout: []byte(tool.Probe.LinePrefix + " " + tool.Probe.AbsentValue + "\n")}
+		}
 		if len(req.Args) == 1 && req.Args[0] == "--version" {
 			if installed[req.Name] {
 				return proc.Result{Stdout: []byte(req.Name + " v0.1.0\n")}
@@ -249,7 +258,7 @@ func TestList_Order(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &items); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	// shll-first, then the roster (leaves-first) — len(Roster)+1 total.
+	// shll-first, then the roster (roster order) — len(Roster)+1 total.
 	if len(items) != len(Roster)+1 {
 		t.Fatalf("len = %d, want %d", len(items), len(Roster)+1)
 	}

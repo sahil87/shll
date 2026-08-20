@@ -66,6 +66,19 @@ func doctorFakeTrust(states map[string]doctorVersionState, ts trustState) *fakeR
 				return proc.Result{Stdout: []byte(req.Name + " v1.2.3\n")}
 			}
 		}
+		// rk-desktop's delegated probe (`rk desktop status`): the states map keys
+		// on the tool NAME ("rk-desktop"), defaulting to installed like the
+		// --version branch.
+		if isRkDesktopProbe(req) {
+			switch states["rk-desktop"] {
+			case dvMissing:
+				return rkDesktopStatusResult(false)
+			case dvUnreportable:
+				return proc.Result{Err: errors.New("boom")}
+			default: // dvOK
+				return rkDesktopStatusResult(true)
+			}
+		}
 		// `brew trust --help` capability probe.
 		if req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "trust" && req.Args[1] == "--help" {
 			if !ts.available {
@@ -854,5 +867,91 @@ func TestDoctor_AbsentAgentSkillOK(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), suggestSkillStale) {
 		t.Errorf("no placement must not WARN, got:\n%s", stdout.String())
+	}
+}
+
+// --- rk-desktop delegated evaluation (change t26g) ---------------------------
+
+func TestDoctor_RkDesktopOK(t *testing.T) {
+	// rk-desktop installed per its probe → OK row, no trust/wiring check
+	// (shell_init:false), version from the Installed: line.
+	installFakeRunner(t, doctorFake(nil))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !lineHas(out, "rk-desktop", markerOK) {
+		t.Errorf("rk-desktop line not OK:\n%s", out)
+	}
+}
+
+func TestDoctor_RkDesktopMissingFailsWithDelegatedHint(t *testing.T) {
+	// rk-desktop absent → FAIL with the DELEGATED install hint (`rk desktop
+	// install`), never a `brew install` suggestion (no formula), and never a
+	// trust WARN.
+	installFakeRunner(t, doctorFake(map[string]doctorVersionState{"rk-desktop": dvMissing}))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	err := runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	if !errors.Is(err, errSilent) {
+		t.Fatalf("err = %v, want errSilent (rk-desktop FAIL)", err)
+	}
+	out := stdout.String()
+	if !lineHas(out, "rk-desktop", markerFail) {
+		t.Errorf("rk-desktop line not FAIL:\n%s", out)
+	}
+	if !strings.Contains(out, "rk desktop install") {
+		t.Errorf("missing the delegated install hint for rk-desktop:\n%s", out)
+	}
+	if strings.Contains(out, "brew install") && lineHas(out, "rk-desktop", "brew install") {
+		t.Errorf("rk-desktop must never carry a brew install suggestion:\n%s", out)
+	}
+}
+
+func TestDoctor_RkDesktopNoTrustCheck(t *testing.T) {
+	// Trust available, NOTHING trusted → every installed brew tool WARNs, but the
+	// delegated rk-desktop (no formula) stays OK — the trust sub-check must not
+	// apply to it.
+	installFakeRunner(t, doctorFakeTrust(nil, trustState{available: true}))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	_ = runDoctor(context.Background(), false, rcEnv(dir), &stdout, &stderr)
+	out := stdout.String()
+	if !lineHas(out, "rk-desktop", markerOK) {
+		t.Errorf("rk-desktop must stay OK when untrusted (no formula):\n%s", out)
+	}
+	if lineHas(out, "rk-desktop", markerWarn) {
+		t.Errorf("rk-desktop must never WARN on trust:\n%s", out)
+	}
+}
+
+func TestDoctor_RkDesktopJSONFields(t *testing.T) {
+	// --json: rk-desktop's object reports shell_init:false, wired:false, and its
+	// probe-derived version.
+	installFakeRunner(t, doctorFake(nil))
+	dir := writeWiredRC(t)
+
+	var stdout, stderr bytes.Buffer
+	if err := runDoctor(context.Background(), true, rcEnv(dir), &stdout, &stderr); err != nil {
+		t.Fatalf("runDoctor --json err = %v, want nil", err)
+	}
+	var results []doctorResult
+	if err := json.Unmarshal(stdout.Bytes(), &results); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
+	}
+	r, ok := resultByTool(results)["rk-desktop"]
+	if !ok {
+		t.Fatalf("no rk-desktop object in:\n%s", stdout.String())
+	}
+	if r.Status != markerOK || r.ShellInit || r.Wired || !r.OnPath || !r.VersionOK {
+		t.Errorf("rk-desktop object = %+v, want OK/shell_init:false/wired:false/on_path/version_ok", r)
+	}
+	if r.Version == "" {
+		t.Errorf("rk-desktop object carries no version: %+v", r)
 	}
 }

@@ -103,14 +103,17 @@ type checkUpdatesReport struct {
 
 // checkTarget is one tool the sweep covers: shll itself first (anchored on its
 // brew formula, mirroring `shll changelog`'s bare-sweep precedent), then every
-// Roster tool in leaves-first order. formulaLeaf is the tap-relative formula
+// Roster tool in roster order. formulaLeaf is the tap-relative formula
 // name (`run-kit`, `shll`) emitted as the JSON `formula` field, matching the
-// manifest's own formula values.
+// manifest's own formula values. A DELEGATED (non-brew) roster tool carries
+// its Probe instead: brewFormula stays empty and its installed anchor comes
+// from the probe spec (`rk desktop status`), never a brew read.
 type checkTarget struct {
 	name        string
 	formulaLeaf string
 	brewFormula string
 	repo        string
+	tool        Tool // the roster entry (zero for shll-self)
 }
 
 // checkUpdateRow is one target's resolution outcome. installed/latest are
@@ -216,8 +219,10 @@ func runCheckUpdates(ctx context.Context, stdout, stderr io.Writer, source strin
 // checkUpdateTargets returns the sweep set: shll itself FIRST (the unified
 // shll-first ordering principle; installed anchor = its brew formula, never
 // the running binary's ldflags version — the changelog bare-sweep precedent),
-// then every Roster tool in leaves-first order. shll is NOT added to Roster
-// (Constitution III — len(Roster) stays 6).
+// then every Roster tool in roster order. shll is NOT added to Roster
+// (Constitution III). A delegated (non-brew) roster tool carries no
+// brewFormula/formulaLeaf — its installed anchor resolves through its Probe
+// spec (resolveOneTarget) and the JSON `formula` field falls back to its name.
 func checkUpdateTargets() []checkTarget {
 	targets := make([]checkTarget, 0, len(Roster)+1)
 	targets = append(targets, checkTarget{
@@ -227,12 +232,16 @@ func checkUpdateTargets() []checkTarget {
 		repo:        shllSelf.Repo,
 	})
 	for _, t := range Roster {
-		targets = append(targets, checkTarget{
-			name:        t.Name,
-			formulaLeaf: strings.TrimPrefix(t.Formula, formulaPrefix),
-			brewFormula: t.Formula,
-			repo:        t.Repo,
-		})
+		tgt := checkTarget{name: t.Name, repo: t.Repo, tool: t}
+		if t.brewManaged() {
+			tgt.formulaLeaf = strings.TrimPrefix(t.Formula, formulaPrefix)
+			tgt.brewFormula = t.Formula
+		} else {
+			// No formula to name — the name is the identifier (never a bare
+			// `brew install rk-desktop` hint; it is not a formula).
+			tgt.formulaLeaf = t.Name
+		}
+		targets = append(targets, tgt)
 	}
 	return targets
 }
@@ -258,12 +267,20 @@ func resolveCheckUpdates(ctx context.Context, targets []checkTarget, source stri
 }
 
 // resolveOneTarget resolves a single target (see resolveCheckUpdates): the
-// brew-installed anchor, then the backend's latest (+ notify on released).
+// installed anchor, then the backend's latest (+ notify on released).
 // All versions are normalized (v prefix + brew _N revision stripped) so both
-// sides share one comparable form.
+// sides share one comparable form. The anchor is a brew read for brew-managed
+// tools (shll-self included — tool is the zero value there, brewManaged on a
+// zero Tool is false, so shll-self takes the explicit brewFormula branch) and
+// the delegated Probe spec for a non-brew tool.
 func resolveOneTarget(ctx context.Context, tgt checkTarget, source string, manifest versions.Manifest) checkUpdateRow {
 	row := checkUpdateRow{name: tgt.name, formulaLeaf: tgt.formulaLeaf}
-	row.installed = changelog.NormalizeVer(installedVersion(ctx, tgt.brewFormula))
+	if tgt.tool.Probe != nil {
+		_, v := probeToolInstalledVersion(ctx, tgt.tool)
+		row.installed = changelog.NormalizeVer(v)
+	} else {
+		row.installed = changelog.NormalizeVer(installedVersion(ctx, tgt.brewFormula))
+	}
 
 	switch source {
 	case sourceReleased:

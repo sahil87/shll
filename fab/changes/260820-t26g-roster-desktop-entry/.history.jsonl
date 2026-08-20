@@ -2,3 +2,15 @@
 {"args":"Change A from fab/plans/sahil/desktop-roster-and-install-ux.md: reorder roster importance-descending and add rk-desktop as a non-brew roster entry delegating to rk desktop install/update, probe-gated on platform support","cmd":"fab-new","event":"command","ts":"2026-08-20T18:10:58Z"}
 {"delta":"+4.6","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-08-20T18:12:08Z"}
 {"cmd":"fab-draft","event":"command","ts":"2026-08-20T18:14:12Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-08-20T18:21:22Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-08-20T18:23:47Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-08-20T18:24:50Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-08-20T18:26:55Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-08-20T18:53:06Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-08-20T18:56:30Z"}
+{"event":"review","result":"passed","ts":"2026-08-20T18:56:30Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-08-20T19:15:29Z"}
+{"cmd":"git-pr","event":"command","ts":"2026-08-20T19:16:18Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-08-20T19:18:12Z"}
+{"cmd":"git-pr-review","event":"command","ts":"2026-08-20T19:19:15Z"}
+{"event":"review","result":"passed","ts":"2026-08-20T19:28:25Z"}

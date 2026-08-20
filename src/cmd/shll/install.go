@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -16,17 +17,21 @@ func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install [tool...]",
 		Short: "brew install every shll tool that isn't already installed",
-		Long: `Install every roster tool that isn't already installed via Homebrew.
+		Long: `Install every roster tool that isn't already installed.
 
-shll install iterates the roster (` + "`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`" + `)
-and runs ` + "`brew install sahil87/tap/<formula>`" + ` for each one that is missing.
-Tools that are already installed are skipped silently — the command is
-idempotent and safe to re-run. Brew's progress output streams directly to
-your terminal.
+shll install iterates the roster (` + "`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`" + `).
+Brew-managed tools install via ` + "`brew install sahil87/tap/<formula>`" + `;
+rk-desktop is not a brew formula — it delegates to ` + "`rk desktop install`" + `
+(managed by run-kit, so it is actionable only when ` + "`rk`" + ` is installed
+and the platform supports it; otherwise it is skipped with a note, never a
+failure — on a targeted ` + "`shll install rk-desktop`" + ` the refusal is
+printed explicitly). Tools that are already installed are skipped silently —
+the command is idempotent and safe to re-run. Brew's progress output streams
+directly to your terminal.
 
 With no arguments, shll install processes the whole roster as above. Pass one or
-more tool names to install only that subset (valid targets: wt, idea, tu, run-kit,
-hop, fab-kit; the legacy alias ` + "`rk`" + ` still resolves to run-kit) — e.g.
+more tool names to install only that subset (valid targets: run-kit, rk-desktop,
+fab-kit, wt, idea, tu, hop; the legacy alias ` + "`rk`" + ` still resolves to run-kit) — e.g.
 ` + "`shll install hop wt`" + `. The subset is processed in roster order
 regardless of the order given; an unknown name is a hard error. Unlike
 ` + "`shll update`" + `, ` + "`shll`" + ` itself is NOT a valid install target — you cannot
@@ -177,19 +182,45 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 		consider = selected
 	}
 
-	// Collect the tools that are ACTIONABLE (not yet present). The slice is built
-	// by walking `consider` in order, so iterating `missing` below preserves roster
-	// order deterministically. The probes are reads, so they run in dry-run too —
-	// only the writes are skipped. A named-but-already-installed target is filtered
-	// out here (idempotent skip).
-	missing := make([]Tool, 0, len(consider))
+	// Collect the tools that are ACTIONABLE (not yet present), keyed by the
+	// install dispatch each will take. Brew-managed tools probe via
+	// `brew list --versions`; delegated (non-brew) tools via their Probe spec
+	// (rk-desktop's `rk desktop status`). A delegated tool whose probe invocation
+	// itself is REFUSED by the platform (run-kit's errDesktopMacOnly) is never
+	// actionable: on a whole-roster run it is a skip-with-note (exit unaffected);
+	// on a targeted run the refusal is named explicitly — neither is a failure.
+	// The probes are reads, so they run in dry-run too — only the writes are
+	// skipped. A named-but-already-installed target is filtered out here
+	// (idempotent skip).
+	var missingBrew, missingDelegated []Tool
+	var skippedNotes []string
 	for _, t := range consider {
+		if !t.brewManaged() {
+			state, note := delegatedInstallState(ctx, t)
+			switch state {
+			case delegatedAbsent:
+				missingDelegated = append(missingDelegated, t)
+			case delegatedRefused, delegatedUnprobed:
+				// Platform refusal (or an unprobeable prerequisite — rk missing
+				// or the status call failing) → skip-with-note, never an install
+				// attempt and never a failure.
+				skippedNotes = append(skippedNotes, note)
+			}
+			continue
+		}
 		if !isInstalled(ctx, t.Formula) {
-			missing = append(missing, t)
+			missingBrew = append(missingBrew, t)
 		}
 	}
 
-	if len(missing) == 0 {
+	// Report the delegated skips before any framing (the same posture as
+	// uninstall's graceful-skip lines): the user sees the full picture, and the
+	// notes name the cause (unsupported platform / prerequisite missing).
+	for _, note := range skippedNotes {
+		fmt.Fprintln(stdout, note)
+	}
+
+	if len(missingBrew) == 0 && len(missingDelegated) == 0 {
 		fmt.Fprintln(stdout, allInstalledMsg)
 		// Short-circuit path: a re-runner who never wired their shell still gets
 		// wired (the auto-run steps are idempotent, so this path is their exact
@@ -208,9 +239,12 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	// run WOULD execute and exit 0 with NO write. The preview lists only the missing
 	// subset (actionable tools), in roster order.
 	if dryRun {
-		rows := make([]previewRow, 0, len(missing))
-		for _, t := range missing {
+		rows := make([]previewRow, 0, len(missingBrew)+len(missingDelegated))
+		for _, t := range missingBrew {
 			rows = append(rows, previewRow{label: t.Name, cmd: argvString(brewBinary, "install", t.Formula)})
+		}
+		for _, t := range missingDelegated {
+			rows = append(rows, previewRow{label: t.Name, cmd: argvString(t.Install...)})
 		}
 		printInstallPreview(stdout, rows)
 		return nil
@@ -222,14 +256,15 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	// stderr. succeeded feeds the summary tail by exit code only, mirroring the
 	// anyFailed facts. M (the counter denominator) is len(missing) — known up front.
 	color := colorEnabled(stdout)
-	total := len(missing)
+	total := len(missingBrew) + len(missingDelegated)
 	succeeded := 0
 
 	// Probe `brew trust` availability ONCE up front (a brew-wide capability, not a
 	// per-tool fact). The per-formula trust step runs only when trust was requested
 	// (default; --no-trust opts out) AND this brew ships `brew trust`. On a pre-6.0
 	// brew the subcommand is absent, but trust isn't required there either, so
-	// skipping it is safe (Constitution V — graceful degradation).
+	// skipping it is safe (Constitution V — graceful degradation). Delegated tools
+	// carry no formula, so the trust step never applies to them.
 	trustEnabled := !noTrust && brewTrustAvailable(ctx)
 
 	// Wall-clock start for the run-duration suffix in the summary tail, from the
@@ -237,13 +272,21 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	// returns so it measures only the install phase the tail summarizes.
 	start := nowFunc()
 
-	anyFailed := false
-	for i, t := range missing {
-		// Section spacing: a blank line precedes every header EXCEPT the first.
-		if i > 0 {
+	// pos is the running 1-based header position across BOTH install phases
+	// (brew-managed first, then delegated — the delegated tools sit behind their
+	// runtime prerequisite in roster order, and run-kit's brew install just ran).
+	pos := 0
+	installHeader := func(name string) {
+		pos++
+		if pos > 1 {
 			fmt.Fprintln(stdout)
 		}
-		printToolHeader(stdout, t.Name, i+1, total, color)
+		printToolHeader(stdout, name, pos, total, color)
+	}
+
+	anyFailed := false
+	for _, t := range missingBrew {
+		installHeader(t.Name)
 
 		// Record per-formula trust before the install (default; --no-trust or an
 		// older brew lacking `brew trust` skips this). Homebrew 6.0 makes tap-trust
@@ -262,6 +305,39 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 		}
 
 		code, err := proc.RunForeground(ctx, brewBinary, "install", t.Formula)
+		if err != nil {
+			fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
+			anyFailed = true
+			continue
+		}
+		if code != 0 {
+			anyFailed = true
+			continue
+		}
+		succeeded++
+	}
+
+	// Delegated (non-brew) phase: after every brew install, so a delegated tool's
+	// runtime prerequisite (run-kit for rk-desktop) is freshly installed when the
+	// delegation runs. Per tool, RE-PROBE first: on a whole-roster run a failed
+	// prerequisite install (e.g. run-kit failed above) cascades to a skip-with-note
+	// rather than a doomed delegation attempt; the same re-probe also catches a
+	// platform that refuses only at install time. A refusal/unsuccessful probe is
+	// never a failure; the delegation's own non-zero exit IS. Skip notes print
+	// inline, before the next tool's header.
+	for _, t := range missingDelegated {
+		if !subset {
+			state, note := delegatedInstallState(ctx, t)
+			if state != delegatedAbsent {
+				if pos > 0 {
+					fmt.Fprintln(stdout)
+				}
+				fmt.Fprintln(stdout, note)
+				continue
+			}
+		}
+		installHeader(t.Name)
+		code, err := proc.RunForeground(ctx, t.Install[0], t.Install[1:]...)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
 			anyFailed = true
@@ -296,6 +372,83 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	}
 	return nil
 }
+
+// delegatedInstallState classifies a delegated (non-brew) tool's install state
+// for `shll install`, with the note to print when the tool is not actionable.
+// It runs the tool's Probe spec via proc.RunCaptured (both streams captured so
+// run-kit's platform refusal — printed to stderr by cobra — is detectable) and
+// maps the outcome:
+//
+//   - transport error (e.g. the `rk` binary missing) → delegatedUnprobed, with
+//     a prerequisite-missing note;
+//   - non-zero exit carrying the unsupported-platform refusal →
+//     delegatedRefused, with the refusal message as the note;
+//   - any other non-zero exit → delegatedUnprobed, with a generic skip note;
+//   - exit 0 → the `Installed:` line decides: delegatedAbsent (actionable) or
+//     delegatedPresent (idempotent skip).
+//
+// The note embeds the tool name and cause so whole-roster runs read as a
+// skip-with-note (exit unaffected) while a targeted run surfaces the same text
+// as its explicit answer. Constitution V — graceful degradation; Constitution
+// I — via internal/proc.
+func delegatedInstallState(ctx context.Context, t Tool) (state delegatedState, note string) {
+	stdout, stderrOut, code, err := proc.RunCaptured(ctx, t.Probe.Argv[0], t.Probe.Argv[1:]...)
+	if err != nil {
+		return delegatedUnprobed, fmt.Sprintf(delegatedSkipPrereqFmt, t.Name, err)
+	}
+	if code != 0 {
+		if isRkDesktopRefusal(stderrOut) || isRkDesktopRefusal(stdout) {
+			return delegatedRefused, fmt.Sprintf(delegatedSkipRefusalFmt, t.Name, strings.TrimSpace(string(firstLine(stderrOut, stdout))))
+		}
+		return delegatedUnprobed, fmt.Sprintf(delegatedSkipPrereqFmt, t.Name, strings.TrimSpace(string(firstLine(stderrOut, stdout))))
+	}
+	_, installed := parseProbeStatusLine(string(stdout), t.Probe)
+	if installed {
+		return delegatedPresent, ""
+	}
+	return delegatedAbsent, ""
+}
+
+// delegatedState is the three-way install-state classification for a delegated
+// (non-brew) roster tool.
+type delegatedState int
+
+const (
+	// delegatedAbsent — probe succeeded and reports not installed → actionable.
+	delegatedAbsent delegatedState = iota
+	// delegatedPresent — probe succeeded and reports installed → idempotent skip.
+	delegatedPresent
+	// delegatedRefused — the platform refuses the tool outright (run-kit's
+	// errDesktopMacOnly) → skip-with-note, never a failure.
+	delegatedRefused
+	// delegatedUnprobed — the probe itself could not answer (prerequisite
+	// binary missing, transport error, unexpected failure) → skip-with-note.
+	delegatedUnprobed
+)
+
+// firstLine returns the first non-empty line of the first non-empty byte slice.
+func firstLine(blobs ...[]byte) []byte {
+	for _, b := range blobs {
+		for _, line := range strings.Split(string(b), "\n") {
+			if trimmed := strings.TrimSpace(line); trimmed != "" {
+				return []byte(trimmed)
+			}
+		}
+	}
+	return nil
+}
+
+// delegatedSkipRefusalFmt is the skip-with-note line printed when a delegated
+// tool's platform refuses it (e.g. rk-desktop on Linux). Takes (tool name,
+// refusal message). Named per code-quality.md (no magic strings).
+const delegatedSkipRefusalFmt = "note: %s skipped — %s"
+
+// delegatedSkipPrereqFmt is the skip-with-note line printed when a delegated
+// tool's prerequisite cannot answer the probe (e.g. `rk` not installed, or the
+// probe failing for another reason). Takes (tool name, cause). On a
+// whole-roster run after a failed run-kit install this reads as the cascade
+// skip: rk-desktop is skipped because run-kit is unavailable.
+const delegatedSkipPrereqFmt = "note: %s skipped — prerequisite unavailable (%s)"
 
 // allInstalledMsg is the nothing-to-do message for `shll install` (every roster tool
 // already installed). Shared by the normal short-circuit and the dry-run empty case so

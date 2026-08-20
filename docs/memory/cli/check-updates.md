@@ -30,11 +30,11 @@ Two flags:
 
 The flag name, usage string, source names (`sourceReleased`/`sourceGithub`, reused as the enum values), the invalid-value diagnostic (`invalidSourceErrFmt`), schema tag (`checkUpdatesSchema = 1`), and status labels are all named constants (code-quality.md — no magic strings).
 
-## The sweep target set — shll-first, leaves-first roster
+## The sweep target set — shll-first, roster order
 
-`checkUpdateTargets()` builds the sweep: **shll itself first** (the unified [shll-first ordering principle](/cli/commands.md#unified-shll-first-ordering--the-principle)), then every `Roster` tool in leaves-first order. shll is **not** added to `Roster` (Constitution III — `len(Roster)` stays 6, guarded by `TestShllSelf_NotInRoster`); the sweep prepends it as a `checkTarget`.
+`checkUpdateTargets()` builds the sweep: **shll itself first** (the unified [shll-first ordering principle](/cli/commands.md#unified-shll-first-ordering--the-principle)), then every `Roster` tool in roster order. shll is **not** added to `Roster` (Constitution III — `len(Roster)` stays 7, guarded by `TestShllSelf_NotInRoster`); the sweep prepends it as a `checkTarget`.
 
-shll-self's installed anchor is its **brew-formula** version (`installedVersion(ctx, shllFormula)`), **not** the running binary's ldflags version — mirroring [`shll changelog`'s bare-sweep precedent](/cli/changelog.md#the-bare-sweep-no-args). Each `checkTarget` carries the tap-relative `formulaLeaf` (`strings.TrimPrefix(Formula, formulaPrefix)` → `run-kit`, `shll`) emitted as the JSON `formula` field, the fully-qualified `brewFormula` (the brew probe key), and the `repo` slug (the github-backend fetch key).
+shll-self's installed anchor is its **brew-formula** version (`installedVersion(ctx, shllFormula)`), **not** the running binary's ldflags version — mirroring [`shll changelog`'s bare-sweep precedent](/cli/changelog.md#the-bare-sweep-no-args). Each `checkTarget` carries the tap-relative `formulaLeaf` (`strings.TrimPrefix(Formula, formulaPrefix)` → `run-kit`, `shll`) emitted as the JSON `formula` field, the fully-qualified `brewFormula` (the brew probe key), the `repo` slug (the github-backend fetch key), and the roster `tool` itself (zero for shll-self). A **delegated (non-brew) roster tool carries no `brewFormula`** (t26g): its `formulaLeaf` falls back to its `Name` (never a bare `brew install <name>` hint — it is not a formula) and its installed anchor resolves through its `Probe` spec (`probeToolInstalledVersion` → `rk desktop status`), never a brew read — see [cli/version §the shared install probe](/cli/version.md#the-shared-install-probe).
 
 ## Backends
 
@@ -50,13 +50,13 @@ The freshness caveat is accepted: `versions.json` regenerates on shll.ai site de
 
 ## Resolution — concurrent, order-preserving
 
-`resolveCheckUpdates` resolves every target **concurrently** (one goroutine per target, results written into a fixed-size slice **indexed by position** so output stays shll-first roster order — the `resolveChangelog`/`probeInstalled` pattern). `resolveOneTarget` makes one brew read (the installed anchor) plus, on the `github` backend, one GitHub releases fetch; the `released` backend looks the target up in the already-fetched manifest with no further network access. All versions are normalized via `changelog.NormalizeVer` (strip `v` prefix + brew `_N` revision) so both sides share one comparable form.
+`resolveCheckUpdates` resolves every target **concurrently** (one goroutine per target, results written into a fixed-size slice **indexed by position** so output stays shll-first roster order — the `resolveChangelog`/`probeInstalled` pattern). `resolveOneTarget` makes one installed-anchor read (a brew read for brew-managed tools, the delegated `Probe` spec for a non-brew tool — t26g) plus, on the `github` backend, one GitHub releases fetch; the `released` backend looks the target up in the already-fetched manifest with no further network access. All versions are normalized via `changelog.NormalizeVer` (strip `v` prefix + brew `_N` revision) so both sides share one comparable form.
 
 `rowResolved` (both `installed` and `latest` non-empty) is the JSON unresolvable-row emit condition. `rowUpdateAvailable` is `installed < latest` via `changelog.CompareVer`.
 
 ## Brew gate
 
-The installed anchors are brew reads (shll-self included), so brew must be present **regardless of backend** — mirroring [changelog's no-range gate](/cli/changelog.md#brew-precondition--gated-on-whether-brew-is-actually-read). `!hasBrew(ctx)` prints the shared `brewMissingHint` on stderr and returns `errSilent` (exit 1), checked **before** any backend fetch (the released manifest guard confirms the gate precedes the fetch). Pinned by `TestCheckUpdates_BrewMissingHint`.
+The brew-managed installed anchors are brew reads (shll-self included), so brew must be present **regardless of backend** — mirroring [changelog's no-range gate](/cli/changelog.md#brew-precondition--gated-on-whether-brew-is-actually-read). `!hasBrew(ctx)` prints the shared `brewMissingHint` on stderr and returns `errSilent` (exit 1), checked **before** any backend fetch (the released manifest guard confirms the gate precedes the fetch). Pinned by `TestCheckUpdates_BrewMissingHint`.
 
 ## `--json` machine contract
 

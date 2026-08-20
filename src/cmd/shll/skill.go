@@ -140,7 +140,7 @@ func runSkill(ctx context.Context, stdout, stderr io.Writer, args []string) erro
 }
 
 // writeSkillGlossary prints one line per INSTALLED tool — shll first (always present,
-// using shllSelf), then the Roster in leaves-first order, each filtered by the shared
+// using shllSelf), then the Roster in roster order, each filtered by the shared
 // PATH-only toolInstalled probe (no brew calls — the glossary stays cheap). It never
 // concatenates bundles: the two-step "list, then per-tool on demand" is the deliberate
 // context-economy contract. A trailing hint teaches the second step. Column-aligned

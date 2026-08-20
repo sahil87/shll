@@ -104,7 +104,7 @@ func TestCheckUpdates_ReleasedHappyPathTable(t *testing.T) {
 	}
 	out := stdout.String()
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	// One row per tool: shll first, then the leaves-first roster — 7 rows total.
+	// One row per tool: shll first, then the roster — 8 rows total.
 	if len(lines) != len(Roster)+1 {
 		t.Fatalf("line count = %d, want %d. output:\n%s", len(lines), len(Roster)+1, out)
 	}
@@ -113,21 +113,26 @@ func TestCheckUpdates_ReleasedHappyPathTable(t *testing.T) {
 	if !strings.HasPrefix(lines[0], "shll") || !strings.Contains(lines[0], "0.1.5 -> 0.1.6") || !strings.Contains(lines[0], checkStatusUpdate+checkStatusNotableSuffix) {
 		t.Errorf("shll row = %q, want installed -> latest + %q", lines[0], checkStatusUpdate+checkStatusNotableSuffix)
 	}
-	// wt (roster position 1): up to date, single version shown.
-	if !strings.HasPrefix(lines[1], "wt") || !strings.Contains(lines[1], "0.1.3") || !strings.Contains(lines[1], checkStatusUpToDate) {
-		t.Errorf("wt row = %q, want up to date at 0.1.3", lines[1])
-	}
-	// idea (roster position 2): not installed, version column carries the label.
-	if !strings.HasPrefix(lines[2], "idea") || !strings.Contains(lines[2], notInstalledLabel) {
-		t.Errorf("idea row = %q, want %q", lines[2], notInstalledLabel)
-	}
-	// run-kit (roster position 4): patch bump under notify:minor → update
+	// run-kit (roster position 1): patch bump under notify:minor → update
 	// available but NOT notable (the intake's worked example).
-	if !strings.HasPrefix(lines[4], "run-kit") || !strings.Contains(lines[4], "3.8.1 -> 3.8.2") || !strings.Contains(lines[4], checkStatusUpdate) {
-		t.Errorf("run-kit row = %q, want 3.8.1 -> 3.8.2 update available", lines[4])
+	if !strings.HasPrefix(lines[1], "run-kit") || !strings.Contains(lines[1], "3.8.1 -> 3.8.2") || !strings.Contains(lines[1], checkStatusUpdate) {
+		t.Errorf("run-kit row = %q, want 3.8.1 -> 3.8.2 update available", lines[1])
 	}
-	if strings.Contains(lines[4], checkStatusNotableSuffix) {
-		t.Errorf("run-kit row = %q — a patch-only bump under notify:minor must NOT be notable", lines[4])
+	if strings.Contains(lines[1], checkStatusNotableSuffix) {
+		t.Errorf("run-kit row = %q — a patch-only bump under notify:minor must NOT be notable", lines[1])
+	}
+	// rk-desktop (roster position 2): the delegated probe can't reach `rk` in
+	// this fake → not installed, version column carries the label.
+	if !strings.HasPrefix(lines[2], "rk-desktop") || !strings.Contains(lines[2], notInstalledLabel) {
+		t.Errorf("rk-desktop row = %q, want %q", lines[2], notInstalledLabel)
+	}
+	// wt (roster position 4): up to date, single version shown.
+	if !strings.HasPrefix(lines[4], "wt") || !strings.Contains(lines[4], "0.1.3") || !strings.Contains(lines[4], checkStatusUpToDate) {
+		t.Errorf("wt row = %q, want up to date at 0.1.3", lines[4])
+	}
+	// idea (roster position 5): not installed, version column carries the label.
+	if !strings.HasPrefix(lines[5], "idea") || !strings.Contains(lines[5], notInstalledLabel) {
+		t.Errorf("idea row = %q, want %q", lines[5], notInstalledLabel)
 	}
 	// A self-labeling aggregation: no per-tool headers, no ANSI.
 	if strings.Contains(out, "==>") || strings.Contains(out, "▸") || strings.Contains(out, "\033[") {
@@ -165,13 +170,14 @@ func TestCheckUpdates_JSONContractReleased(t *testing.T) {
 		t.Errorf("envelope = schema %d source %q, want %d %q", report.Schema, report.Source, checkUpdatesSchema, sourceReleased)
 	}
 	// Unresolvable-row rule: only shll, wt, run-kit resolve (both sides known);
-	// the four uninstalled tools are omitted. Order: shll first, then roster.
+	// the other tools (incl. the delegated rk-desktop) are omitted. Order: shll
+	// first, then roster order.
 	if len(report.Tools) != 3 {
 		t.Fatalf("tools len = %d, want 3 (unresolved rows omitted):\n%s", len(report.Tools), raw)
 	}
-	shll, wt, rk := report.Tools[0], report.Tools[1], report.Tools[2]
-	if shll.Name != "shll" || wt.Name != "wt" || rk.Name != "run-kit" {
-		t.Fatalf("row order = %s, %s, %s — want shll, wt, run-kit", shll.Name, wt.Name, rk.Name)
+	shll, rk, wt := report.Tools[0], report.Tools[1], report.Tools[2]
+	if shll.Name != "shll" || rk.Name != "run-kit" || wt.Name != "wt" {
+		t.Fatalf("row order = %s, %s, %s — want shll, run-kit, wt", shll.Name, rk.Name, wt.Name)
 	}
 	// The intake's worked example row, field by field.
 	if rk.Formula != "run-kit" || rk.Installed != "3.8.1" || rk.Latest != "3.8.2" || rk.Notify != "minor" {
@@ -252,11 +258,12 @@ func TestCheckUpdates_GithubPerToolFailureDegrades(t *testing.T) {
 	}
 	out := stdout.String()
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if !strings.HasPrefix(lines[1], "wt") || !strings.Contains(lines[1], "0.1.3") || !strings.Contains(lines[1], checkStatusUnavailable) {
-		t.Errorf("wt row = %q, want installed version + %q", lines[1], checkStatusUnavailable)
+	// Roster order: shll, run-kit, rk-desktop, fab-kit, wt, idea, tu, hop.
+	if !strings.HasPrefix(lines[4], "wt") || !strings.Contains(lines[4], "0.1.3") || !strings.Contains(lines[4], checkStatusUnavailable) {
+		t.Errorf("wt row = %q, want installed version + %q", lines[4], checkStatusUnavailable)
 	}
-	if !strings.HasPrefix(lines[3], "tu") || !strings.Contains(lines[3], "0.6.2 -> 0.6.4") {
-		t.Errorf("tu row = %q, want a resolved transition", lines[3])
+	if !strings.HasPrefix(lines[6], "tu") || !strings.Contains(lines[6], "0.6.2 -> 0.6.4") {
+		t.Errorf("tu row = %q, want a resolved transition", lines[6])
 	}
 
 	// And the JSON run omits the failed row.
@@ -359,8 +366,9 @@ func TestCheckUpdates_NotInManifestRow(t *testing.T) {
 		t.Fatalf("runCheckUpdates err = %v", err)
 	}
 	lines := strings.Split(strings.TrimRight(stdout.String(), "\n"), "\n")
-	if !strings.HasPrefix(lines[1], "wt") || !strings.Contains(lines[1], "0.1.3") || !strings.Contains(lines[1], checkStatusNotInManifest) {
-		t.Errorf("wt row = %q, want installed version + %q", lines[1], checkStatusNotInManifest)
+	// Roster order: shll, run-kit, rk-desktop, fab-kit, wt, idea, tu, hop.
+	if !strings.HasPrefix(lines[4], "wt") || !strings.Contains(lines[4], "0.1.3") || !strings.Contains(lines[4], checkStatusNotInManifest) {
+		t.Errorf("wt row = %q, want installed version + %q", lines[4], checkStatusNotInManifest)
 	}
 
 	stdout.Reset()

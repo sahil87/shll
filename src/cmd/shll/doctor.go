@@ -44,10 +44,21 @@ const (
 // exact wording is part of the user contract, so it lives in one place.
 const (
 	// suggestMissingFmt takes the brew formula (tool.Formula, e.g.
-	// "sahil87/tap/hop").
+	// "sahil87/tap/hop"). Brew-managed tools only — a delegated (formula-less)
+	// tool takes suggestDelegatedMissingFmt instead.
 	suggestMissingFmt = "run 'brew install %s'"
 	// suggestUnreportableFmt takes (tool name, tool formula).
 	suggestUnreportableFmt = "installed but '%s --version' failed — try 'brew reinstall %s'"
+	// suggestDelegatedMissingFmt is the install hint for a delegated (non-brew)
+	// tool whose probe reports absent — there is no formula to brew-install, so
+	// the suggestion names the tool's delegated install argv (e.g. `rk desktop
+	// install`). Takes the argv joined as a command line.
+	suggestDelegatedMissingFmt = "run '%s'"
+	// suggestDelegatedUnreportableFmt is the delegated counterpart of
+	// suggestUnreportableFmt: the probe ran but reported no installed version
+	// (a broken app / a probe the platform refused mid-check). Takes the tool's
+	// probe argv joined as a command line.
+	suggestDelegatedUnreportableFmt = "'%s' reported no installed version — try reinstalling it"
 	// suggestNotWired is fixed text (no interpolation).
 	suggestNotWired = "not wired — run 'shll setup shell' then 'exec $SHELL'"
 	// suggestShellUnresolvableFmt takes the raw $SHELL value.
@@ -94,7 +105,9 @@ tool, doctor checks that (1) the binary is on PATH, (2) it reports a version (so
 a half-installed/stale brew link is caught), (3) its Homebrew formula is trusted
 (so a future 'brew upgrade' won't be refused on Homebrew 6.0+), and (4) — for
 tools that ship shell integration (wt, tu, hop) — shll's composed shell-init eval
-block is present in your rc file.
+block is present in your rc file. rk-desktop is not a brew formula: its checks
+(1)-(2) run through ` + "`rk desktop status`" + ` instead, and the trust check
+does not apply.
 
 Each tool gets one line with an OK / WARN / FAIL marker; non-OK lines carry an
 actionable suggestion. A missing or non-running binary is FAIL; an installed tool
@@ -161,7 +174,15 @@ func runDoctor(ctx context.Context, jsonOut bool, env func(string) string, stdou
 	// does NOT touch anyFail — the scriptable any-FAIL→exit-1 contract holds.
 	results = append(results, shllDoctorResult(env))
 	for _, tool := range Roster {
-		res := evaluateTool(ctx, tool, fact, trust)
+		// Delegated (non-brew) tools take a dedicated evaluation: no `--version`
+		// PATH probe, no formula-trust check, no wiring check — their Probe spec
+		// IS the check (see evaluateDelegatedTool).
+		var res doctorResult
+		if tool.brewManaged() {
+			res = evaluateTool(ctx, tool, fact, trust)
+		} else {
+			res = evaluateDelegatedTool(ctx, tool)
+		}
 		if res.Status == markerFail {
 			anyFail = true
 		}
@@ -315,8 +336,10 @@ func evaluateTool(ctx context.Context, tool Tool, fact wiringFact, trust trustFa
 	// versionOK — binary checks pass; the probe facts are already set above.
 
 	// Trust sub-check (worst-check-wins WARN tier, alongside the wiring WARN).
-	// Applies to ALL installed roster tools — not just shell-init ones — since
-	// every formula needs trust to upgrade on Homebrew 6.0+. A binary FAIL already
+	// Applies to ALL installed BREW-MANAGED roster tools — not just shell-init
+	// ones — since every formula needs trust to upgrade on Homebrew 6.0+.
+	// (Delegated tools never reach evaluateTool — evaluateDelegatedTool owns
+	// them — so no formula-less trust lookup can occur.) A binary FAIL already
 	// returned above, so it dominates. The trust WARN is checked before wiring:
 	// an untrusted tool's next upgrade is refused outright (higher impact than an
 	// unwired but functional tool), and both are WARN so the exit code is identical
@@ -386,6 +409,53 @@ func shllDoctorResult(env func(string) string) doctorResult {
 		res.Suggestion = suggestSkillStale
 	}
 	return res
+}
+
+// evaluateDelegatedTool composes the doctor row for a delegated (non-brew)
+// roster tool (rk-desktop). The Probe spec is the only check: installed +
+// version → OK; absent (the probe's absent value) → FAIL with the delegated
+// install hint; an unanswerable probe (prerequisite binary missing, transport
+// error, or a non-zero exit incl. an unsupported-platform refusal) → FAIL with
+// the same delegated install hint (the install command prints the fuller
+// explanation); an unreportable probe (clean exit but no parseable status
+// line) → FAIL with the unreportable hint. No trust sub-check (no formula — the whole tap-trust
+// concern is brew's) and no wiring check (ShellInit is empty by construction,
+// so the row reports shell_init:false like idea/run-kit/fab-kit). The exit-code
+// contract is unchanged: a FAIL here sets anyFail in the caller exactly like a
+// brew tool's.
+func evaluateDelegatedTool(ctx context.Context, tool Tool) doctorResult {
+	res := doctorResult{Tool: tool.Name, ShellInit: false}
+	subCtx, cancel := context.WithTimeout(ctx, versionTimeout)
+	defer cancel()
+	stdout, _, code, err := proc.RunCaptured(subCtx, tool.Probe.Argv[0], tool.Probe.Argv[1:]...)
+	if err != nil || code != 0 {
+		// The probe itself could not answer: prerequisite binary missing
+		// (proc.ErrNotFound), transport error, or a non-zero exit (incl. an
+		// unsupported-platform refusal — the platform simply cannot have the
+		// app, so the actionable hint is the delegated install command, which
+		// prints the fuller explanation).
+		res.Status = markerFail
+		res.Suggestion = fmt.Sprintf(suggestDelegatedMissingFmt, argvString(tool.Install...))
+		return res
+	}
+	value, installed := parseProbeStatusLine(string(stdout), tool.Probe)
+	switch {
+	case installed:
+		res.OnPath = true
+		res.VersionOK = true
+		res.Version = normalizeVersion(value)
+		res.Status = markerOK
+		return res
+	case value == tool.Probe.AbsentValue:
+		// The probe answered cleanly: the app is absent → the install hint.
+		res.Status = markerFail
+		res.Suggestion = fmt.Sprintf(suggestDelegatedMissingFmt, argvString(tool.Install...))
+		return res
+	default:
+		res.Status = markerFail
+		res.Suggestion = fmt.Sprintf(suggestDelegatedUnreportableFmt, argvString(tool.Probe.Argv...))
+		return res
+	}
 }
 
 // probeVersion runs the shared `<tool> --version` probe (bounded by versionTimeout,
