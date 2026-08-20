@@ -1,0 +1,4 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-20T18:10:58Z"}
+{"args":"Change A from fab/plans/sahil/desktop-roster-and-install-ux.md: reorder roster importance-descending and add rk-desktop as a non-brew roster entry delegating to rk desktop install/update, probe-gated on platform support","cmd":"fab-new","event":"command","ts":"2026-08-20T18:10:58Z"}
+{"delta":"+4.6","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-08-20T18:12:08Z"}
+{"cmd":"fab-draft","event":"command","ts":"2026-08-20T18:14:12Z"}

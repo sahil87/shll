@@ -1,0 +1,4 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-20T18:12:31Z"}
+{"args":"Change B from fab/plans/sahil/desktop-roster-and-install-ux.md: curl bootstrap converges machine to complete and current (shll install then shll update) plus phase-line polish in install.sh","cmd":"fab-new","event":"command","ts":"2026-08-20T18:12:31Z"}
+{"delta":"+5.0","event":"confidence","score":5,"trigger":"calc-score","ts":"2026-08-20T18:13:21Z"}
+{"cmd":"fab-draft","event":"command","ts":"2026-08-20T18:14:12Z"}

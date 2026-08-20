@@ -1,0 +1,4 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-20T18:13:29Z"}
+{"args":"Change C from fab/plans/sahil/desktop-roster-and-install-ux.md: two-region terminal experience for shll install/update in Go — pinned status header, streaming child output, prompt-hang hardening, determinate OSC 9;4 progress","cmd":"fab-new","event":"command","ts":"2026-08-20T18:13:29Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-08-20T18:14:12Z"}
+{"cmd":"fab-draft","event":"command","ts":"2026-08-20T18:14:12Z"}
