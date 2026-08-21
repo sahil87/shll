@@ -4,5 +4,5 @@
 
 | File | Description |
 |------|-------------|
-| [install-bootstrap](install-bootstrap.md) | `scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless `NONINTERACTIVE=1` Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, then `exec shll install \"$@\"` — which auto-runs `shll setup shell` + `shll setup agent --yes` (best-effort); `sh -s -- --no-*` passthrough is public surface. Load-bearing — shll.ai raw-fetches it from `main`. |
+| [install-bootstrap](install-bootstrap.md) | `scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, tty-gated phase lines + OSC 9;4, then converges install-then-update: `shll install \"$@\"` + `exec shll update` (tool names only; flags reach install alone). Load-bearing — shll.ai raw-fetches it from `main`. |
 | [release-workflow](release-workflow.md) | `release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap on `v*` tags. Carries no shll.ai publish step — shll.ai pulls via its own scheduled `shll help-dump` job. |
