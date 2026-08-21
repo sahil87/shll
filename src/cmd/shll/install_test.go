@@ -1578,7 +1578,7 @@ func TestInstall_AutoAgentSetupFailureDegrades(t *testing.T) {
 	}
 }
 
-// --- tty-mode region tests (change yud0) -------------------------------------
+// --- failure-tail behavior (change yud0) --------------------------------------
 
 // missingOneInstallRunner returns a fakeRunner where exactly the named formula
 // is missing (so install acts on it) and the delegated rk-desktop probe reports
@@ -1607,88 +1607,9 @@ func missingOneInstallRunner(formula string, trustExit, installExit int) *fakeRu
 	}}
 }
 
-func TestInstall_RegionModeSequencesAndTransport(t *testing.T) {
-	// Forced tty: one missing brew tool (idea) → the run emits the DECSTBM
-	// region lifecycle, the pinned header at the boundary, the trust + install
-	// children via the streamed-tail transport, and the margin reset on exit.
-	forceRegionTTY(t, 80, 24)
-	f := missingOneInstallRunner(formulaPrefix+"idea", 0, 0)
-	installFakeRunner(t, f)
-	installFakeClock(t)
-
-	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
-		t.Fatalf("runInstall err = %v, want nil", err)
-	}
-	out := stdout.String()
-	// Region lifecycle: margins set, then reset before exit.
-	if !strings.Contains(out, "\x1b[2;24r") {
-		t.Fatalf("stdout missing the DECSTBM margin set, got %q", out)
-	}
-	if !strings.Contains(out, "\x1b[r") {
-		t.Fatalf("stdout missing the margin reset on stop, got %q", out)
-	}
-	// Pinned header at the boundary: verb + tool + (1/1), no next clause.
-	if !strings.Contains(out, "Installing idea (1/1)") {
-		t.Fatalf("stdout missing the pinned header, got %q", out)
-	}
-	// The in-stream ==> header still prints (scrollback continuity).
-	if !strings.Contains(out, "==> [1/1] idea\n") {
-		t.Fatalf("stdout missing the in-stream header, got %q", out)
-	}
-	// Transport assertions: trust and install children are streamed-tail.
-	var trustStreamed, installStreamed bool
-	for _, c := range f.recordedCalls() {
-		if c.Name == brewBinary && len(c.Args) == 3 && c.Args[0] == "trust" && c.Transport == proc.TransportStreamTail {
-			trustStreamed = true
-		}
-		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "install" && c.Transport == proc.TransportStreamTail {
-			installStreamed = true
-		}
-		if c.Transport == proc.TransportForeground {
-			t.Errorf("install write-phase child kept the foreground transport: %+v", c)
-		}
-	}
-	if !trustStreamed || !installStreamed {
-		t.Fatalf("trust streamed=%v install streamed=%v, want both true, calls: %+v", trustStreamed, installStreamed, f.recordedCalls())
-	}
-}
-
-func TestInstall_RegionFailurePrintsTail(t *testing.T) {
-	// A failed child in region mode re-prints its captured output tail under a
-	// tool-named frame on stderr; the run records the failure as before.
-	forceRegionTTY(t, 80, 24)
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case isRkDesktopProbe(req):
-			return rkDesktopStatusResult(true)
-		case req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list":
-			if req.Args[3] == formulaPrefix+"idea" {
-				return proc.Result{Err: errors.New("not installed")}
-			}
-			return proc.Result{}
-		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "install":
-			return proc.Result{ExitCode: 1, Tail: []byte("Error: idea: something went wrong\n")}
-		}
-		return proc.Result{}
-	}}
-	installFakeRunner(t, f)
-	installFakeClock(t)
-
-	var stdout, stderr bytes.Buffer
-	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true, nil)
-	if !errors.Is(err, errSilent) {
-		t.Fatalf("runInstall err = %v, want errSilent (one tool failed)", err)
-	}
-	wantFrame := "--- last output: idea ---\nError: idea: something went wrong\n--- last output: idea ---\n"
-	if !strings.Contains(stderr.String(), wantFrame) {
-		t.Fatalf("stderr = %q, want it to contain the framed tail %q", stderr.String(), wantFrame)
-	}
-}
-
 func TestInstall_NonTTYFailurePrintsNoTail(t *testing.T) {
-	// Same failure without the tty seam: no tail block (output is already fully
-	// present in the log — the byte-identical non-tty guarantee).
+	// A failed install child prints no tail frame — output is already fully
+	// present in the linear stream (the byte-identical non-tty guarantee).
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		switch {
 		case isRkDesktopProbe(req):
@@ -1715,7 +1636,7 @@ func TestInstall_NonTTYFailurePrintsNoTail(t *testing.T) {
 		t.Fatalf("non-tty stderr = %q, want no tail frame", stderr.String())
 	}
 	if strings.Contains(stdout.String(), "\x1b[") {
-		t.Fatalf("non-tty stdout = %q, want zero region sequences", stdout.String())
+		t.Fatalf("non-tty stdout = %q, want zero escape sequences", stdout.String())
 	}
 }
 

@@ -58,7 +58,7 @@ func TestBrewTrustFormula_BuildsFormulaArg(t *testing.T) {
 	installFakeRunner(t, f)
 	formula := formulaPrefix + "hop"
 	var stdout, stderr bytes.Buffer
-	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, newStatusRegion(&stdout), formula)
+	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, formula)
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
@@ -86,7 +86,7 @@ func TestBrewTrustFormula_SurfacesNonZeroExit(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 	var stdout, stderr bytes.Buffer
-	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, newStatusRegion(&stdout), formulaPrefix+"hop")
+	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, formulaPrefix+"hop")
 	if err != nil {
 		t.Fatalf("err = %v, want nil (non-zero exit is reported via code)", err)
 	}
@@ -101,7 +101,7 @@ func TestBrewTrustFormula_SurfacesError(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 	var stdout, stderr bytes.Buffer
-	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, newStatusRegion(&stdout), formulaPrefix+"hop")
+	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, formulaPrefix+"hop")
 	if err == nil {
 		t.Fatal("err = nil, want non-nil for transport failure")
 	}

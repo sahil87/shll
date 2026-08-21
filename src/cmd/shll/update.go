@@ -35,16 +35,6 @@ const skipBrewUpdateFlag = "--skip-brew-update"
 // Tool.Name. Named per code-quality.md (no magic strings).
 const shllSelfLabel = "shll (self)"
 
-// updateRegionVerb is the pinned-header verb for `shll update`'s status region
-// (e.g. `Updating rk-desktop (2/3) · next: fab-kit`). updateRegionBrewLabel is
-// the pseudo-step label shown while the run-wide `brew update --quiet` refresh
-// runs (a step count would be dishonest there — the refresh is not a roster
-// tool). Named per code-quality.md (no magic strings).
-const (
-	updateRegionVerb      = "Updating"
-	updateRegionBrewLabel = "brew metadata refresh"
-)
-
 // noToolsInstalledMsg is the nothing-to-do message for `shll update` (no roster tool
 // installed AND shll itself not brew-installed). Shared by the normal short-circuit and
 // the dry-run empty case so both read identically. Named per code-quality.md.
@@ -310,44 +300,13 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 	defer progress.remove()
 	progress.indeterminate()
 
-	// Pinned status region (region.go): on a tty the write phase runs under a
-	// pinned one-line header with child output scrolling beneath; off-tty every
-	// method is a no-op (zero bytes). Deferred stop() restores the margins on
-	// every post-construction exit (LIFO: before progress.remove() above).
-	region := newStatusRegion(stdout)
-	defer region.stop()
-	region.start()
-
-	// actionableNames is the flat write-phase step list in execution order —
-	// shll (self) first when brew-installed, then each installed roster tool in
-	// roster order — so the pinned header can look ahead one entry for the
-	// `· next:` clause and the brew-refresh header can name the first step.
-	actionableNames := make([]string, 0, len(Roster)+1)
-	if shllSelfInstalled {
-		actionableNames = append(actionableNames, shllSelfLabel)
-	}
-	for i, t := range Roster {
-		if probes[i].installed {
-			actionableNames = append(actionableNames, t.Name)
-		}
-	}
-	nextName := func(pos int) string {
-		if pos < len(actionableNames) {
-			return actionableNames[pos]
-		}
-		return ""
-	}
-	if len(actionableNames) > 0 {
-		region.setHeader(statusHeaderText(updateRegionVerb, updateRegionBrewLabel, 0, len(actionableNames), actionableNames[0], colorEnabled(stdout)))
-	}
-
 	// runChild runs one write-phase child (brew update/upgrade, delegated
 	// <tool> update) via the shared streamed-tail helper (null stdin, live
-	// tee, region-mode failure tail — see runStreamedChild). The end-of-run
+	// tee — see runStreamedChild). The end-of-run
 	// agent-skill refresh deliberately stays on RunForeground (inherited
 	// stdin — the documented interactive path).
-	runChild := func(name string, argv ...string) (int, error) {
-		return runStreamedChild(ctx, stdout, stderr, region, name, argv...)
+	runChild := func(argv ...string) (int, error) {
+		return runStreamedChild(ctx, stdout, stderr, argv...)
 	}
 
 	// Refresh brew metadata once. Streamed live so users see progress. Because
@@ -356,7 +315,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 	// RunStreamedTail returns (code, nil) when the subprocess exits non-zero
 	// (it only sets err when exec itself fails before/after spawn), so we must
 	// check both code != 0 and err != nil to treat any non-success as failure.
-	if code, err := runChild(updateRegionBrewLabel, brewBinary, "update", "--quiet"); err != nil || code != 0 {
+	if code, err := runChild(brewBinary, "update", "--quiet"); err != nil || code != 0 {
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: brew update failed: %v\n", err)
 		} else {
@@ -401,9 +360,6 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 			fmt.Fprintln(stdout)
 		}
 		printToolHeader(stdout, name, pos, total, color)
-		// Pinned header (tty only): verb + tool + honest k/n + next-tool
-		// lookahead, sharing the run's single color decision.
-		region.setHeader(statusHeaderText(updateRegionVerb, name, pos, total, nextName(pos), color))
 		// Determinate progress: completed-so-far at each tool boundary. A failure
 		// pulse (errorState at pos*100/total) lands on the same value this set
 		// resumes at for the next tool, so the bar stays monotonic.
@@ -427,7 +383,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 		// single probeInstalledVersion read — a captured brew read, not the running
 		// process's ldflags version, so the digest reports the brew-formula
 		// transition the upgrade performed.
-		code, err := runChild(shllTargetToken, brewBinary, "upgrade", shllFormula)
+		code, err := runChild(brewBinary, "upgrade", shllFormula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: shll: %v\n", err)
 			anyFailed = true
@@ -458,7 +414,7 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 			continue
 		}
 		updateHeader(t.Name)
-		code, err := upgradeTool(ctx, stdout, stderr, region, t, probes[i])
+		code, err := upgradeTool(ctx, stdout, stderr, t, probes[i])
 		if err != nil {
 			fmt.Fprintf(stderr, "shll update: %s: %v\n", t.Name, err)
 			anyFailed = true
@@ -667,11 +623,11 @@ const fallbackNoteFmt = "note: %s's own update failed (%s) — falling back to '
 // trade-off; the next delegated run restores normal composition. The fallback
 // never applies to the no-Update-argv path, whose primary command already IS
 // `brew upgrade`.
-func upgradeTool(ctx context.Context, stdout, stderr io.Writer, region *statusRegion, t Tool, p probeResult) (int, error) {
-	// Same shared streamed-tail helper runUpdate uses: null stdin, live tee,
-	// and a tool-named failure tail in region mode (see runStreamedChild).
+func upgradeTool(ctx context.Context, stdout, stderr io.Writer, t Tool, p probeResult) (int, error) {
+	// Same shared streamed-tail helper runUpdate uses: null stdin, live tee
+	// (see runStreamedChild).
 	runChild := func(argv ...string) (int, error) {
-		return runStreamedChild(ctx, stdout, stderr, region, t.Name, argv...)
+		return runStreamedChild(ctx, stdout, stderr, argv...)
 	}
 	argv := upgradeArgv(t, p.supportsSkipFlag)
 	code, err := runChild(argv...)

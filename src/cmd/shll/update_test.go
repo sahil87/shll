@@ -2168,7 +2168,7 @@ func TestUpgradeTool_NoFallbackOnCanceledContext(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	tool := Tool{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}}
-	code, err := upgradeTool(ctx, &stdout, &stderr, newStatusRegion(&stdout), tool, probeResult{installed: true})
+	code, err := upgradeTool(ctx, &stdout, &stderr, tool, probeResult{installed: true})
 	if err == nil && code == 0 {
 		t.Fatal("expected the canceled delegation to remain a failure")
 	}
@@ -2421,127 +2421,12 @@ func TestUpdate_ProgressSilentOnNonWritePaths(t *testing.T) {
 	})
 }
 
-// --- tty-mode region tests (change yud0) -------------------------------------
-
-func TestUpdate_RegionModeSequencesAndTransports(t *testing.T) {
-	// Forced tty: shll-self + one roster tool (hop) → the run emits the DECSTBM
-	// region lifecycle, pinned headers for the brew refresh + both steps, and
-	// every write child (brew update/upgrade, delegated hop update) carries the
-	// streamed-tail transport.
-	forceRegionTTY(t, 80, 24)
-	base := installedOnly(formulaPrefix + "hop")
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if isRkDesktopProbe(req) {
-			return rkDesktopStatusResult(false)
-		}
-		return base(req)
-	}}
-	installFakeRunner(t, f)
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "\x1b[2;24r") || !strings.Contains(out, "\x1b[r") {
-		t.Fatalf("stdout missing the region lifecycle (margin set/reset), got %q", out)
-	}
-	// Pinned headers: brew metadata refresh pseudo-step, then both tools.
-	if !strings.Contains(out, "Updating brew metadata refresh") {
-		t.Fatalf("stdout missing the brew-refresh pinned header, got %q", out)
-	}
-	if !strings.Contains(out, "Updating hop (1/1)") {
-		t.Fatalf("stdout missing the per-tool pinned header, got %q", out)
-	}
-	// The in-stream ==> headers still print (scrollback continuity).
-	if !strings.Contains(out, "==> [1/1] hop\n") {
-		t.Fatalf("stdout missing the in-stream header, got %q", out)
-	}
-	// Transports: brew update, and the delegated hop update are streamed-tail.
-	var brewUpdateStreamed, hopUpdateStreamed bool
-	for _, c := range f.recordedCalls() {
-		switch {
-		case c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "update" && c.Transport == proc.TransportStreamTail:
-			brewUpdateStreamed = true
-		case c.Name == "hop" && c.Transport == proc.TransportStreamTail:
-			hopUpdateStreamed = true
-		case c.Transport == proc.TransportForeground:
-			t.Errorf("update write-phase child kept the foreground transport: %+v", c)
-		}
-	}
-	if !brewUpdateStreamed || !hopUpdateStreamed {
-		t.Fatalf("brew-update streamed=%v hop-update streamed=%v, want both true, calls: %+v", brewUpdateStreamed, hopUpdateStreamed, f.recordedCalls())
-	}
-}
-
-func TestUpdate_RegionShllSelfHeader(t *testing.T) {
-	// shll-self is the [1/2] step with next-tool lookahead naming hop.
-	forceRegionTTY(t, 80, 24)
-	f := onlyShllInstalledRunner(0)
-	base := f.respond
-	f.respond = func(req proc.Request) proc.Result {
-		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" && req.Args[3] == formulaPrefix+"hop" {
-			return proc.Result{Stdout: []byte(formulaPrefix + "hop 1.0.0\n")}
-		}
-		return base(req)
-	}
-	installFakeRunner(t, f)
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "Updating shll (self) (1/2) - next: hop") {
-		t.Fatalf("stdout missing the self pinned header with lookahead, got %q", out)
-	}
-	if !strings.Contains(out, "Updating hop (2/2)") {
-		t.Fatalf("stdout missing the final-tool pinned header (no next clause), got %q", out)
-	}
-	// The self-upgrade brew call is streamed-tail.
-	selfStreamed := false
-	for _, c := range f.recordedCalls() {
-		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "upgrade" && c.Args[1] == shllFormula && c.Transport == proc.TransportStreamTail {
-			selfStreamed = true
-		}
-	}
-	if !selfStreamed {
-		t.Fatalf("brew upgrade (self) not streamed-tail, calls: %+v", f.recordedCalls())
-	}
-}
-
-func TestUpdate_RegionFailurePrintsTail(t *testing.T) {
-	// A failed delegated update in region mode re-prints its captured tail under
-	// a tool-named frame on stderr (the fallback brew upgrade then runs as
-	// usual; it succeeds here so the tail comes from the delegation only).
-	forceRegionTTY(t, 80, 24)
-	base := installedOnly(formulaPrefix + "hop")
-	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		switch {
-		case isRkDesktopProbe(req):
-			return rkDesktopStatusResult(false)
-		case req.Name == "hop" && req.Transport == proc.TransportStreamTail:
-			return proc.Result{ExitCode: 1, Tail: []byte("hop update: boom\n")}
-		}
-		return base(req)
-	}}
-	installFakeRunner(t, f)
-
-	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
-		t.Fatalf("runUpdate err = %v, want nil (the fallback rescues hop)", err)
-	}
-	wantFrame := "--- last output: hop ---\nhop update: boom\n--- last output: hop ---\n"
-	if !strings.Contains(stderr.String(), wantFrame) {
-		t.Fatalf("stderr = %q, want it to contain the framed tail %q", stderr.String(), wantFrame)
-	}
-}
+// --- agent-refresh transport (change yud0) ------------------------------------
 
 func TestUpdate_RefreshSubprocessKeepsForegroundTransport(t *testing.T) {
 	// Design Decision 2: the end-of-run agent-skill refresh keeps RunForeground
-	// (inherited stdin) even in region mode — its run-kit delegation may
+	// (inherited stdin) — its run-kit delegation may
 	// legitimately confirm interactively when --yes is absent.
-	forceRegionTTY(t, 80, 24)
 	f := shllOnlyInstalledFake()
 	installFakeRunner(t, f)
 	env := placeAgentSkill(t, "# stale placement\n")

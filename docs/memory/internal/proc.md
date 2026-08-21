@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `RunStreamedTail` (null stdin; live tee to caller writers + bounded interleaved tail for failure framing), `ErrNotFound` sentinel, `Runner` test seam."
+description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `RunStreamedTail` (null stdin; live tee to caller writers + bounded interleaved tail capture), `ErrNotFound` sentinel, `Runner` test seam."
 ---
 # internal/proc
 
@@ -150,7 +150,7 @@ These properties are tested at the source level (acceptance A-029, A-044, A-049,
 
 - `cmd.Stdin` is left **nil** — Go documents a nil `Stdin` as reading from the null device, so a child that attempts an interactive prompt reads EOF and fails fast instead of hanging. This enforces the toolkit's prompt-free standard for the install/update write phases; no interactive accommodation is added.
 - `cmd.Stdout = io.MultiWriter(req.Stdout, ring)`, `cmd.Stderr = io.MultiWriter(req.Stderr, ring)` — both streams tee **live** to the caller-supplied writers (never buffered-until-exit) AND into one shared bounded ring, so the captured tail preserves the stdout/stderr interleaving the user saw.
-- The ring is `tailRing`, a fixed-capacity (`tailRingSize = 4096`) byte ring keeping the most recent writes in order; its `Write` is mutex-guarded (the two exec copy goroutines race) and never blocks or fails, and `Bytes()` copies the tail out oldest-first. The bound is deliberate: a chatty child cannot grow memory unbounded. The tail lands in `Result.Tail` (`nil` for every other transport) so a failed child's last lines can be re-printed after they scrolled out of a DECSTBM region — see [cli/update §null-stdin streamed children](/cli/update.md#null-stdin-streamed-children--the-failure-tail).
+- The ring is `tailRing`, a fixed-capacity (`tailRingSize = 4096`) byte ring keeping the most recent writes in order; its `Write` is mutex-guarded (the two exec copy goroutines race) and never blocks or fails, and `Bytes()` copies the tail out oldest-first. The bound is deliberate: a chatty child cannot grow memory unbounded. The tail lands in `Result.Tail` (`nil` for every other transport); no caller consumes it today — it is kept for API stability (see [Keep the tail API intact](#keep-runstreamedchild-as-the-transport-seam-keep-the-tail-api-intact) below).
 - Exit-code semantics mirror `TransportForeground` exactly: on `exec.ErrNotFound` → `Result{Tail, ExitCode: -1, Err: ErrNotFound}`; on `*exec.ExitError` → `Result{Tail, ExitCode: <code>}` with **`Err == nil`** (the caller branches on the code); on any other pre-spawn error → `Result{Tail, ExitCode: -1, Err: err}`; on success → `Result{Tail, ExitCode: 0}`.
 - The `Request.Stdout`/`Request.Stderr` writer fields exist solely for this transport (ignored by all others; both must be non-nil for it). Its consumers are the `shll install`/`shll update` write phases via the shared `runStreamedChild` helper in `brew.go` (yud0).
 
@@ -193,9 +193,18 @@ If a future shll subcommand needs cwd scoping, the path forward is to either (a)
 - `TestDefaultRunner_RealBinary` — exercises the production path with `true`, `false`, and a missing binary; the only test that spawns real processes (and never spawns project tools).
 
 
+## Design Decisions
+
+### Keep `runStreamedChild` as the transport seam; keep the tail API intact
+
+> **Decision**: `runStreamedChild(ctx, stdout, stderr, argv...)` (`src/cmd/shll/brew.go`) stays as the thin shared wrapper over `proc.RunStreamedTail` for every install/update write-phase child, and `RunStreamedTail` keeps capturing and returning the bounded tail even though no caller consumes it.
+> **Why**: The helper is the single place documenting the null-stdin write-phase transport decision (one source of truth); leaving proc's API intact is lower-risk than an API amputation touching `proc_test.go` for zero behavior gain.
+> **Rejected**: Inlining `proc.RunStreamedTail` at the 6+ call sites (scatters the transport decision); removing the tail return from proc (a larger diff in the Constitution-I-critical wrapper for no gain).
+> *Introduced by*: 260821-0ia2-revert-two-region-linear-output
+
 ## Cross-references
 
-- All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md). The `RunStreamedTail`/`TransportStreamTail` consumers are the `shll install`/`shll update` write-phase children (brew trust/install/update/upgrade/link, delegated `<tool> update`, `rk desktop install|update`), all routed through the shared `runStreamedChild` helper in `brew.go` (yud0): [cli/update §null-stdin streamed children](/cli/update.md#null-stdin-streamed-children--the-failure-tail), [cli/install §pinned status region + OSC 9;4](/cli/install.md#pinned-status-region--determinate-osc-94-tty-write-phase).
+- All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md). The `RunStreamedTail`/`TransportStreamTail` consumers are the `shll install`/`shll update` write-phase children (brew trust/install/update/upgrade/link, delegated `<tool> update`, `rk desktop install|update`), all routed through the shared `runStreamedChild` helper in `brew.go` (yud0): [cli/update §null-stdin streamed children](/cli/update.md#null-stdin-streamed-children), [cli/install §determinate OSC 9;4](/cli/install.md#determinate-osc-94-tty-write-phase).
 - The sole `RunCaptured`/`TransportCaptureAll` consumer, `shll skill` — byte-identical stdout passthrough, with the one-arg form suppressing the child's stderr ([cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured)) and the two-arg topic form propagating it + mirroring the child's exit code ([cli/skill §a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)). The `run-kit agent setup` delegation uses `RunForeground`: [cli/setup §run-kit delegation](/cli/setup.md#run-kit-delegation).
 - Constitution I (Security First) — the principle this package enforces.
 - spec.md Design Decision #7 — package-level `Runner` is the chosen test seam.
