@@ -197,6 +197,21 @@ func printSummaryTail(w io.Writer, succeeded, total int, elapsed time.Duration, 
 	fmt.Fprintf(w, "%d succeeded, %d failed in %s — see above.\n", succeeded, failed, dur)
 }
 
+// failureTailFrameFmt is the frame line bracketing a failed child's captured
+// output tail (region mode only): `--- last output: <tool> ---`. Lines that
+// scrolled out of a DECSTBM region never enter scrollback, so the tail
+// re-prints the cause under a tool-named frame. Named per code-quality.md.
+const failureTailFrameFmt = "--- last output: %s ---"
+
+// printFailureTail re-prints a failed child's captured output tail to w under
+// a tool-named frame. Presentation-only; the caller gates it on region mode
+// and a non-empty tail.
+func printFailureTail(w io.Writer, name string, tail []byte) {
+	fmt.Fprintf(w, failureTailFrameFmt+"\n", name)
+	fmt.Fprintf(w, "%s\n", strings.TrimRight(string(tail), "\n"))
+	fmt.Fprintf(w, failureTailFrameFmt+"\n", name)
+}
+
 // previewRow is one line of a `--dry-run` preview: a tool label and the exact argv
 // `shll update` / `shll install` WOULD run for it, rendered as a display string. The
 // command code builds these from probe results (so the argv mirrors the real run);

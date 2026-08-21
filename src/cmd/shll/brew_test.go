@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -49,11 +50,15 @@ func TestBrewTrustAvailable_BrewMissing(t *testing.T) {
 
 func TestBrewTrustFormula_BuildsFormulaArg(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Transport != proc.TransportStreamTail {
+			t.Errorf("transport = %v, want TransportStreamTail (null-stdin streamed)", req.Transport)
+		}
 		return proc.Result{ExitCode: 0}
 	}}
 	installFakeRunner(t, f)
 	formula := formulaPrefix + "hop"
-	code, err := brewTrustFormula(context.Background(), formula)
+	var stdout, stderr bytes.Buffer
+	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, newStatusRegion(&stdout), formula)
 	if err != nil {
 		t.Fatalf("err = %v, want nil", err)
 	}
@@ -80,7 +85,8 @@ func TestBrewTrustFormula_SurfacesNonZeroExit(t *testing.T) {
 		return proc.Result{ExitCode: 1}
 	}}
 	installFakeRunner(t, f)
-	code, err := brewTrustFormula(context.Background(), formulaPrefix+"hop")
+	var stdout, stderr bytes.Buffer
+	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, newStatusRegion(&stdout), formulaPrefix+"hop")
 	if err != nil {
 		t.Fatalf("err = %v, want nil (non-zero exit is reported via code)", err)
 	}
@@ -94,7 +100,8 @@ func TestBrewTrustFormula_SurfacesError(t *testing.T) {
 		return proc.Result{ExitCode: -1, Err: proc.ErrNotFound}
 	}}
 	installFakeRunner(t, f)
-	code, err := brewTrustFormula(context.Background(), formulaPrefix+"hop")
+	var stdout, stderr bytes.Buffer
+	code, err := brewTrustFormula(context.Background(), &stdout, &stderr, newStatusRegion(&stdout), formulaPrefix+"hop")
 	if err == nil {
 		t.Fatal("err = nil, want non-nil for transport failure")
 	}

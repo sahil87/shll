@@ -703,8 +703,8 @@ func TestUpdate_HeaderPrecedesOutput(t *testing.T) {
 		if isRkDesktopProbe(req) {
 			return rkDesktopStatusResult(false)
 		}
-		// Delegated `hop update` (foreground), not the `hop update --help` probe.
-		if req.Name == "hop" && req.Transport == proc.TransportForeground {
+		// Delegated `hop update` (streamed-tail write), not the `hop update --help` probe.
+		if req.Name == "hop" && req.Transport == proc.TransportStreamTail {
 			seenAtHopUpgrade = stdout.String()
 		}
 		return base(req)
@@ -732,7 +732,7 @@ func TestUpdate_PartialFailureTail(t *testing.T) {
 		switch {
 		case isRkDesktopProbe(req):
 			return rkDesktopStatusResult(false) // keep rk-desktop out of the count
-		case req.Name == "hop" && req.Transport == proc.TransportForeground:
+		case req.Name == "hop" && req.Transport == proc.TransportStreamTail:
 			return proc.Result{ExitCode: 1}
 		case req.Name == brewBinary && len(req.Args) == 2 && req.Args[0] == "upgrade" && req.Args[1] == formulaPrefix+"hop":
 			return proc.Result{ExitCode: 1}
@@ -899,10 +899,10 @@ func TestUpdate_DryRunNoWrites(t *testing.T) {
 			t.Errorf("brew upgrade %s must NOT run in dry-run", tool.Formula)
 		}
 	}
-	// No foreground transport at all in dry-run (all writes are foreground).
+	// No write transport at all in dry-run (all writes are foreground/streamed).
 	for _, c := range calls {
-		if c.Transport == proc.TransportForeground {
-			t.Errorf("dry-run must spawn no foreground (write) subprocess, got %+v", c)
+		if c.Transport == proc.TransportForeground || c.Transport == proc.TransportStreamTail {
+			t.Errorf("dry-run must spawn no foreground/streamed (write) subprocess, got %+v", c)
 		}
 	}
 }
@@ -1321,8 +1321,8 @@ func TestUpdate_SubsetDryRunPreviewFiltered(t *testing.T) {
 	}
 	// No write of any kind in dry-run.
 	for _, c := range f.recordedCalls() {
-		if c.Transport == proc.TransportForeground {
-			t.Errorf("subset dry-run must spawn no foreground (write) subprocess, got %+v", c)
+		if c.Transport == proc.TransportForeground || c.Transport == proc.TransportStreamTail {
+			t.Errorf("subset dry-run must spawn no foreground/streamed (write) subprocess, got %+v", c)
 		}
 	}
 }
@@ -2168,7 +2168,7 @@ func TestUpgradeTool_NoFallbackOnCanceledContext(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	tool := Tool{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}}
-	code, err := upgradeTool(ctx, &stdout, &stderr, tool, probeResult{installed: true})
+	code, err := upgradeTool(ctx, &stdout, &stderr, newStatusRegion(&stdout), tool, probeResult{installed: true})
 	if err == nil && code == 0 {
 		t.Fatal("expected the canceled delegation to remain a failure")
 	}
@@ -2419,4 +2419,147 @@ func TestUpdate_ProgressSilentOnNonWritePaths(t *testing.T) {
 			t.Fatalf("stderr = %q, want no OSC progress on the no-tools short-circuit", stderr.String())
 		}
 	})
+}
+
+// --- tty-mode region tests (change yud0) -------------------------------------
+
+func TestUpdate_RegionModeSequencesAndTransports(t *testing.T) {
+	// Forced tty: shll-self + one roster tool (hop) → the run emits the DECSTBM
+	// region lifecycle, pinned headers for the brew refresh + both steps, and
+	// every write child (brew update/upgrade, delegated hop update) carries the
+	// streamed-tail transport.
+	forceRegionTTY(t, 80, 24)
+	base := installedOnly(formulaPrefix + "hop")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if isRkDesktopProbe(req) {
+			return rkDesktopStatusResult(false)
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "\x1b[2;24r") || !strings.Contains(out, "\x1b[r") {
+		t.Fatalf("stdout missing the region lifecycle (margin set/reset), got %q", out)
+	}
+	// Pinned headers: brew metadata refresh pseudo-step, then both tools.
+	if !strings.Contains(out, "Updating brew metadata refresh") {
+		t.Fatalf("stdout missing the brew-refresh pinned header, got %q", out)
+	}
+	if !strings.Contains(out, "Updating hop (1/1)") {
+		t.Fatalf("stdout missing the per-tool pinned header, got %q", out)
+	}
+	// The in-stream ==> headers still print (scrollback continuity).
+	if !strings.Contains(out, "==> [1/1] hop\n") {
+		t.Fatalf("stdout missing the in-stream header, got %q", out)
+	}
+	// Transports: brew update, and the delegated hop update are streamed-tail.
+	var brewUpdateStreamed, hopUpdateStreamed bool
+	for _, c := range f.recordedCalls() {
+		switch {
+		case c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "update" && c.Transport == proc.TransportStreamTail:
+			brewUpdateStreamed = true
+		case c.Name == "hop" && c.Transport == proc.TransportStreamTail:
+			hopUpdateStreamed = true
+		case c.Transport == proc.TransportForeground:
+			t.Errorf("update write-phase child kept the foreground transport: %+v", c)
+		}
+	}
+	if !brewUpdateStreamed || !hopUpdateStreamed {
+		t.Fatalf("brew-update streamed=%v hop-update streamed=%v, want both true, calls: %+v", brewUpdateStreamed, hopUpdateStreamed, f.recordedCalls())
+	}
+}
+
+func TestUpdate_RegionShllSelfHeader(t *testing.T) {
+	// shll-self is the [1/2] step with next-tool lookahead naming hop.
+	forceRegionTTY(t, 80, 24)
+	f := onlyShllInstalledRunner(0)
+	base := f.respond
+	f.respond = func(req proc.Request) proc.Result {
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" && req.Args[3] == formulaPrefix+"hop" {
+			return proc.Result{Stdout: []byte(formulaPrefix + "hop 1.0.0\n")}
+		}
+		return base(req)
+	}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "Updating shll (self) (1/2) - next: hop") {
+		t.Fatalf("stdout missing the self pinned header with lookahead, got %q", out)
+	}
+	if !strings.Contains(out, "Updating hop (2/2)") {
+		t.Fatalf("stdout missing the final-tool pinned header (no next clause), got %q", out)
+	}
+	// The self-upgrade brew call is streamed-tail.
+	selfStreamed := false
+	for _, c := range f.recordedCalls() {
+		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "upgrade" && c.Args[1] == shllFormula && c.Transport == proc.TransportStreamTail {
+			selfStreamed = true
+		}
+	}
+	if !selfStreamed {
+		t.Fatalf("brew upgrade (self) not streamed-tail, calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestUpdate_RegionFailurePrintsTail(t *testing.T) {
+	// A failed delegated update in region mode re-prints its captured tail under
+	// a tool-named frame on stderr (the fallback brew upgrade then runs as
+	// usual; it succeeds here so the tail comes from the delegation only).
+	forceRegionTTY(t, 80, 24)
+	base := installedOnly(formulaPrefix + "hop")
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		switch {
+		case isRkDesktopProbe(req):
+			return rkDesktopStatusResult(false)
+		case req.Name == "hop" && req.Transport == proc.TransportStreamTail:
+			return proc.Result{ExitCode: 1, Tail: []byte("hop update: boom\n")}
+		}
+		return base(req)
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil (the fallback rescues hop)", err)
+	}
+	wantFrame := "--- last output: hop ---\nhop update: boom\n--- last output: hop ---\n"
+	if !strings.Contains(stderr.String(), wantFrame) {
+		t.Fatalf("stderr = %q, want it to contain the framed tail %q", stderr.String(), wantFrame)
+	}
+}
+
+func TestUpdate_RefreshSubprocessKeepsForegroundTransport(t *testing.T) {
+	// Design Decision 2: the end-of-run agent-skill refresh keeps RunForeground
+	// (inherited stdin) even in region mode — its run-kit delegation may
+	// legitimately confirm interactively when --yes is absent.
+	forceRegionTTY(t, 80, 24)
+	f := shllOnlyInstalledFake()
+	installFakeRunner(t, f)
+	env := placeAgentSkill(t, "# stale placement\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runUpdate(context.Background(), env, &stdout, &stderr, false, false, nil); err != nil {
+		t.Fatalf("runUpdate err = %v, want nil", err)
+	}
+	refreshForeground := false
+	for _, c := range f.recordedCalls() {
+		if c.Name == shllTargetToken && len(c.Args) == 2 && c.Args[0] == setupSub && c.Args[1] == setupAgentLeaf {
+			if c.Transport != proc.TransportForeground {
+				t.Fatalf("refresh transport = %v, want TransportForeground (inherited stdin)", c.Transport)
+			}
+			refreshForeground = true
+		}
+	}
+	if !refreshForeground {
+		t.Fatalf("expected the `shll setup agent` refresh subprocess, calls: %+v", f.recordedCalls())
+	}
 }
