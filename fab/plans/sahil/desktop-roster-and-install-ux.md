@@ -3,7 +3,7 @@
 **Authored**: 2026-08-20
 **Author**: planning session with Claude (fab-discuss in run-kit, decisions confirmed by Sahil)
 **Executor**: fab-operator (autopilot queue) or individual fab agents
-**Status**: Plan only — intakes not yet drafted, nothing executed
+**Status**: Executed 2026-08-20 — all three changes merged: A #86 (260820-t26g), B #87 (260820-bau2), C #88 (260820-yud0). Changes not yet archived. Deferred items below remain open.
 
 ## Goal
 
