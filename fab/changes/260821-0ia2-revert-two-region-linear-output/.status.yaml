@@ -1,0 +1,55 @@
+id: 0ia2
+name: 260821-0ia2-revert-two-region-linear-output
+created: 2026-08-21T10:14:34Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 6
+    acceptance_count: 12
+    acceptance_completed: 12
+confidence:
+    certain: 6
+    confident: 5
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 79.5
+        reversibility: 83.2
+        competence: 88.6
+        disambiguation: 80.9
+stage_metrics:
+    intake: {started_at: "2026-08-21T10:14:34Z", driver: fab-new, iterations: 1, completed_at: "2026-08-21T10:20:22Z"}
+    apply: {started_at: "2026-08-21T10:20:22Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-21T10:27:24Z"}
+    review: {started_at: "2026-08-21T10:27:24Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-21T10:29:37Z"}
+    hydrate: {started_at: "2026-08-21T10:29:37Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-21T10:35:23Z"}
+    ship: {started_at: "2026-08-21T10:35:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-21T10:37:59Z"}
+    review-pr: {started_at: "2026-08-21T10:37:59Z", driver: git-pr, iterations: 1, completed_at: "2026-08-21T10:46:33Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/90
+true_impact:
+    added: 400
+    deleted: 946
+    net: -546
+    excluding:
+        added: 38
+        deleted: 888
+        net: -850
+    tests:
+        added: 10
+        deleted: 401
+        net: -391
+    computed_at: "2026-08-21T10:37:59Z"
+    computed_at_stage: ship
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-21T10:46:33Z

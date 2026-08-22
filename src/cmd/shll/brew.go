@@ -17,19 +17,13 @@ const brewBinary = "brew"
 // runStreamedChild runs one install/update write-phase child (brew
 // trust/install/update/upgrade/link, delegated <tool> update, rk desktop
 // install|update) via the null-stdin streamed-tail transport: output tees live
-// to the run's writers, and a failed child re-prints its captured tail under a
-// tool-named frame so the cause survives the scroll region. The frame fires in
-// region mode only — non-tty logs already hold every byte, and adding a tail
-// there would break the byte-identical guarantee. Exit-code semantics pass
+// to the run's writers. Exit-code semantics pass
 // through RunStreamedTail unchanged (non-zero exit is reported via code, err
 // stays nil). The end-of-run agent-skill refresh deliberately does NOT use
 // this — it keeps RunForeground (inherited stdin, the documented interactive
 // path).
-func runStreamedChild(ctx context.Context, stdout, stderr io.Writer, region *statusRegion, name string, argv ...string) (int, error) {
-	code, tail, err := proc.RunStreamedTail(ctx, stdout, stderr, argv[0], argv[1:]...)
-	if (err != nil || code != 0) && region.enabled && len(tail) > 0 {
-		printFailureTail(stderr, name, tail)
-	}
+func runStreamedChild(ctx context.Context, stdout, stderr io.Writer, argv ...string) (int, error) {
+	code, _, err := proc.RunStreamedTail(ctx, stdout, stderr, argv[0], argv[1:]...)
 	return code, err
 }
 
@@ -103,15 +97,14 @@ func brewTrustAvailable(ctx context.Context) bool {
 // taps, and shll knows its exact roster, so it trusts only what it actually
 // manages. stdout/stderr are the run's writers: brew's own "Trusted formula:" /
 // "Already trusted formula:" output streams there live via the streamed-tail
-// transport (a failed trust's tail is re-printed under a tool-named frame in
-// region mode, so the cause survives the scroll region).
+// transport.
 //
 // `brew trust` is idempotent (re-running an already-trusted formula exits 0 with
 // an "Already trusted formula:" line), so callers invoke this unconditionally
 // before each install — no pre-check for existing trust is needed. Routed through
 // internal/proc per Constitution I.
-func brewTrustFormula(ctx context.Context, stdout, stderr io.Writer, region *statusRegion, formula string) (int, error) {
-	return runStreamedChild(ctx, stdout, stderr, region, formula, brewBinary, "trust", "--formula", formula)
+func brewTrustFormula(ctx context.Context, stdout, stderr io.Writer, formula string) (int, error) {
+	return runStreamedChild(ctx, stdout, stderr, brewBinary, "trust", "--formula", formula)
 }
 
 // brewTrustList queries Homebrew's current trust state via `brew trust --json=v1`

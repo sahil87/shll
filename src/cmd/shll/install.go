@@ -272,37 +272,17 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	// returns so it measures only the install phase the tail summarizes.
 	start := nowFunc()
 
-	// OSC 9;4 terminal progress + pinned status region, both tty-gated no-ops
-	// elsewhere. Constructed only once the write phase begins — the
-	// dry-run/short-circuit/pre-write error paths above construct nothing — and
-	// removed/stopped via defer so EVERY post-construction exit clears the
-	// terminal's progress state and restores the scroll region. Deferred LIFO
-	// order runs stop() before remove() so the region is restored before the
-	// progress state clears (mirrors update.go).
+	// OSC 9;4 terminal progress, a tty-gated no-op elsewhere. Constructed only
+	// once the write phase begins — the dry-run/short-circuit/pre-write error
+	// paths above construct nothing — and removed via defer so EVERY
+	// post-construction exit clears the terminal's progress state (mirrors
+	// update.go).
 	progress := newProgressReporter(stderr, env)
 	defer progress.remove()
-	region := newStatusRegion(stdout)
-	defer region.stop()
-	region.start()
 
 	// pos is the running 1-based header position across BOTH install phases
 	// (brew-managed first, then delegated — the delegated tools sit behind their
 	// runtime prerequisite in roster order, and run-kit's brew install just ran).
-	// actionableNames is the flat list in the same order, so the pinned header
-	// can look ahead one entry for the `· next:` clause.
-	actionableNames := make([]string, 0, total)
-	for _, t := range missingBrew {
-		actionableNames = append(actionableNames, t.Name)
-	}
-	for _, t := range missingDelegated {
-		actionableNames = append(actionableNames, t.Name)
-	}
-	nextName := func(pos int) string {
-		if pos < len(actionableNames) {
-			return actionableNames[pos]
-		}
-		return ""
-	}
 	pos := 0
 	installHeader := func(name string) {
 		pos++
@@ -310,18 +290,15 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 			fmt.Fprintln(stdout)
 		}
 		printToolHeader(stdout, name, pos, total, color)
-		// Pinned header (tty only): verb + tool + honest k/n + next-tool
-		// lookahead, sharing the run's single color decision. A no-op off-tty.
-		region.setHeader(statusHeaderText(installRegionVerb, name, pos, total, nextName(pos), color))
 		// Determinate OSC 9;4 progress at the boundary, mirroring update.go.
 		progress.set((pos - 1) * 100 / total)
 	}
 
 	// runChild runs one install-phase child (brew install / delegated argv)
-	// via the shared streamed-tail helper (null stdin, live tee, region-mode
-	// failure tail — see runStreamedChild).
-	runChild := func(name string, argv ...string) (int, error) {
-		return runStreamedChild(ctx, stdout, stderr, region, name, argv...)
+	// via the shared streamed-tail helper (null stdin, live tee — see
+	// runStreamedChild).
+	runChild := func(argv ...string) (int, error) {
+		return runStreamedChild(ctx, stdout, stderr, argv...)
 	}
 
 	anyFailed := false
@@ -337,14 +314,14 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 		// untrusted-tap error if trust truly didn't land), and do NOT set anyFailed —
 		// the install's exit code is the authority on whether this tool succeeded.
 		if trustEnabled {
-			if code, terr := brewTrustFormula(ctx, stdout, stderr, region, t.Formula); terr != nil {
+			if code, terr := brewTrustFormula(ctx, stdout, stderr, t.Formula); terr != nil {
 				fmt.Fprintf(stderr, "shll install: %s: trust step failed: %v (continuing to install)\n", t.Name, terr)
 			} else if code != 0 {
 				fmt.Fprintf(stderr, "shll install: %s: trust step exited %d (continuing to install)\n", t.Name, code)
 			}
 		}
 
-		code, err := runChild(t.Name, brewBinary, "install", t.Formula)
+		code, err := runChild(brewBinary, "install", t.Formula)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
 			anyFailed = true
@@ -379,7 +356,7 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 			}
 		}
 		installHeader(t.Name)
-		code, err := runChild(t.Name, t.Install...)
+		code, err := runChild(t.Install...)
 		if err != nil {
 			fmt.Fprintf(stderr, "shll install: %s: %v\n", t.Name, err)
 			anyFailed = true
@@ -513,10 +490,6 @@ const allInstalledMsg = "All shll tools already installed."
 // running orchestrator), so the line is informational — NOT a brew install action.
 // Named per code-quality.md (no magic strings).
 const shllSelfInstallNote = "shll — already present / self-managed"
-
-// installRegionVerb is the pinned-header verb for `shll install`'s status region
-// (e.g. `Installing run-kit (2/7) · next: rk-desktop`). Named per code-quality.md.
-const installRegionVerb = "Installing"
 
 // Post-install "Next steps" strings (change 93r2; agent-setup graduation change
 // agst; auto-run change gjhx). Each is a named constant per code-quality.md — the
