@@ -1,18 +1,18 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (no inter-tool `depends_on`, runtime probing, centralized install docs, shll-README carve-out, the install→setup composition), and principles' idempotency line naming `shll setup`."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (install-time composition, centralized install docs), and `config-home` (fixed $HOME/.config/<tool>/ root, override cascade, env = deployment bootstrap only)."
 ---
 # cli/standards-content
 
 **Domain**: cli
 
-The toolkit-wide standards *documents* — the canonical `docs/site/standards/*.md` pages the shll repo hosts, and which `shll standards` embeds and serves. This file covers the **content and structure** of those documents: the `docs/site/standards/` directory restructure (i70w), the `skill` standard's contract, the three producer-surface standards (`update`, `version`, `shell-init`), and the `install-composition` standard. The **command** that reads them — its roster, embed mechanism, drift guard, and output shapes — is [cli/standards](/cli/standards.md).
+The toolkit-wide standards *documents* — the canonical `docs/site/standards/*.md` pages the shll repo hosts, and which `shll standards` embeds and serves. This file covers the **content and structure** of those documents: the `docs/site/standards/` directory restructure (i70w), the `skill` standard's contract, the three producer-surface standards (`update`, `version`, `shell-init`), the `install-composition` standard, and the `config-home` standard. The **command** that reads them — its roster, embed mechanism, drift guard, and output shapes — is [cli/standards](/cli/standards.md).
 
 > Placement note: these are toolkit-wide documents, not shll-CLI behavior, but the shll repo is where their canonical source lives and where the reader command consumes them, so the memory lives beside [cli/standards](/cli/standards.md) rather than in a separate single-file domain.
 
 ## The `docs/site/standards/` restructure
 
-The eight producer-facing standards pages live in the `docs/site/standards/` subdirectory (i70w established the layout):
+The nine producer-facing standards pages live in the `docs/site/standards/` subdirectory (i70w established the layout):
 
 ```
 docs/site/
@@ -26,7 +26,8 @@ docs/site/
     ├── update.md               # producer-surface standard (y367)
     ├── version.md              # producer-surface standard (y367)
     ├── shell-init.md           # producer-surface standard (y367)
-    └── install-composition.md  # install-time composition standard (w6ay)
+    ├── install-composition.md  # install-time composition standard (w6ay)
+    └── config-home.md          # config location + override-cascade standard (km8t)
 ```
 
 ### Why the subdirectory
@@ -45,7 +46,7 @@ docs/site/
 
 ### docs/site closure
 
-Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill ↔ update ↔ version ↔ shell-init ↔ install-composition) all resolve inside `docs/site/standards/` with no `..` escape (readme-extraction standard, closure rule 1) — the eight files share one directory. The three producer-surface pages cross-link each other (`version` ↔ `update` on the one-string binary/formula identity; `shell-init` → `principles` for the exit-2 usage convention) and back to `principles.md`, all same-directory; `install-composition` links to `principles.md` and to `update.md` (whose shll-out-of-producer-scope carve-out it mirrors), same-directory. Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` carries a "The contracts" section and same-directory companion links to all seven companion standards; its "Consuming these standards" URLs point at `/shll/standards/…`.
+Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ skill ↔ update ↔ version ↔ shell-init ↔ install-composition ↔ config-home) all resolve inside `docs/site/standards/` with no `..` escape (readme-extraction standard, closure rule 1) — the nine files share one directory. The three producer-surface pages cross-link each other (`version` ↔ `update` on the one-string binary/formula identity; `shell-init` → `principles` for the exit-2 usage convention) and back to `principles.md`, all same-directory; `install-composition` links to `principles.md` and to `update.md` (whose shll-out-of-producer-scope carve-out it mirrors), same-directory; `config-home` links to `principles.md` and to `update.md` (the one-string tool-name identity its directory-naming rule reuses), same-directory. Links leaving the published set are absolute `https://…` URLs; there are no images. `principles.md` carries a "The contracts" section and same-directory companion links to all eight companion standards; its "Consuming these standards" URLs point at `/shll/standards/…`.
 
 ## The `help-dump` standard defines the optional `aliases` field
 
@@ -182,6 +183,33 @@ The page follows the house register (single `#` H1 `Standard: install-compositio
 **Rejected**: A dedicated `tap` scope value (churn for one row; the tap formula is a repo-file obligation in spirit and `binary+repo` already fits); `install` as the filename (subcommand-surface / collision ambiguity).
 *Introduced by*: `260720-w6ay-install-composition-standard`.
 
+## The `config-home` standard
+
+`docs/site/standards/config-home.md` (km8t) is the standard for **where a toolkit tool's configuration lives and how override layers stack**. It implements principles №6 (stateless, therefore retry-safe — a config path the environment cannot move is the config-side face of "same invocation, same behavior") and №4 (fail fast — the unset-`$HOME` error path), at scope `binary`. Its obligations:
+
+- **One fixed config root (MUST)**: `$HOME/.config/<tool-name>/`, built with `filepath.Join` from `$HOME` (the only environment input); `<tool-name>` is the full tool name (`run-kit`, not `rk` — the same one-string identity the `update` standard requires across repo/formula/binary); no `$XDG_CONFIG_HOME` honor, no `os.UserConfigDir` (macOS would give `~/Library/Application Support`) — the path is identical on every platform and in every process context by construction. Unset `$HOME` → actionable error. SHOULD pin the path with a test asserting env vars cannot move it. The page's stated rationale is determinism: a daemon, a CLI, and an agent-in-a-pane can each see a different `$XDG_CONFIG_HOME` and silently read different configs; dotfiles users symlink the directory instead.
+- **One override order (MUST)**: code defaults < config file < env < CLI flag — one cascade, no per-key exceptions.
+- **Env is deployment bootstrap only (MUST)**: env forms exist only for keys needed at/before process start, per-deployment (e.g. run-kit's `RK_PORT`/`RK_HOST`); env is never an override channel for preference keys (the page names run-kit's RK_AUTO_NAME misstep as the banned failure mode).
+- **State is not config (MAY, bounded)**: XDG-honoring state dirs (`$XDG_STATE_HOME/<tool-name>/`) are allowed only for droppable, never-authoritative files — the asymmetry is deliberate (an env mismatch on a droppable cache cannot fork behavior).
+- **The fab-kit exception**: `~/.fab-kit/` is the documented, closed exception (config co-located with its version cache, per fab-kit's own decision record). New tools get no exception.
+- **Conformance receipts** (page's own audit, 2026-08-23): `hop` is the reference implementation (`src/internal/config/resolve.go` + env-immovability test); `idea` conforms (`systemConfigDir` → `~/.config/idea`); `run-kit` is adopting via its config-consolidation plan; `wt`/`tu` have no config file and are bound when they grow one.
+
+The page follows the house register (single `#` H1 `Standard: config-home`, implements-principle line, MUST/SHOULD sections, closing `## Verifying conformance` checklist).
+
+### Design Decisions
+
+#### config-home implements №6 + №4
+**Decision**: The `config-home` standard's Implements cell is №6 (stateless/deterministic) and №4 (fail fast).
+**Why**: №6's failure mode — acting on a world that no longer exists — is exactly what an env-movable config path causes across process contexts; №4 covers the unset-`$HOME` error the standard mandates.
+**Rejected**: №8 (a missing config file is each tool's own concern, not this standard's); minting an eleventh principle (the ten are stable; contracts implement them).
+*Introduced by*: `260823-km8t-config-home-standard`.
+
+#### config-home scope `binary`
+**Decision**: Roster scope `binary`.
+**Why**: The obligations are satisfied by the compiled tool's runtime path resolution, exactly like `update`/`version`/`shell-init`; the SHOULD-level pin test does not create a repo half (those three also imply tests and stay `binary`).
+**Rejected**: `binary+repo` (nothing lives canonically as a repo file the way the `skill` bundle does); a new scope value (`TestStandardsRosterIntegrity` pins the four-value vocabulary).
+*Introduced by*: `260823-km8t-config-home-standard`.
+
 ## Cross-references
 
 - The command that ADOPTS this `skill` standard — the `shll skill` composer + shll's own `docs/site/skill.md` bundle (agst): [cli/skill](/cli/skill.md). The harness-wiring command: [cli/setup](/cli/setup.md) (`shll setup agent`).
@@ -189,4 +217,4 @@ The page follows the house register (single `#` H1 `Standard: install-compositio
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
 - The shll-side consumer machinery these three standards codify (probe-first ordering, digest, timeout, composer concatenation): [cli/update](/cli/update.md), [cli/version](/cli/version.md), [cli/shell-init](/cli/shell-init.md).
-- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill), [update](https://shll.ai/shll/standards/update), [version](https://shll.ai/shll/standards/version), [shell-init](https://shll.ai/shll/standards/shell-init), [install-composition](https://shll.ai/shll/standards/install-composition).
+- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill), [update](https://shll.ai/shll/standards/update), [version](https://shll.ai/shll/standards/version), [shell-init](https://shll.ai/shll/standards/shell-init), [install-composition](https://shll.ai/shll/standards/install-composition), [config-home](https://shll.ai/shll/standards/config-home).
