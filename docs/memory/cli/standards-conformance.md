@@ -99,7 +99,7 @@ The ninth standard, `config-home` (km8t), binds every toolkit tool that has — 
 
 ## The rk-desktop roster-entry conformance pass
 
-The importance-descending roster reorder plus the `rk-desktop` roster entry (the roster's first delegated, non-brew tool) re-ran the constitution-mandated conformance pass (t26g) against `docs/site/standards/` on a dev build from repo HEAD — the same audit method as above, findings recorded in the change folder's `conformance-report.md` per [the conformance-report-in-PR-body convention](#the-conformance-report-in-pr-body-convention). Result: **all eight standards PASS, no new deferrals.**
+The importance-descending roster reorder plus the `rk-desktop` roster entry (the roster's first delegated, non-brew tool) re-ran the constitution-mandated conformance pass (t26g) against `docs/site/standards/` on a dev build from repo HEAD — the same audit method as above, findings recorded in the change folder's `conformance-report.md` per [the conformance-report-in-PR-body convention](#the-conformance-report-in-pr-body-convention). Result: **all eight then-published standards PASS (the pass predates `config-home`), no new deferrals.**
 
 | Standard | Result |
 |----------|--------|
