@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "shll's conformance state against the 8 toolkit standards: four audited on HEAD against shll v0.0.23 (principles, help-dump, readme-extraction, skill) with two fixes and by-design non-gaps; version pinned by a conformance test; shell-init/update/install-composition conformant by construction or N/A; the roster reorder + rk-desktop delegated entry re-passed all eight (readme-extraction fixed in place), no new deferrals. Includes the conformance-report-in-PR-body convention."
+description: "shll's conformance state against the 9 toolkit standards: four audited on HEAD against shll v0.0.23 (principles, help-dump, readme-extraction, skill) with two fixes and by-design non-gaps; version pinned by a conformance test; shell-init/update/install-composition conformant by construction or N/A; config-home N/A (shll has no config file); the rk-desktop roster pass opened no new deferrals. Includes the conformance-report-in-PR-body convention."
 ---
 # cli/standards-conformance
 
@@ -16,7 +16,7 @@ The constitution's Toolkit Standards article (§ Additional Constraints — qas0
 
 ## Audit method
 
-The audit is **runtime-enumerated, not assumed**: `shll standards` lists the standards, and `shll standards <name>` prints each one; that list is authoritative. `shll standards` enumerates **eight** standards. The **four** documentation/help standards (`principles`, `help-dump`, `readme-extraction`, `skill`) carry a behavioral audit against **shll v0.0.23** (`shll version`'s shll row — standards are versioned with the shll release); their audit table is below. The three producer-surface standards (`update`, `version`, `shell-init`) codify shll's own already-shipped probe behavior, so shll's posture against them is a **by-construction / not-applicable** determination rather than a behavioral audit — see [The three producer-surface standards](#the-three-producer-surface-standards-updateversionshell-init) below. The eighth standard, `install-composition`, is likewise a **by-construction** determination (shll composes the toolkit and probes/degrades by its own constitution) — see [The `install-composition` standard](#the-install-composition-standard-conformant-by-construction) below.
+The audit is **runtime-enumerated, not assumed**: `shll standards` lists the standards, and `shll standards <name>` prints each one; that list is authoritative. `shll standards` enumerates **nine** standards. The **four** documentation/help standards (`principles`, `help-dump`, `readme-extraction`, `skill`) carry a behavioral audit against **shll v0.0.23** (`shll version`'s shll row — standards are versioned with the shll release); their audit table is below. The three producer-surface standards (`update`, `version`, `shell-init`) codify shll's own already-shipped probe behavior, so shll's posture against them is a **by-construction / not-applicable** determination rather than a behavioral audit — see [The three producer-surface standards](#the-three-producer-surface-standards-updateversionshell-init) below. The eighth standard, `install-composition`, is likewise a **by-construction** determination (shll composes the toolkit and probes/degrades by its own constitution) — see [The `install-composition` standard](#the-install-composition-standard-conformant-by-construction) below. The ninth, `config-home`, is **N/A for shll** — shll has no config file — see [The `config-home` standard](#the-config-home-standard-na--shll-has-no-config-file) below.
 
 - **Standards *text* comes from the installed binary (v0.0.23)**, which is byte-matched to this repo's `docs/site/standards/` by the `TestStandardsEmbedMatchesCanonical` drift guard (see [cli/standards §the drift guard](/cli/standards.md#the-drift-guard-teststandardsembedmatchescanonical)).
 - **Behavioral checks run against a dev build from repo HEAD** (`cd src && go build -o /tmp/shll-audit ./cmd/shll`), not the installed v0.0.23 — the repo, not the shipped binary, is what a conformance change can fix.
@@ -90,6 +90,12 @@ The eighth standard, `install-composition` (w6ay), binds shll on both policies. 
 The **seven roster tools'** conformance to `install-composition` — removing the `fab-kit`/`hop` `depends_on` edges on `wt`/`idea`, retiring the `all` meta-formula from each repo, and de-duplicating per-repo `brew install` README snippets — is per-repo rollout work (the `[std1]`/`[std2]` wave pattern, parallel changes in other repos), out of scope for w6ay, which only authored and wired the standard in shll. shll's own README slim + `docs/site/install.md` curation (d4o6) is the reference example the roster changes mirror — the publisher adopting the bootstrap-plus-pointer shape voluntarily, ahead of the wave, even though its README is carved out of the producer scope.
 
 *Policy B carve-out + voluntary slim introduced by*: `260720-d4o6-install-docs-policy-b`.
+
+## The `config-home` standard: N/A — shll has no config file
+
+The ninth standard, `config-home` (km8t), binds every toolkit tool that has — or grows — a config file. shll's posture is **N/A by construction**: shll is stateless (Constitution II — no database, no state, and no config file; every invocation re-derives at request time), so the fixed-root, cascade, and env-restriction obligations have no subject in shll today. shll is bound the day it grows a config file, like `wt`/`tu`. The toolkit's conforming implementations the standard cites as receipts are `hop` (the reference implementation) and `idea`; `run-kit`'s adoption is its own config-consolidation work, and `fab-kit` is the standard's documented, closed exception. Publishing the standard opened no shll gap and no deferral.
+
+*Introduced by*: `260823-km8t-config-home-standard`.
 
 ## The rk-desktop roster-entry conformance pass
 

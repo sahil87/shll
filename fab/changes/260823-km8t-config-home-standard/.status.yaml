@@ -1,0 +1,55 @@
+id: km8t
+name: 260823-km8t-config-home-standard
+created: 2026-08-23T02:40:55Z
+created_by: Sahil Ahuja
+change_type: docs
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 5
+    acceptance_count: 9
+    acceptance_completed: 9
+confidence:
+    certain: 4
+    confident: 3
+    tentative: 0
+    unresolved: 0
+    score: 4.5
+    fuzzy: true
+    dimensions:
+        signal: 70.7
+        reversibility: 87.1
+        competence: 82.9
+        disambiguation: 77.9
+stage_metrics:
+    intake: {started_at: "2026-08-23T02:40:55Z", driver: fab-new, iterations: 1, completed_at: "2026-08-23T02:46:52Z"}
+    apply: {started_at: "2026-08-23T02:46:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-23T02:49:31Z"}
+    review: {started_at: "2026-08-23T02:49:31Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-23T02:52:35Z"}
+    hydrate: {started_at: "2026-08-23T02:52:35Z", driver: fab-fff, iterations: 1, completed_at: "2026-08-23T02:55:17Z"}
+    ship: {started_at: "2026-08-23T02:55:17Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-08-23T02:55:17Z"
+    computed_at_stage: hydrate
+summary: Added the ninth toolkit standard config-home (fixed $HOME/.config/<tool>/ root, override cascade, env = deployment bootstrap only, XDG-state asymmetry, fab-kit exception) and registered it in principles.md, the sync array, the standards roster, and the embeds
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-08-23T02:55:17Z

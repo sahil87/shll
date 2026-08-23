@@ -128,6 +128,13 @@ var standardsRoster = []standard{
 		SourcePath:  "docs/site/standards/install-composition.md",
 		EmbedName:   "install-composition.md",
 	},
+	{
+		Name:        "config-home",
+		Description: "Fixed $HOME/.config/<tool>/ config root, override cascade, env restricted to deployment bootstrap keys",
+		Scope:       "binary",
+		SourcePath:  "docs/site/standards/config-home.md",
+		EmbedName:   "config-home.md",
+	},
 }
 
 // standardJSONItem is one roster row as emitted by `shll standards --json`. Field
