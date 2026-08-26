@@ -347,6 +347,13 @@ func TestAgentSetup_BodyTeachesTwoStepAndStandards(t *testing.T) {
 	if !strings.Contains(agentSkillContent, "shll standards") {
 		t.Errorf("SKILL.md body must carry the `shll standards` pointer")
 	}
+	// The proactive-capabilities pointer line names the code bridge and its topic page.
+	if !strings.Contains(agentSkillContent, "rk code exec") {
+		t.Errorf("SKILL.md body must name the `rk code exec` editor-command capability")
+	}
+	if !strings.Contains(agentSkillContent, "shll skill run-kit code") {
+		t.Errorf("SKILL.md body must point at the `shll skill run-kit code` topic page")
+	}
 	// It must NOT reintroduce stanza/sentinel wording.
 	if strings.Contains(agentSkillContent, "stanza") || strings.Contains(agentSkillContent, "sentinel") {
 		t.Errorf("SKILL.md must not describe a stanza/sentinel mechanism, got:\n%s", agentSkillContent)
@@ -398,7 +405,7 @@ func TestRosterSkillHints(t *testing.T) {
 // gets its own test rather than extending TestRosterSkillHints (which enforces an
 // every-tool required field).
 //
-// Beyond the dynamic verbatim-containment check, it pins the hint's three load-bearing
+// Beyond the dynamic verbatim-containment check, it pins the hint's four load-bearing
 // functions as fragment containment checks, so a future rewording cannot silently drop
 // any of: (a) the proxy trigger vocabulary ("to proxy a local http port" — matches
 // requests that name proxying/dev servers), (b) the skill-shadowing
@@ -407,7 +414,9 @@ func TestRosterSkillHints(t *testing.T) {
 // routing the agent to `shll skill run-kit` for the proxied-iframe recipe instead), and
 // (c) the hosted-artifact counter-instruction ("publishing an artifact" — fires when an
 // Artifact-style hosted-publishing delivery step, which opens no file and touches no
-// local port, is about to route visuals off the run-kit dashboard).
+// local port, is about to route visuals off the run-kit dashboard), and (d) the
+// editor-command trigger vocabulary ("rk code exec" — matches requests to act inside the
+// user's code editor, e.g. refresh a PR list or open a diff, via the run-kit code bridge).
 func TestRosterProactiveHint(t *testing.T) {
 	// Exactly run-kit carries a ProactiveHint; every other tool leaves it empty
 	// (the sprawl guard — only agent-proactive capabilities earn description space).
@@ -431,15 +440,16 @@ func TestRosterProactiveHint(t *testing.T) {
 	if !strings.Contains(desc, rk.ProactiveHint) {
 		t.Errorf("description must contain run-kit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
 	}
-	// … carrying all three load-bearing functions — the proxy trigger vocabulary, the
-	// skill-shadowing counter-instruction, and the hosted-artifact counter-instruction —
-	// pinned as independent fragments so a future rewording cannot silently drop any
-	// (the verbatim check above is dynamic and would pass mechanically with any Roster
-	// value).
+	// … carrying all four load-bearing functions — the proxy trigger vocabulary, the
+	// skill-shadowing counter-instruction, the hosted-artifact counter-instruction, and
+	// the editor-command trigger vocabulary — pinned as independent fragments so a
+	// future rewording cannot silently drop any (the verbatim check above is dynamic
+	// and would pass mechanically with any Roster value).
 	for _, fragment := range []string{
 		"to proxy a local http port",                               // (a) proxy trigger vocabulary
 		"before opening any file or local port in a browser, read", // (b) shadowing counter-instruction
 		"publishing an artifact",                                   // (c) hosted-artifact counter-instruction
+		"rk code exec",                                             // (d) editor-command trigger vocabulary
 	} {
 		if !strings.Contains(desc, fragment) {
 			t.Errorf("description must contain the load-bearing fragment %q, got: %s", fragment, desc)

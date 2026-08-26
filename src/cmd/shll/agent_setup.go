@@ -65,7 +65,7 @@ This machine has the shll toolkit installed. Before driving one of its tools:
    composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
    core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
-Run-kit also has agent-proactive capabilities — visual display in a browser window and push notifications; see ` + "`shll skill run-kit`" + `.
+Run-kit also has agent-proactive capabilities — visual display in a browser window, push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + `); see ` + "`shll skill run-kit`" + ` (and ` + "`shll skill run-kit code`" + ` for the editor bridge).
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `
