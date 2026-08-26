@@ -1,0 +1,2 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-08-26T10:43:23Z"}
+{"args":"shll: extend run-kit Roster Description/ProactiveHint + shll-toolkit skill body with the rk code (code-bridge) capability so agents discover rk code exec via the placed skill","cmd":"fab-new","event":"command","ts":"2026-08-26T10:43:23Z"}
