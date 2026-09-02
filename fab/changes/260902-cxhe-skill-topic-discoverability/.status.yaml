@@ -1,0 +1,55 @@
+id: cxhe
+name: 260902-cxhe-skill-topic-discoverability
+created: 2026-09-02T16:48:29Z
+created_by: sahil-noon
+change_type: docs
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: active
+    review-pr: pending
+plan:
+    generated: true
+    task_count: 5
+    acceptance_count: 12
+    acceptance_completed: 12
+confidence:
+    certain: 8
+    confident: 4
+    tentative: 0
+    unresolved: 0
+    score: 4.3
+    fuzzy: true
+    dimensions:
+        signal: 84.2
+        reversibility: 79.6
+        competence: 82.9
+        disambiguation: 82.1
+stage_metrics:
+    intake: {started_at: "2026-09-02T16:48:29Z", driver: fab-new, iterations: 1, completed_at: "2026-09-02T17:03:07Z"}
+    apply: {started_at: "2026-09-02T17:03:07Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-02T17:07:40Z"}
+    review: {started_at: "2026-09-02T17:07:40Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-02T17:17:17Z"}
+    hydrate: {started_at: "2026-09-02T17:17:17Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-02T17:18:43Z"}
+    ship: {started_at: "2026-09-02T17:18:43Z", driver: fab-fff, iterations: 1}
+prs: []
+change_type_source: explicit
+true_impact:
+    added: 0
+    deleted: 0
+    net: 0
+    excluding:
+        added: 0
+        deleted: 0
+        net: 0
+    tests:
+        added: 0
+        deleted: 0
+        net: 0
+    computed_at: "2026-09-02T17:18:43Z"
+    computed_at_stage: hydrate
+summary: 'skill standard gains topic discoverability: help-text topic enumeration MUST + reserved ''topics'' enumeration topic (all adopting tools); shll skill shll topics now prints empty + exit 0'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-02T17:18:43Z

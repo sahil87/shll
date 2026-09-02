@@ -1,0 +1,15 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-02T16:48:29Z"}
+{"args":"Amend the toolkit skill standard: MUST enumerate topic names in skill --help; reserved 'topics' topic printing topic names one per line for machine-readable enumeration (rides shll skill passthrough with zero shll changes)","cmd":"fab-new","event":"command","ts":"2026-09-02T16:48:29Z"}
+{"delta":"+0.0","event":"confidence","score":0,"trigger":"calc-score","ts":"2026-09-02T16:51:09Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-09-02T16:52:43Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-02T16:53:59Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-09-02T16:57:45Z"}
+{"delta":"+1.7","event":"confidence","score":1.7,"trigger":"calc-score","ts":"2026-09-02T17:00:46Z"}
+{"delta":"+2.6","event":"confidence","score":4.3,"trigger":"calc-score","ts":"2026-09-02T17:01:42Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-02T17:02:59Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-02T17:03:07Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-02T17:07:40Z"}
+{"cmd":"fab-continue","event":"command","ts":"2026-09-02T17:11:23Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-02T17:17:17Z"}
+{"event":"review","result":"passed","ts":"2026-09-02T17:17:17Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-02T17:18:43Z"}
