@@ -83,6 +83,21 @@ A `<tool> skill` bundle is offline (embedded), present on every machine with the
 
 The toolkit's prior art is `run-kit context` (a.k.a. `rk context`) — roughly 102 lines of agent-optimized markdown a harness loads to learn what run-kit can do. It proves the shape works. The `skill` genre draws one explicit line on it: `run-kit context` mixes **static** capability prose with a small **dynamic** Environment header (current session, pane, server URL) computed at invocation, whereas a `skill` bundle is **static-only**. Dynamic, environment-derived state stays in separate commands like `run-kit context`; a `skill` bundle never varies with where or when it runs.
 
+### Topic-page discoverability (two mandates)
+
+A large-scope tool splits depth into **topic pages** (`<tool> skill <topic>`, canonical at `docs/site/skill/<topic>.md`, each ≤150 lines). Their discoverability is served on four surfaces:
+
+- **Core-bundle topic index** — one line per topic naming what it covers and the command that serves it.
+- **Help-text enumeration (MUST)** — a tool shipping ≥1 topic page names its topics in the `skill` subcommand's help text (e.g. a `Topics: code, display, mux, tutorial` line — the names are the mandate, the format illustrative). Static by construction (topics are embedded at build time); a core-bundle-only tool's help is unaffected. This covers the surface a caller consults *before* paying the core bundle's context cost.
+- **Reserved topic `topics` (binds every adopting tool)** — `<tool> skill topics` prints the content-topic names, one per line, raw stdout, stderr empty, exit 0; a topic-less tool prints **empty stdout + exit 0**. The name is reserved in every tool's topic namespace (no content topic may be named `topics`); ordering is tool-chosen; the reserved name is a machine affordance not listed in the `Topics:` help line or the topic index (those enumerate content topics only), and it is not itself a topic page (no canonical file, no budget).
+- **Unknown-topic error** — non-zero exit with the valid topics on stderr, never silent empty stdout.
+
+#### Reserved positional `topics` topic, not a `--list` flag
+**Decision**: The machine-readable enumeration is the reserved positional topic `<tool> skill topics`, mandated for all adopting tools.
+**Why**: The shll composer (`shll skill <tool> <topic>`) forwards two positional args verbatim, so `shll skill <tool> topics` composes with zero composer changes; empty-output-exit-0 for topic-less tools keeps "what topics do you have?" uniformly scriptable.
+**Rejected**: A `--list` flag (intercepted by the composer's own cobra flag parsing — would need `DisableFlagParsing`/whitelisting in shll); topic names in shll's hardcoded roster (version skew — a tool's topics change on its own release cadence); annotating the bare `shll skill` glossary with per-tool topics (a subprocess per installed tool at glossary time, breaking the glossary's PATH-probe-only cost contract).
+*Introduced by*: `260902-cxhe-skill-topic-discoverability`.
+
 ### The `skill`-not-`agent` name decision
 
 **Decision**: the subcommand is `skill`, deliberately not `agent`.

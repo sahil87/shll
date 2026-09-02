@@ -633,6 +633,41 @@ func TestSkillTopic_ShllSelf_NoTopicsUsageExit2NoSubprocess(t *testing.T) {
 	}
 }
 
+func TestSkillTopic_ShllSelf_ReservedTopicsEmptyExit0NoSubprocess(t *testing.T) {
+	// `shll skill shll topics` — the skill standard's reserved enumeration topic binds
+	// every adopting tool. shll ships zero topic pages, so the answer is the empty list:
+	// zero bytes on stdout, empty stderr, exit 0. Served in-process, no subprocess.
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		t.Errorf("shll skill shll topics must NOT spawn a subprocess, got %+v", req)
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"shll", skillReservedTopic})
+	if err != nil {
+		t.Fatalf("shll skill shll topics err = %v, want nil (exit 0)", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("zero topic pages must print empty stdout (zero bytes), got %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must be empty on success, got %q", stderr.String())
+	}
+}
+
+func TestSkillCmd_LongHelpNamesReservedTopicsTopic(t *testing.T) {
+	// The Long help teaches the reserved enumeration topic — the discoverability surface
+	// a caller consults before pulling any bundle.
+	long := newSkillCmd().Long
+	if !strings.Contains(long, "shll skill <tool> topics") {
+		t.Errorf("skill Long help must name the reserved `topics` enumeration form, got:\n%s", long)
+	}
+	if !strings.Contains(long, "shll skill shll topics") {
+		t.Errorf("skill Long help must state shll's own `topics` behavior, got:\n%s", long)
+	}
+}
+
 // TestSkill_ArgCount_ThreeArgsUsageExit2 drives the REAL cobra command: the arg-count
 // contract shifts from >1 to >2, so `shll skill a b c` (three args) is a usage error.
 func TestSkill_ArgCount_ThreeArgsUsageExit2(t *testing.T) {

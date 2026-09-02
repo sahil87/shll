@@ -46,11 +46,19 @@ const skillProbeTimeout = 2 * time.Second
 // code-quality.md; kept to a single line — it trails the tabwriter table after a blank line.
 const skillHintLine = "Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> <topic>' for a topic page)."
 
-// skillNoTopicsFmt is the one-line stderr notice for `shll skill shll <topic>`: shll
-// ships zero topic pages today. Served in-process (a self-invocation would recurse into
-// the composer), usage exit 2 — matching the unknown-tool usage convention (the `skill`
-// standard requires only a non-zero exit with the valid topics on stderr; the valid set
-// is empty). Takes the requested topic name. Named per code-quality.md (no magic strings).
+// skillReservedTopic is the `skill` standard's reserved enumeration topic: every
+// adopting tool answers `<tool> skill topics` with its content-topic names, one per
+// line, exit 0 — empty stdout for a tool shipping zero topic pages. shll consumes it
+// only on the shll-self branch (roster tools answer it themselves through the verbatim
+// passthrough). Named per code-quality.md (no magic strings).
+const skillReservedTopic = "topics"
+
+// skillNoTopicsFmt is the one-line stderr notice for `shll skill shll <topic>` with any
+// topic OTHER than the reserved skillReservedTopic: shll ships zero topic pages today.
+// Served in-process (a self-invocation would recurse into the composer), usage exit 2 —
+// matching the unknown-tool usage convention (the `skill` standard requires only a
+// non-zero exit with the valid topics on stderr; the valid set is empty). Takes the
+// requested topic name. Named per code-quality.md (no magic strings).
 const skillNoTopicsFmt = "shll skill: shll ships no topic pages (unknown topic %q)"
 
 // skillUnsupportedFmt is the one-line stderr notice for a valid tool whose skill
@@ -110,8 +118,12 @@ notice to stderr and exits 1; an unknown tool name is a usage error (exit 2).
 core bundle lists its topics). On success it streams the topic page byte-for-byte. On a
 child failure it propagates the child's own stderr and exit code UNCHANGED — so an unknown
 topic surfaces the tool's own diagnostic (valid topics on stderr, non-zero exit), not a
-shll-rewritten one. shll ships no topics of its own, so ` + "`shll skill shll <topic>`" + ` is a
-usage error (exit 2).`,
+shll-rewritten one.
+
+` + "`topics`" + ` is the reserved enumeration topic: ` + "`shll skill <tool> topics`" + ` lists that tool's
+topic names, one per line (empty output for a tool that ships none). shll itself ships no
+topic pages — ` + "`shll skill shll topics`" + ` prints nothing and exits 0, and any other
+` + "`shll skill shll <topic>`" + ` is a usage error (exit 2).`,
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSkill(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), args)
@@ -236,8 +248,10 @@ func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string
 // completion is NOT propagated: proc.RunCaptured reports a deadline/signal kill as code
 // -1 with nil err (not a real exit status), so that case gets a curated operational
 // exit-1 notice (mirroring -1 would wrap to process exit 255 with no diagnostic). shll
-// ships no topics of its own, so `shll skill shll <topic>` is a usage error served
-// in-process (a subprocess self-invocation would recurse into the composer).
+// ships no topics of its own, so `shll skill shll <topic>` is served in-process (a
+// subprocess self-invocation would recurse into the composer): the reserved
+// skillReservedTopic prints the empty list (zero bytes, exit 0 — the standard binds
+// every adopting tool), and any other topic is a usage error (exit 2).
 func writeSkillTopic(ctx context.Context, stdout, stderr io.Writer, name, topic string) error {
 	// Legacy alias (rk → run-kit) via the same map resolveTargets consults, applied
 	// before any dispatch so a topic invocation targets the canonical binary.
@@ -246,9 +260,16 @@ func writeSkillTopic(ctx context.Context, stdout, stderr io.Writer, name, topic 
 	}
 
 	if name == shllTargetToken {
-		// shll ships zero topic pages — usage error, exit 2, no subprocess. The standard
-		// requires only a non-zero exit with the valid topics on stderr; the valid set is
-		// empty, so one line naming the unknown topic is the honest diagnostic.
+		if topic == skillReservedTopic {
+			// The standard's reserved enumeration topic binds every adopting tool, shll
+			// included: shll ships zero topic pages, so the honest machine answer is the
+			// empty list — zero names, zero lines, zero bytes on stdout, exit 0.
+			return nil
+		}
+		// Any other topic: shll ships zero topic pages — usage error, exit 2, no
+		// subprocess. The standard requires only a non-zero exit with the valid topics on
+		// stderr; the valid set is empty, so one line naming the unknown topic is the
+		// honest diagnostic.
 		fmt.Fprintf(stderr, skillNoTopicsFmt+"\n", topic)
 		return &errExitCode{code: usageExitCode}
 	}

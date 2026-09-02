@@ -63,6 +63,12 @@ The audit deferred `skill` (no `shll skill` subcommand existed then; the standar
 
 The other six tools' `<tool> skill` bundles remain the per-repo standards waves' work (out of scope for `agst`, which is shll-only).
 
+**Topic-discoverability mandates** (the standard's help-text enumeration MUST + reserved `topics` topic): shll conforms —
+
+- **Reserved `topics` topic**: `shll skill shll topics` prints empty stdout + exit 0 (shll ships zero topic pages; the mandate binds every adopting tool, so the empty list is the conforming answer), pinned by `TestSkillTopic_ShllSelf_ReservedTopicsEmptyExit0NoSubprocess`. Any other `shll skill shll <topic>` stays the exit-2 no-topics usage error.
+- **Help-text enumeration**: the MUST does not bind shll (it binds only tools shipping ≥1 topic page; shll ships none). shll's `skill --help` Long text nonetheless teaches the reserved `topics` form, pinned by `TestSkillCmd_LongHelpNamesReservedTopicsTopic`.
+- The six roster tools' conformance to both mandates (rk and fab-kit ship topics today) is per-repo rollout work, per the standard's Adoption posture.
+
 ## The three producer-surface standards (`update`/`version`/`shell-init`)
 
 These three standards (y367) codify the per-tool surfaces `shll` composes. They were authored *from* shll's already-shipped probe behavior. `update` is N/A (shll is the consumer, not a producer) and `shell-init` is conformant by construction as the composer. `version` is the one where shll is itself a producer bound by the standard: it is **behaviorally audited on HEAD and pinned by a conformance test** (`TestRootVersionFlag_VersionStandardConformance`) — the standard's *Verifying conformance* clause is met, closing a test-only gap that no behavior change was needed to fix.
