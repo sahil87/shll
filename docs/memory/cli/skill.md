@@ -46,7 +46,7 @@ The default is derivable from `Name` + `skillSubcommand`, so only the exception 
 
 - **shll first, always.** `shllSelf.Name` + `shllSelf.Description` lead the table — shll is the running binary, so it is unconditionally present (no probe). This is the [unified shll-first ordering](/cli/commands.md#unified-shll-first-ordering--the-principle) instance for `skill`.
 - **Then the `Roster` in roster order** (`run-kit, rk-desktop, fab-kit, wt, idea, tu, hop`), each filtered by the shared `toolInstalled(ctx, tool)` probe (`version.go`). A tool not installed is skipped silently (Constitution V). No brew calls — the glossary stays cheap (`toolInstalled` is the `<tool> --version` PATH probe for brew-managed tools and the delegated `Probe` spec for a non-brew tool like rk-desktop, never `brew list`; see [cli/version §the shared install probe](/cli/version.md#the-shared-install-probe)).
-- **A trailing hint** after a blank line: `skillHintLine` = `Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> <topic>' for a topic page).` — a single line teaching both the second step (per-tool bundle) and the third (a topic page).
+- **A trailing hint** after a blank line: `skillHintLine` = `Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> topics' lists its topic pages; 'shll skill <tool> <topic>' prints one).` — a single line teaching the second step (per-tool bundle) and the third (the reserved `topics` enumeration, then a topic page).
 
 It never prints a bundle H1 (`# … skill`) — the glossary and the bundles are disjoint outputs. Descriptions come from each tool's hardcoded `Description` field / `shllSelfDescription`, single-sourced on the roster (Constitution III — cannot drift from the managed set). Shape:
 
@@ -55,7 +55,7 @@ shll     the manager for the shll toolkit
 wt       Git worktree management — create, list, open, delete worktrees
 hop      Fast directory/project jumping across worktrees
 
-Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> <topic>' for a topic page).
+Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> topics' lists its topic pages; 'shll skill <tool> <topic>' prints one).
 ```
 
 (With only `wt` + `hop` on PATH besides shll — the other four roster tools are absent and omitted.)
