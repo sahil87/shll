@@ -36,24 +36,11 @@ go.work.sum
 bin/
 dist/
 
-/.agents
-
-/.claude/*
 !/.claude/commands/
-
-/.cursor
-
-/.opencode
-
-/.codex
-
-/.gemini
 
 .status.yaml.lock
 
 !fab/.fab-version
 .uploads/
-
-/.kimi
 
 /.claude/settings.local.json
