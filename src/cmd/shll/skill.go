@@ -42,9 +42,10 @@ const skillSubcommand = "skill"
 const skillProbeTimeout = 2 * time.Second
 
 // skillHintLine is the trailing line the bare glossary prints, teaching the second
-// step (per-tool bundle on demand) and the third (a topic page). Named per
-// code-quality.md; kept to a single line — it trails the tabwriter table after a blank line.
-const skillHintLine = "Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> <topic>' for a topic page)."
+// step (per-tool bundle on demand) and the third (the reserved `topics` enumeration,
+// then a topic page). Named per code-quality.md; kept to a single line — it trails the
+// tabwriter table after a blank line.
+const skillHintLine = "Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> topics' lists its topic pages; 'shll skill <tool> <topic>' prints one)."
 
 // skillReservedTopic is the `skill` standard's reserved enumeration topic: every
 // adopting tool answers `<tool> skill topics` with its content-topic names, one per
