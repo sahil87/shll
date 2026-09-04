@@ -65,7 +65,7 @@ This machine has the shll toolkit installed. Before driving one of its tools:
    composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
    core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
-Run-kit also has agent-proactive capabilities — visual display in a browser window, push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + `); see ` + "`shll skill run-kit`" + ` (and ` + "`shll skill run-kit code`" + ` for the editor bridge).
+Run-kit also has agent-proactive capabilities — visual display in a browser window, push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + `); see ` + "`shll skill run-kit`" + ` (and ` + "`shll skill run-kit code`" + ` for the editor bridge). When the user asks for a tutorial, tour, or onboarding of run-kit or its web dashboard, read ` + "`shll skill run-kit tutorial`" + ` and follow it.
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `
@@ -75,8 +75,8 @@ For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding 
 // vocabulary act as activation triggers. A tool with a LegacyName renders both tokens
 // (`run-kit/rk`) — the alias is trigger vocabulary too. Each non-empty ProactiveHint
 // is then appended verbatim (Roster order) as an additional sentence AFTER the tool
-// clauses and BEFORE the closing two-step pointer — the agent-proactive trigger
-// vocabulary (today only run-kit's display + notify). Single-sourced with the Roster
+// clauses and BEFORE the closing two-step pointer — the extra per-tool trigger
+// vocabulary (today only run-kit carries one). Single-sourced with the Roster
 // so the description cannot drift from the managed set; the output MUST stay a single
 // line (YAML frontmatter value — asserted by TestAgentSetup_DescriptionSingleLine).
 func agentSkillDescription() string {
