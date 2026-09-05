@@ -77,6 +77,7 @@ A `<tool> skill` bundle is offline (embedded), present on every machine with the
 - **≤150-line hard budget** (principle №9). Agents pull a bundle into a paying context at use time via `shll skill <tool>` (see [Landed design](#landed-design-shll-setup-agent-skills-placement-not-context-aggregation)), and the bare `shll skill` glossary lists one line per installed tool — so a bloated bundle taxes every conversation that pulls it. Over budget means it is trying to be a README.
 - **Genre discipline.** A usage briefing — when-to-use, capabilities map, composition patterns, output/exit-code contracts, gotchas. NOT a second README, NOT flag reference (defer to `-h` and the shll.ai commands page).
 - **Sync + drift-guard embed.** Content is embedded at build via committed copies + a sync script + a drift-guard test — the exact mechanism `shll standards` established (see [cli/standards §the build-time embed mechanism](/cli/standards.md#the-build-time-embed-mechanism)); each adopting repo reuses it.
+- **Mechanically enforced, not checklist-only.** The ≤150-line budget (core bundle and every topic page) and the reserved `skill topics` contract are pinned in each adopting repo by a test that fails on violation — extending the drift-guard test or adding a small conformance test both conform; the outcome (a failing test) is mandated, the mechanism is the repo's choice. (q8i5)
 - **Renders on the site for free** at `/<tool>/skill` (part of the pulled `docs/site/**` tree).
 
 ### Precedent: `run-kit context` (and the static/dynamic line)
@@ -97,6 +98,16 @@ A large-scope tool splits depth into **topic pages** (`<tool> skill <topic>`, ca
 **Why**: The shll composer (`shll skill <tool> <topic>`) forwards two positional args verbatim, so `shll skill <tool> topics` composes with zero composer changes; empty-output-exit-0 for topic-less tools keeps "what topics do you have?" uniformly scriptable.
 **Rejected**: A `--list` flag (intercepted by the composer's own cobra flag parsing — would need `DisableFlagParsing`/whitelisting in shll); topic names in shll's hardcoded roster (version skew — a tool's topics change on its own release cadence); annotating the bare `shll skill` glossary with per-tool topics (a subprocess per installed tool at glossary time, breaking the glossary's PATH-probe-only cost contract).
 *Introduced by*: `260902-cxhe-skill-topic-discoverability`.
+
+### Deliberately not absorbed (agentskills.io)
+
+**Decision**: The standard carries a "Deliberately not absorbed" section recording that it and the [agentskills.io Agent Skills specification](https://agentskills.io/specification) are complementary, not converging — the open spec governs the *placed* harness-side `SKILL.md` format (which the bootstrap skill conforms to, above), while bundles stay binary-embedded, version-locked stdout payloads. Four open-spec features are recorded as not absorbed for bundles: the ~500-line budget (ours is tighter at ≤150 because bundles are pulled per-conversation), frontmatter on bundles (no loader reads a stdout payload), the experimental `allowed-tools` field, and the `scripts/`/`references/`/`assets/` folder conventions (the binary is the "script").
+
+**Why**: Version-locking is the answer to the staleness problem placed files have; recording the rejections stops future audits from re-proposing convergence.
+
+**Rejected**: Converging the bundle format onto the open spec (frontmatter'd bundles, their budget, their folder layout).
+
+*Introduced by*: `260905-q8i5-absorb-agentskills-skill-standard`.
 
 ### The `skill`-not-`agent` name decision
 
@@ -121,6 +132,8 @@ Rollout is per-repo, like help-dump's. A tool without a `skill` subcommand is no
 - **The mechanism is skills PLACEMENT, not context aggregation.** `shll setup agent` places ONE thin bootstrap Agent Skill (`shll-toolkit`) that *points at* a runtime **two-step** (`shll skill` glossary → `shll skill <tool>` bundle on demand); the aggregation/glossary role belongs to the separate `shll skill` composer. **Rejected**: aggregating every installed tool's `<tool> skill` output into the agent's context, and placing per-tool bundles as skill files (they go stale between updates and multiply listing lines) — the thin bootstrap + runtime two-step keeps bundles version-locked by construction. See [cli/setup](/cli/setup.md) and [cli/skill](/cli/skill.md).
 - **The ≤150-line budget and static-only rule hold.** Bundles are fetched on demand by the two-step into a paying context, so a bloated bundle is paid repeatedly. The bare `shll skill` glossary is deliberately one line per tool, never a dump of all bundles, precisely so N bundles are never concatenated at once (toolkit principle №9).
 - **run-kit hook delegation:** `shll setup agent` delegates run-kit's dashboard hooks to `run-kit agent setup` (Constitution III/IV). The coordinated run-kit slim (removing run-kit's own context-injection stanza, moving that guidance into `run-kit skill`) is external run-kit-repo work.
+- **The placed bootstrap skill conforms to agentskills.io, test-enforced.** The standard's Landed-design section requires the placed skill (the one artifact this design writes into harness skills directories) to satisfy the open Agent Skills spec: valid YAML frontmatter with portable `name` + `description`; name 1–64 chars matching `^[a-z0-9]+(-[a-z0-9]+)*$` and equal to the directory name; description ≤1024 chars, strictly. Its "Verifying conformance" checklist names `skills-ref validate` (github.com/agentskills/agentskills) as the reference method, with equivalent in-repo tests acceptable where the validator is not practically installable in CI. (q8i5)
+- **Description-writing rules are codified in the standard.** A § Description-writing rules subsection states the activation contract for the roster-driven description: tool names front-loaded (legacy aliases included), task-shaped trigger phrases per tool (not just nouns), what + when structure, the ≤1024 cap, and the triggers-vs-operations split — activation vocabulary in the description, operational/recipe prose in the skill body, which is read at activation. (q8i5)
 
 *Introduced by*: `260718-agst-agent-setup-skill-commands`; the standard document's § reflects it (fw9d).
 

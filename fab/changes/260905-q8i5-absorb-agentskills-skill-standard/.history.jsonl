@@ -1,0 +1,13 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-05T07:38:03Z"}
+{"args":"Amend docs/site/standards/skill.md to absorb three items from the agentskills.io open Agent Skills specification: description-writing rules for the bootstrap skill, spec-conformance of the placed bootstrap skill (incl. skills-ref validate), and mechanical validation of bundle budget + skill topics contract; record rejected absorptions as design rationale","cmd":"fab-new","event":"command","ts":"2026-09-05T07:38:03Z"}
+{"delta":"+2.5","event":"confidence","score":2.5,"trigger":"calc-score","ts":"2026-09-05T07:41:28Z"}
+{"cmd":"fab-clarify","event":"command","ts":"2026-09-05T11:02:24Z"}
+{"delta":"+2.1","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-09-05T11:03:55Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-05T11:04:49Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-05T11:05:31Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-05T11:12:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-05T11:16:39Z"}
+{"event":"review","result":"passed","ts":"2026-09-05T11:16:39Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-05T11:20:58Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-05T11:22:11Z"}
+{"event":"review","result":"passed","ts":"2026-09-05T11:26:30Z"}
