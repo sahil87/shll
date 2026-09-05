@@ -41,10 +41,13 @@ const skillDirName = "shll-toolkit"
 const skillFileName = "SKILL.md"
 
 // agentSkillDescriptionMaxLen is the agentskills.io cap on the `description`
-// frontmatter field (the skill standard's placed-skill conformance rule). The
-// roster-generated description must stay under it — the description is activation
-// vocabulary; operational prose belongs in the skill BODY, which is read at
-// activation (compress + relocate, q8i5). Enforced by
+// frontmatter field (the skill standard's placed-skill conformance rule),
+// deliberately enforced as a BYTE budget: len() over the UTF-8 string, stricter
+// than the spec's character count (multi-byte runes like em-dashes spend extra
+// budget), so a pass holds under any reading of the spec. The roster-generated
+// description must stay under it — the description is activation vocabulary;
+// operational prose belongs in the skill BODY, which is read at activation
+// (compress + relocate, q8i5). Enforced by
 // TestAgentSetup_DescriptionWithinAgentSkillsCap.
 const agentSkillDescriptionMaxLen = 1024
 
