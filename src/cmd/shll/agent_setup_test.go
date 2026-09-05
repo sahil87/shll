@@ -327,10 +327,14 @@ func TestAgentSetup_NameMatchesDirAndPortableRegex(t *testing.T) {
 	if name != skillDirName {
 		t.Errorf("frontmatter name %q must equal the skill directory name %q", name, skillDirName)
 	}
-	// … and match the agentskills.io portable-name regex.
+	// … and match the agentskills.io portable-name regex …
 	re := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	if !re.MatchString(skillDirName) {
 		t.Errorf("skill name %q must match ^[a-z0-9]+(-[a-z0-9]+)*$", skillDirName)
+	}
+	// … within the spec's 1–64 character bound.
+	if len(skillDirName) < 1 || len(skillDirName) > 64 {
+		t.Errorf("skill name %q must be 1-64 characters, got %d", skillDirName, len(skillDirName))
 	}
 }
 
@@ -364,6 +368,19 @@ func TestAgentSetup_BodyTeachesTwoStepAndStandards(t *testing.T) {
 	// It must NOT reintroduce stanza/sentinel wording.
 	if strings.Contains(agentSkillContent, "stanza") || strings.Contains(agentSkillContent, "sentinel") {
 		t.Errorf("SKILL.md must not describe a stanza/sentinel mechanism, got:\n%s", agentSkillContent)
+	}
+}
+
+// TestAgentSetup_DescriptionWithinAgentSkillsCap pins the generated description to the
+// agentskills.io ≤1024-character cap (the skill standard's placed-skill conformance
+// rule). Measured in bytes — stricter than a rune count, so a pass here is a pass under
+// any reading of the spec. The headroom this leaves is the budget future trigger
+// vocabulary must fit in: compression prioritizes trigger coverage over prose
+// completeness, and operational prose belongs in the skill body (compress + relocate).
+func TestAgentSetup_DescriptionWithinAgentSkillsCap(t *testing.T) {
+	desc := agentSkillDescription()
+	if len(desc) > agentSkillDescriptionMaxLen {
+		t.Errorf("description is %d bytes, over the agentskills.io %d-character cap", len(desc), agentSkillDescriptionMaxLen)
 	}
 }
 

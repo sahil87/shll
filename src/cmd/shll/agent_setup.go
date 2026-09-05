@@ -40,6 +40,14 @@ const skillDirName = "shll-toolkit"
 // inside each skill directory (<dir>/<name>/SKILL.md).
 const skillFileName = "SKILL.md"
 
+// agentSkillDescriptionMaxLen is the agentskills.io cap on the `description`
+// frontmatter field (the skill standard's placed-skill conformance rule). The
+// roster-generated description must stay under it — the description is activation
+// vocabulary; operational prose belongs in the skill BODY, which is read at
+// activation (compress + relocate, q8i5). Enforced by
+// TestAgentSetup_DescriptionWithinAgentSkillsCap.
+const agentSkillDescriptionMaxLen = 1024
+
 // agentSkillContent is the canonical bytes of the placed SKILL.md — the toolkit
 // bootstrap skill. Portable frontmatter carries `name` + `description` ONLY (the
 // OpenCode-recognized common subset, valid on all four harnesses); `name` equals
@@ -65,7 +73,7 @@ This machine has the shll toolkit installed. Before driving one of its tools:
    composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
    core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
-Run-kit also has agent-proactive capabilities — visual display in a browser window, push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + `); see ` + "`shll skill run-kit`" + ` (and ` + "`shll skill run-kit code`" + ` for the editor bridge). When the user asks for a tutorial, tour, or onboarding of run-kit or its web dashboard, read ` + "`shll skill run-kit tutorial`" + ` and follow it.
+Run-kit also has agent-proactive capabilities — visual display in a browser window (HTML, diagrams, reports, a local dev server), push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + ` — refresh a PR list, open a diff, focus a view); see ` + "`shll skill run-kit`" + ` (and ` + "`shll skill run-kit code`" + ` for the editor bridge). The user may be viewing the session remotely through run-kit's web dashboard, where ` + "`open`" + `/` + "`xdg-open`" + ` and localhost URLs never reach them and publishing to a hosted artifact page (e.g. claude.ai) forces them off the dashboard — ` + "`shll skill run-kit`" + ` carries the proxied-iframe recipe for both cases. When the user asks for a tutorial, tour, or onboarding of run-kit or its web dashboard, read ` + "`shll skill run-kit tutorial`" + ` and follow it.
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `
