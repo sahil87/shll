@@ -69,6 +69,11 @@ The other six tools' `<tool> skill` bundles remain the per-repo standards waves'
 - **Help-text enumeration**: the MUST does not bind shll (it binds only tools shipping ≥1 topic page; shll ships none). shll's `skill --help` Long text nonetheless teaches the reserved `topics` form, pinned by `TestSkillCmd_LongHelpNamesReservedTopicsTopic`.
 - The six roster tools' conformance to both mandates (rk and fab-kit ship topics today) is per-repo rollout work, per the standard's Adoption posture.
 
+**Placed-skill conformance and mechanical enforcement** (q8i5): the standard's agentskills.io placed-skill requirements and its failing-test enforcement mandate are both met in this repo, entirely via Go tests —
+
+- **Placed skill (agentskills.io)**: frontmatter carries exactly the portable `name` + `description` (`TestAgentSetup_ContentHasPortableFrontmatterOnly`); the name matches `^[a-z0-9]+(-[a-z0-9]+)*$`, the 1–64 bound, and the directory name (`TestAgentSetup_NameMatchesDirAndPortableRegex`); the description measures ≤`agentSkillDescriptionMaxLen` (1024) bytes (`TestAgentSetup_DescriptionWithinAgentSkillsCap`). These are the standard-sanctioned equivalent of `skills-ref validate` — no CI step is added because CI already runs `go test ./...`, and a third-party validator install would buy no additional coverage.
+- **Mechanical enforcement of the bundle rules**: already in place before the mandate — `TestSkillEmbedMatchesCanonical` pins byte-identity AND the ≤150-line budget, and the reserved-`topics` tests pin the enumeration contract; the mandate turned existing practice into an obligation, opening no gap.
+
 ## The three producer-surface standards (`update`/`version`/`shell-init`)
 
 These three standards (y367) codify the per-tool surfaces `shll` composes. They were authored *from* shll's already-shipped probe behavior. `update` is N/A (shll is the consumer, not a producer) and `shell-init` is conformant by construction as the composer. `version` is the one where shll is itself a producer bound by the standard: it is **behaviorally audited on HEAD and pinned by a conformance test** (`TestRootVersionFlag_VersionStandardConformance`) — the standard's *Verifying conformance* clause is met, closing a test-only gap that no behavior change was needed to fix.
