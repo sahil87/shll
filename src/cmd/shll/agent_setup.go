@@ -141,10 +141,13 @@ const claudeSkillRelDir = ".claude/skills"
 //
 // This is the full CANDIDATE set: --uninstall and the staleness probe
 // (agentSkillPlacementState) cover ALL of it regardless of the gate, so an
-// existing ~/.claude placement still refreshes, reports staleness, and removes
-// cleanly on a machine where `claude` has since disappeared. The gate suppresses
-// only NEW writes, and never deletes. Any future harness adopting the open
-// standard picks up ~/.agents/skills automatically.
+// existing ~/.claude placement still reports staleness and removes cleanly on a
+// machine where `claude` has since disappeared. The gate suppresses ALL writes
+// to the gated surface while it is closed — a gate-closed install or refresh
+// leaves a pre-existing ~/.claude copy byte-untouched (never deleted, never
+// rewritten); it converges on the first refresh after `claude` returns to PATH
+// (the post-hoc pickup property, refreshPlacedAgentSkills). Any future harness
+// adopting the open standard picks up ~/.agents/skills automatically.
 var skillTargetRelDirs = []string{
 	".agents/skills",
 	claudeSkillRelDir,
@@ -469,8 +472,10 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr i
 // placed is true when ANY skill target file exists (the user opted in via a prior
 // `shll setup agent`); stale is true when any EXISTING target's bytes differ from the
 // running binary's canonical content. It checks BOTH candidate paths regardless of the
-// placement gate, so a pre-existing ~/.claude placement still refreshes and reports
-// staleness on a machine where `claude` has disappeared. An existing-but-unreadable
+// placement gate, so a pre-existing ~/.claude placement still reports staleness
+// on a machine where `claude` has disappeared — the probe is read-only; the
+// refresh that would converge it writes only the gated install set, so it lands
+// once the gate reopens (`claude` back on PATH). An existing-but-unreadable
 // target counts as placed with staleness unknown (never reported stale — Constitution
 // V: don't warn on a state we can't determine). Consumed by `shll update`'s
 // conditional refresh (placed only — satisfied by the always-present ~/.agents copy,

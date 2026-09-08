@@ -182,7 +182,8 @@ func TestAgentSetup_InstallGateClosedWritesAgentsOnly(t *testing.T) {
 
 func TestAgentSetup_GateNeverDeletes(t *testing.T) {
 	// A pre-existing ~/.claude placement survives a gate-closed install run
-	// untouched — the gate suppresses NEW writes only; only --uninstall deletes.
+	// untouched — the gate suppresses ALL writes to the gated surface while
+	// closed (including refresh rewrites); only --uninstall deletes.
 	env, home := agentHomeEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
 	forceClaudeGate(t, false)
