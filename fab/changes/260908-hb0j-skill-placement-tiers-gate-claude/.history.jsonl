@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-08T17:08:03Z"}
+{"args":"Codify the two-tier skill placement taxonomy (unconditional .agents/skills open-standard tier vs brand-CLI-gated tier) in docs/site/standards/skill.md, and gate shll setup agent's ~/.claude/skills/ placement on the claude CLI being on PATH (mirroring fab-kit change 260908-yd9s-repoint-agents-skills-gate-claude at global scope). Both parts in one change.","cmd":"fab-new","event":"command","ts":"2026-09-08T17:08:03Z"}
+{"delta":"+4.8","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-09-08T17:10:18Z"}
+{"delta":"+0.0","event":"confidence","score":4.8,"trigger":"calc-score","ts":"2026-09-08T17:10:54Z"}
+{"cmd":"fab-switch","event":"command","ts":"2026-09-08T17:12:00Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-08T17:13:19Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-08T17:13:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-08T17:22:53Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-08T17:25:23Z"}
+{"event":"review","result":"passed","ts":"2026-09-08T17:25:23Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-08T17:30:39Z"}

@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `RunStreamedTail` (null stdin; live tee to caller writers + bounded interleaved tail capture), `ErrNotFound` sentinel, `Runner` test seam."
+description: "Centralized subprocess wrapper — `Run` (capture stdout, pass stderr through), `RunForeground` (inherited stdio), `RunCaptured` (capture BOTH streams + exit code, pass neither through), `RunStreamedTail` (null stdin; live tee to caller writers + bounded interleaved tail capture), `LookPath` (pure PATH presence probe, no subprocess), `ErrNotFound` sentinel, `Runner` test seam."
 ---
 # internal/proc
 
@@ -43,9 +43,16 @@ func RunStreamedTail(ctx context.Context, stdout, stderr io.Writer, name string,
 // exit status; a caller that must distinguish it treats a negative code as "no
 // usable exit status".
 func RunCaptured(ctx context.Context, name string, args ...string) (stdout, stderr []byte, code int, err error)
+
+// LookPath reports whether name resolves to an executable on PATH — a pure
+// lookup (exec.LookPath); NO subprocess is spawned. The sanctioned presence
+// probe for gating an optional surface on a sibling or brand CLI (missing →
+// silent skip, Constitution V). A package-level variable (like Runner) so
+// tests can force the answer without touching the real PATH.
+var LookPath = func(name string) bool
 ```
 
-That is the entire surface command code uses. Callers never import `os/exec` directly. The child always inherits the parent environment as-is — there is **no per-request environment override**.
+That is the entire surface command code uses. Callers never import `os/exec` directly. The child always inherits the parent environment as-is — there is **no per-request environment override**. `LookPath` is the one member that spawns nothing; it exists so a presence question (e.g. `shll setup agent`'s claude gate — see [cli/setup §the placement set](/cli/setup.md#the-placement-set-two-candidate-paths-cover-four-harnesses-the-claude-write-is-gated)) stays `os/exec`-free in command code without paying Constitution I's subprocess ceremony.
 
 
 ## Internal types
@@ -191,6 +198,7 @@ If a future shll subcommand needs cwd scoping, the path forward is to either (a)
 - `TestRunStreamedTail_Seams` / `TestRunStreamedTail_ErrNotFound` (yud0) — the fake records `TransportStreamTail` plus the writer fields; `ErrNotFound` maps to `(-1, tail, ErrNotFound)`.
 - `TestDefaultRunner_StreamTail*` (yud0) — the production path: `…StdinReadsEOF` (a `sh -c 'read x'` child fails fast instead of hanging), `…LiveTee` (the caller's writer receives bytes as the child runs), `…Bounded` (a chatty child's tail never exceeds `tailRingSize` and interleaves both streams), `…ExitCodeMapping` (non-zero exit → `(code, tail, nil)`, mirroring Foreground).
 - `TestDefaultRunner_RealBinary` — exercises the production path with `true`, `false`, and a missing binary; the only test that spawns real processes (and never spawns project tools).
+- `TestLookPath_ReflectsPATH` / `TestLookPath_SwappableSeam` — the probe tracks the real PATH (a tempdir binary) and the package-level var swaps cleanly.
 
 
 ## Design Decisions

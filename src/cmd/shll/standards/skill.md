@@ -81,13 +81,13 @@ Phased, per-repo — like help-dump's rollout was. This standard is the contract
 
 `shll setup agent` wires a machine's agent harnesses to the toolkit, graduating that responsibility up from `run-kit agent setup`. It ships today (renamed from the hidden-deprecated `shll agent-setup`), and it is recorded here because it is why bundles must stay small and static. It landed as **skills placement plus a runtime two-step**, not as context aggregation:
 
-- **Skills placement, not context aggregation.** `shll setup agent` places one thin bootstrap Agent Skill (`shll-toolkit`) into the harnesses' global skills directories (`~/.agents/skills/` and `~/.claude/skills/`). The skill's description is roster-driven — it front-loads the tool names as trigger words so the skill activates when an agent is about to reach for a toolkit tool — and its body teaches the runtime two-step below. Aggregating every tool's bundle into the agent's context, and placing per-tool bundles as their own skill files, were both **rejected**: placed copies go stale between updates, and per-tool skills multiply listing lines.
+- **Skills placement, not context aggregation.** `shll setup agent` places one thin bootstrap Agent Skill (`shll-toolkit`) into the harnesses' global skills directories — `~/.agents/skills/` always, and `~/.claude/skills/` when the `claude` CLI is on PATH (the two-tier rule in [Placement directories](#placement-directories)). The skill's description is roster-driven — it front-loads the tool names as trigger words so the skill activates when an agent is about to reach for a toolkit tool — and its body teaches the runtime two-step below. Aggregating every tool's bundle into the agent's context, and placing per-tool bundles as their own skill files, were both **rejected**: placed copies go stale between updates, and per-tool skills multiply listing lines.
 - **The runtime two-step.** Bare `shll skill` prints an installed-only glossary — one line per tool. `shll skill <tool>` then streams that tool's core bundle on demand, byte-identical from the installed binary, so bundle content stays version-locked by construction and is fetched only when an agent actually needs it.
 - **Hook-wiring delegation.** `shll setup agent` **delegates run-kit's dashboard-hook wiring to `run-kit agent setup`**, which is hook-only — its context-injection responsibility was removed as designed, leaving it to do only hook wiring.
 
 ### The placed skill conforms to the Agent Skills spec
 
-The bootstrap skill is the one artifact this design places into harness-owned skills directories (`~/.agents/skills/`, `~/.claude/skills/`) — paths read by every [agentskills.io](https://agentskills.io/specification)-compatible client (Claude Code, Codex, Gemini CLI, Cursor, OpenCode, and any future adopter of the open standard). A placed file that violates that spec silently fails to load on some clients, so conformance is a requirement:
+The bootstrap skill is the one artifact this design places into harness-owned skills directories — `~/.agents/skills/` unconditionally, `~/.claude/skills/` when the `claude` CLI is on PATH — paths read by every [agentskills.io](https://agentskills.io/specification)-compatible client (Claude Code, Codex, Gemini CLI, Cursor, OpenCode, and any future adopter of the open standard). A placed file that violates that spec silently fails to load on some clients, so conformance is a requirement:
 
 - **Valid YAML frontmatter** carrying the portable `name` + `description` fields.
 - **Name rule**: 1–64 characters matching `^[a-z0-9]+(-[a-z0-9]+)*$` (lowercase alphanumeric + hyphens; no leading, trailing, or consecutive hyphens), equal to the skill directory name.
@@ -106,6 +106,26 @@ The placed skill's `description` frontmatter is the only text in an agent's cont
 - **Triggers in the description; operations in the body** — the description carries activation vocabulary (what + when); operational/recipe prose belongs in the skill body, which is read at activation.
 
 The mechanism changed from the original sketch, but the budget and static-only motive survives it: every `shll skill <tool>` call pulls the core bundle into a paying context, and the glossary lists every installed tool — so a bloated bundle still taxes every conversation that pulls it, which is the whole reason for the static-only rule and the ≤150-line budget above.
+
+## Placement directories
+
+Wherever the toolkit deploys Agent Skills, placement follows a **two-tier taxonomy** — a rule, not a snapshot folder list, that every placement surface MUST conform to:
+
+- **Unconditional tier — the open-standard directory.** The portable [agentskills.io](https://agentskills.io/specification) directory (`.agents/skills/`) is ALWAYS deployed, guaranteed present, and is the canonical harness-neutral read channel.
+- **Gated tier — brand surfaces.** A brand-specific directory is deployed ONLY when its brand CLI is on PATH: `.claude/skills/` gates on `claude`, `.opencode/commands/` gates on `opencode`. An absent brand CLI is a silent skip of that surface — never an error, and never an empty brand tree created on a machine or repo that will never run that client. The gate suppresses new writes only; it never deletes an existing placement.
+
+The rule binds both scopes the toolkit deploys skills at:
+
+- **Repo-level deployment** — fab-kit's `fab sync` deploys the kit's skill set to repo-local `.agents/skills/` (always), `.claude/skills/` (gated on `claude`), and `.opencode/commands/` (gated on `opencode`).
+- **Global/machine-level placement** — `shll setup agent` places the `shll-toolkit` bootstrap skill under `$HOME`: `~/.agents/skills/` unconditionally, `~/.claude/skills/` when the `claude` CLI is on PATH.
+
+Rationale:
+
+- **De-branded internals.** The open-standard directory is the canonical read channel; a brand directory exists only to serve a client that does not read it. Claude Code does NOT read `.agents/skills/` (verified against Claude Code's docs and a live probe) — which is the only reason the gated `.claude` channel exists at all.
+- **Gate fit.** If you run Claude Code, `claude` is on PATH — a pure PATH presence probe (no subprocess) is a near-perfect gate for the brand.
+- **Taxonomy purity.** Unconditional means exactly one thing — the cross-client standard directory; everything brand-specific is gated, so the next placement surface added anywhere in the toolkit has a rule to conform to.
+- **One target per skill set.** A skill set deploys to exactly ONE directory a given client reads: per-brand copies for CLIs that already read `.agents/skills/` produced duplicate-skill conflict warnings (fab-kit), so a brand surface is added only for a client the open-standard directory cannot reach.
+- **Retirement stepping stone.** If a brand client adopts the open standard, its gated directory is retired by removing one tier entry — the taxonomy itself needs no redesign.
 
 ## Verifying conformance
 

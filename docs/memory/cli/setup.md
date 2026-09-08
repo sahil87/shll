@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll setup` — the re-runnable machine-wiring family: bare `setup` runs the shell half then the agent half (both always run, worst-wins exit, `--yes`/`-y` only); `setup shell [shell]` (sentinel-wrapped rc block, pure rc-wiring, idempotent, `--print`/`--uninstall`/`--rc-file`); `setup agent` (skill placement at two global paths + `run-kit agent setup` delegation). Hidden old spellings `shell-setup` (alias `shell-install`) and `agent-setup` delegate silently for one release cycle."
+description: "`shll setup` — the re-runnable machine-wiring family: bare `setup` runs both halves (worst-wins exit, `--yes`/`-y` only); `setup shell [shell]` (sentinel-wrapped rc block, idempotent, `--print`/`--uninstall`/`--rc-file`); `setup agent` (two-tier skill placement — `~/.agents/skills/` unconditional, `~/.claude/skills/` gated on `claude` — plus `run-kit agent setup` delegation). Hidden old spellings `shell-setup` (alias `shell-install`) and `agent-setup` delegate silently for one release cycle."
 ---
 # cli/setup
 
@@ -272,18 +272,23 @@ The skill directories are shll-owned, so:
 
 **Stanza machinery must not reappear**: `shell_setup.go`'s sentinel machinery is not reused here and no `sentinel_block.go` exists — see the Design Decision below.
 
-### The placement set (two writes cover four harnesses)
+### The placement set (two candidate paths cover four harnesses; the claude write is gated)
 
-`skillTargetRelDirs` (relative to `$HOME`) is the **minimal covering set**, verified 2026-07-18 from each harness's official docs:
+`skillTargetRelDirs` (relative to `$HOME`) is the **minimal covering candidate set**, verified 2026-07-18 from each harness's official docs, tiered by the skill standard's [Placement-directories rule](/cli/standards-content.md#placement-directories-the-two-tier-rule):
 
-| Path (`$HOME`-relative) | Covers |
-|-------------------------|--------|
-| `.agents/skills` | the [agentskills.io](https://agentskills.io) open-standard path — read natively by **Codex** (USER scope), compat-read by **Cursor** and **OpenCode** |
-| `.claude/skills` | **Claude Code** (which does NOT read `~/.agents/`) |
+| Path (`$HOME`-relative) | Covers | Tier |
+|-------------------------|--------|------|
+| `.agents/skills` | the [agentskills.io](https://agentskills.io) open-standard path — read natively by **Codex** (USER scope), compat-read by **Cursor** and **OpenCode** | **unconditional** — always written |
+| `.claude/skills` (`claudeSkillRelDir`) | **Claude Code** (which does NOT read `~/.agents/`) | **gated** — written only when `claude` (`claudeToolName`) is on PATH |
 
-The full file is `<dir>/shll-toolkit/SKILL.md` (`skillDirName = "shll-toolkit"`, `skillFileName = "SKILL.md"` — the `<dir>/<name>/SKILL.md` shape the Agent Skills standard requires). `resolveSkillTargets(env)` joins `$HOME + rel + skillDirName + skillFileName`; an empty `$HOME` yields no targets (nothing to place).
+The full file is `<dir>/shll-toolkit/SKILL.md` (`skillDirName = "shll-toolkit"`, `skillFileName = "SKILL.md"` — the `<dir>/<name>/SKILL.md` shape the Agent Skills standard requires). Two target views derive from the one candidate list via the shared `skillTargetsUnder(env, relDirs)` join (`$HOME + rel + skillDirName + skillFileName`; an empty `$HOME` yields no targets):
 
-Both writes are **unconditional** — `setup agent` is an explicit "wire this machine" command, the cost is two small files in `$HOME`, and any future harness adopting the open standard picks up `~/.agents/skills` automatically. **No harness detection, no skip logic, no skip-a-harness degradation** (user: "no degeneration"). Cursor and OpenCode will see the same-name skill from both locations; the bytes are identical, so this is cosmetic (neither documents cross-location precedence; the recorded fallback is symlinking `~/.claude/skills/shll-toolkit` → the `~/.agents` copy, since Claude Code follows and dedupes symlinked skill dirs).
+- **`resolveSkillTargets(env)`** — the ALL-CANDIDATES view (both paths), used by `--uninstall` and the staleness probe (`agentSkillPlacementState`) regardless of gate state, so a pre-existing `~/.claude` placement still refreshes, reports staleness, and removes cleanly on a machine where `claude` has since disappeared.
+- **`resolveInstallTargets(env)`** — the GATED view (`skillInstallRelDirs()`), used by the install path and `--print`: the unconditional `.agents/skills` plus each gated brand dir whose brand CLI is on PATH. The gate check is a pure PATH presence probe — `proc.LookPath(claudeToolName)`, a package-level swappable var wrapping `exec.LookPath` (no subprocess; command code stays `os/exec`-free). On a no-`claude` machine, `shll setup agent` creates **no `~/.claude/` directory at all**, and the gate **never deletes** a pre-existing one — only `--uninstall` deletes.
+
+**Post-hoc Claude Code pickup.** A user who installs Claude Code AFTER the initial placement gets `~/.claude/skills/` on their next `shll update`: the end-of-run refresh re-runs `shll setup agent` as a subprocess ([`refreshArgv`](#the-update-self-refresh-argv-refreshargv)) with the gate then open, and the refresh's placed-only gating (`agentSkillPlacementState` — ANY target present) is satisfied by the always-present `~/.agents` copy in the meantime.
+
+Cursor and OpenCode will see the same-name skill from both locations; the bytes are identical, so this is cosmetic (neither documents cross-location precedence; the recorded fallback is symlinking `~/.claude/skills/shll-toolkit` → the `~/.agents` copy, since Claude Code follows and dedupes symlinked skill dirs). Any future harness adopting the open standard picks up `~/.agents/skills` automatically.
 
 ### The canonical SKILL.md (a Go constant)
 
@@ -317,9 +322,9 @@ Use when driving any shll toolkit CLI or shll itself — {clause, …}. {Proacti
 `runAgentSetup(ctx, env, stdout, stderr, printMode, uninstallMode, yes)` (the test seam; the cobra factory — shared by both spellings via `buildAgentSetupCmd` — passes `os.Getenv`, `Args: cobra.NoArgs`):
 
 - **`--print --uninstall` together** → `errExitCode{code: usageExitCode}` (exit 2) — mutually exclusive, checked first.
-- **`--print`** (`runAgentPrint`) → writes `agentSkillContent` then a `Target paths:` block listing both resolved absolute paths, and **modifies nothing**. **No run-kit delegation.**
-- **`--uninstall`** (`runAgentUninstall`) → `os.RemoveAll` on each `shll-toolkit` **directory** (`filepath.Dir(path)`, not just the SKILL.md file); reports `removed`/`absent` per dir; then delegates `run-kit agent setup --uninstall`.
-- **default** (`runAgentInstall`) → `placeSkill` per target, then delegates `run-kit agent setup`.
+- **`--print`** (`runAgentPrint`) → writes `agentSkillContent` then a `Target paths:` block listing the gate-reflecting install set (`resolveInstallTargets` — on a no-`claude` machine only the `~/.agents/skills/` path), and **modifies nothing**. **No run-kit delegation.**
+- **`--uninstall`** (`runAgentUninstall`) → `os.RemoveAll` on each `shll-toolkit` **directory** (`filepath.Dir(path)`, not just the SKILL.md file) across the ALL-CANDIDATES set (`resolveSkillTargets` — both paths regardless of the gate); reports `removed`/`absent` per dir; then delegates `run-kit agent setup --uninstall`.
+- **default** (`runAgentInstall`) → `placeSkill` per gated install target, then delegates `run-kit agent setup`.
 - **`--yes`/`-y`** (registered via the shared `yesFlag`/`yesFlagShorthand` constants from `uninstall.go`, with its own `agentSetupYesUsage` string — shared by `shll setup agent`, the hidden `shll agent-setup`, and bare `shll setup`) → forwards `--yes` to the run-kit delegation on both the install and `--uninstall` paths (3ovi). **`--print --yes` is a harmless no-op, NOT a usage error** — print never delegates, so there is no prompt to skip (deliberate contrast with `--print`+`--uninstall`, which are contradictory modes).
 
 ### `placeSkill` — the three-state per-path summary
@@ -356,11 +361,11 @@ Three surfaces run or point users at `shll setup agent` (agst, gjhx):
 
 ### Constitution fit (agent half)
 
-I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; skill placement is plain `os` file I/O in shll-owned directories. II — stateless (no tracking of whether the agent half ran; re-run re-derives via read-then-compare). III/IV — delegates run-kit's hooks by *pointing at* `run-kit agent setup`, never absorbing them; run-kit's own command keeps working standalone. V — run-kit absent → silent skip.
+I — the ONE subprocess (run-kit delegation) routes through `internal/proc`; skill placement is plain `os` file I/O in shll-owned directories; the claude gate's PATH probe is the `proc.LookPath` helper (spawns nothing). II — stateless (no tracking of whether the agent half ran; re-run re-derives via read-then-compare). III/IV — delegates run-kit's hooks by *pointing at* `run-kit agent setup`, never absorbing them; run-kit's own command keeps working standalone. V — run-kit absent → silent skip; `claude` absent → the `~/.claude/skills/` surface silently skipped.
 
 ### Test seam (agent half)
 
-`agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`. Coverage grounds R6–R9: both files written with canonical content and a per-path summary; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == shll-toolkit == dir name`. The `--yes` forwarding (3ovi) is pinned by `TestAgentSetup_YesForwardsToDelegation` (install argv `agent setup --yes`), `TestAgentSetup_YesRidesUninstallDelegation` (`agent setup --uninstall --yes`), `TestAgentSetup_PrintWithYesIsNoOp` (no write, no delegation, exit 0), and `TestAgentSetup_YesFlagWiredThroughCobra` (flag name/shorthand/usage-string wiring). The delegation-argv assertions pin the two-token literals `"agent", "setup"` (not the constant) so a regression in `runKitAgentSetupArgs` is caught.
+`agent_setup_test.go` drives `runAgentSetup` with `bytes.Buffer` writers, a controlled `env` (`HOME` → `t.TempDir()`), and a fake `proc.Runner`; the placement gate is forced by `forceClaudeGate(t, present)`, which swaps the `proc.LookPath` package-level seam for the test's duration (t.Cleanup-restored). Coverage grounds R6–R9: both files written with canonical content and a per-path summary under an open gate; idempotent re-run (byte-identical → `unchanged`); `--print` writes nothing and does not delegate; `--uninstall` removes both dirs and delegates the uninstall pass-through; `--print --uninstall` exits 2; run-kit delegation present-when-installed / silent-when-absent; portable frontmatter (`name` + `description` only) with `name == shll-toolkit == dir name`. The gate itself is pinned by `TestAgentSetup_InstallGateClosedWritesAgentsOnly` (closed gate → only `~/.agents/skills/` written, **no `~/.claude/` directory created** — dir absence asserted, and the gated-off target absent from the summary), `TestAgentSetup_GateNeverDeletes` (a pre-existing `~/.claude` placement survives a gate-closed install byte-untouched), `TestAgentSetup_PrintReflectsGate` (the `--print` target list matches gate state), `TestAgentSetup_UninstallIgnoresGate` (closed gate → both dirs still removed), and `TestAgentSetup_PlacementStateIgnoresGate` (closed gate → a stale pre-existing `~/.claude` copy still reports placed+stale); `proc_test.go`'s `TestLookPath_ReflectsPATH`/`TestLookPath_SwappableSeam` pin the helper. The `--yes` forwarding (3ovi) is pinned by `TestAgentSetup_YesForwardsToDelegation` (install argv `agent setup --yes`), `TestAgentSetup_YesRidesUninstallDelegation` (`agent setup --uninstall --yes`), `TestAgentSetup_PrintWithYesIsNoOp` (no write, no delegation, exit 0), and `TestAgentSetup_YesFlagWiredThroughCobra` (flag name/shorthand/usage-string wiring). The delegation-argv assertions pin the two-token literals `"agent", "setup"` (not the constant) so a regression in `runKitAgentSetupArgs` is caught.
 
 Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (every tool declares a `SkillHint`, each rendered as a `hint (name)` clause), `TestRosterProactiveHint` (exactly run-kit carries a `ProactiveHint`, rendered verbatim after the clauses and before the two-step pointer — the sprawl guard — plus the load-bearing fragments `"to proxy a local http port"`, `"before opening any file or local port in a browser, read"`, `"publishing an artifact"`, `"rk code exec"`, `"tutorial, tour, or onboarding"`, and `"shll skill run-kit tutorial"`, so a rewording cannot silently drop the proxy vocabulary, the local-browser counter-instruction, the hosted-artifact counter-instruction, the editor-command vocabulary, or the tutorial routing), `TestAgentSetup_DescriptionSingleLine` (single-line, `: `-free), and `TestAgentSetup_BodyTeachesTwoStepAndStandards` (body teaches the two-step + `shll standards`, names `rk code exec`, the `shll skill run-kit code` topic page, and the tutorial routing — trigger words + the `shll skill run-kit tutorial` pointer — no stanza/sentinel wording).
 
@@ -387,6 +392,24 @@ Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (
 **Why**: "No merge operation, just mechanical placement of skills" — skill directories are shll-owned, so the sentinel/merge/confirm machinery that protects user-authored rc files is unnecessary, and a skill's description line loads on demand instead of taxing every session like a CLAUDE.md stanza.
 **Rejected**: Sentinel-wrapped context-stanza injection into `~/.claude/CLAUDE.md` / AGENTS.md-family files (reusing `shell_setup.go`'s sentinel machinery) — explicitly rejected by the user.
 *Introduced by*: `260718-agst-agent-setup-skill-commands`
+
+### Two-tier placement: `.agents` unconditional, `.claude` gated on the `claude` CLI
+**Decision**: `~/.agents/skills/` (the open-standard directory) is written unconditionally; `~/.claude/skills/` is written only when `claude` resolves on PATH (`proc.LookPath` — a pure lookup, no subprocess). The gate suppresses NEW writes only and never deletes; `--uninstall` and the staleness probe (`agentSkillPlacementState`) keep covering BOTH paths regardless of gate state.
+**Why**: This is the global-scope instance of the skill standard's two-tier Placement-directories taxonomy (unconditional = the cross-client open-standard directory; gated = brand surfaces). An unconditional `~/.claude/` write littered non-Claude machines with an unread brand tree; "if you run Claude Code, `claude` is on PATH" makes a PATH presence probe a near-perfect gate for the brand; taxonomy purity gives the next placement surface a rule to conform to; and the gated tier is the stepping stone to retiring `.claude/skills/` if Claude Code ever adopts the open standard. This **re-scopes, not deletes**, the original agst decision ("both writes unconditional — no harness detection, no skip logic, no skip-a-harness degradation"; user: "no degeneration"): unconditional now means exactly the open-standard dir, mirroring how fab-kit's yd9s re-scoped its repo-level always-on-pair decision rather than deleting it.
+**Rejected**: Keeping both writes unconditional (the litter, taxonomy drift, and no retirement path above); gating `.agents/skills/` too (it is the canonical harness-neutral read channel — Codex/Cursor/OpenCode read it); narrowing `--uninstall`/probe coverage to the gated set (would strand pre-existing `~/.claude` placements on machines where `claude` has disappeared).
+*Introduced by*: 260908-hb0j-skill-placement-tiers-gate-claude
+
+### Two target lists: all-candidates vs gated-install
+**Decision**: The target model is split into "all candidate paths" (`resolveSkillTargets` — both dirs, used by `--uninstall` and `agentSkillPlacementState`) and "install targets" (`resolveInstallTargets` — the gated subset, used by `runAgentInstall` and `--print`).
+**Why**: The coverage is deliberately asymmetric (gate the write; keep probe/uninstall on both). Two derivations from one shared `skillTargetRelDirs` source (via `skillTargetsUnder`) keep the paths single-sourced while making the asymmetry explicit at each call site.
+**Rejected**: Threading a `gated bool` per path through one list (hides the asymmetry, easy to misuse at a future call site).
+*Introduced by*: 260908-hb0j-skill-placement-tiers-gate-claude
+
+### PATH lookup as a proc helper with a swappable seam
+**Decision**: The gate's presence check is `proc.LookPath` — a tiny `internal/proc` helper wrapping `exec.LookPath`, declared as a package-level variable (like `proc.Runner`) so `agent_setup_test.go` forces gate state (`forceClaudeGate`) without touching PATH.
+**Why**: Keeps command code `os/exec`-free (code-review rule), matches fab-kit's `agentAvailable` precedent, and `internal/proc` is the sanctioned home for process-adjacent primitives.
+**Rejected**: `exec.LookPath` directly in `agent_setup.go` (violates the review rule's spirit); a full capability-probe subprocess (spawns a process for a presence question — Constitution I ceremony for nothing).
+*Introduced by*: 260908-hb0j-skill-placement-tiers-gate-claude
 
 ### Explicit `--yes` plumbing, not TTY detection
 **Decision**: Unattended-run consent rides an explicit `--yes` flag threaded through the chain `shll update --yes` → `shll setup agent --yes` → `run-kit agent setup --yes`; shll never infers attendance from the terminal.
@@ -428,6 +451,6 @@ Description-vocabulary contracts are pinned separately: `TestRosterSkillHints` (
 - The eval-line target: [cli/shell-init](/cli/shell-init.md) — `setup shell` writes the line that `shell-init` produces output for.
 - The runtime steps the placed skill teaches (`shll skill` glossary → `shll skill <tool>` bundle → `shll skill <tool> <topic>` topic page): [cli/skill](/cli/skill.md).
 - The standard's landed-design note recording skills placement (not context aggregation): [cli/standards-content §landed design](/cli/standards-content.md#landed-design-shll-setup-agent-skills-placement-not-context-aggregation).
-- Subprocess execution: [internal/proc](/internal/proc.md) — the shell half invokes **none** (it is pure file I/O; the `TestNoProcImports` guard pins this); the agent half's run-kit delegation and `shll update`'s refresh subprocess route through it.
+- Subprocess execution: [internal/proc](/internal/proc.md) — the shell half invokes **none** (it is pure file I/O; the `TestNoProcImports` guard pins this); the agent half's run-kit delegation and `shll update`'s refresh subprocess route through it, as does the claude gate's `proc.LookPath` presence probe.
 - Constitution I (Security First) → `shell_setup.go` is subprocess-free, enforced by the `TestNoProcImports` guard — there is no ceremony seam bridging to `brew.go` at all (0854).
 - Cross-Platform Behavior → the darwin-vs-other branch in `resolveRcFile` is the only platform-specific code path, isolated behind the `osGoos` package-level variable (used by no brew call — 0854).

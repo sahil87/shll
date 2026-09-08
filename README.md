@@ -25,7 +25,7 @@ The script preflights what the install needs — git (the Xcode Command Line Too
 
 One pitfall worth knowing: if the download itself fails, `curl -fsSL … | sh` still **exits 0** — `sh` runs the empty input happily — so an `&&`-chained next step proceeds as if the install worked. Check curl's stderr, or `command -v shll` after; details in the [install guide](docs/site/install.md).
 
-`shll install` ends by wiring the machine automatically: it runs the equivalent of `shll setup shell` (the rc-file eval line, sentinel-managed and idempotent) and `shll setup agent --yes` (one thin `shll-toolkit` Agent Skill at the harnesses' global skill paths, plus run-kit's dashboard hooks). Both steps are best-effort — a failure warns and prints the step's manual nudge, and never fails the install. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup` (no agent wiring), which ride the bootstrap's argument passthrough: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup`.
+`shll install` ends by wiring the machine automatically: it runs the equivalent of `shll setup shell` (the rc-file eval line, sentinel-managed and idempotent) and `shll setup agent --yes` (one thin `shll-toolkit` Agent Skill at the harnesses' global skill paths — `~/.agents/skills/` always, `~/.claude/skills/` when the `claude` CLI is on PATH — plus run-kit's dashboard hooks). Both steps are best-effort — a failure warns and prints the step's manual nudge, and never fails the install. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup` (no agent wiring), which ride the bootstrap's argument passthrough: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup`.
 
 Everything else — the manual brew bootstrap, from-source builds, shell-wiring detail, and tap-trust troubleshooting — lives in the [install guide](docs/site/install.md) on [https://shll.ai](https://shll.ai).
 
@@ -252,12 +252,12 @@ The agent-facing reader for each tool's offline skill bundle — the one-page us
 > Renamed from `shll agent-setup`: the old spelling still works — hidden, silent, for one release cycle — then it will be removed.
 
 ```sh
-shll setup agent              # place the shll-toolkit skill at both locations (idempotent)
-shll setup agent --print      # print the SKILL.md content and both target paths, write nothing
+shll setup agent              # place the shll-toolkit skill (~/.claude only when claude is on PATH; idempotent)
+shll setup agent --print      # print the SKILL.md content and the target paths a real run would write
 shll setup agent --uninstall  # remove both placed skill directories
 ```
 
-Mechanically places one thin `shll-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/shll-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/`) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates run-kit's dashboard-hook wiring to `run-kit agent setup` (skipped silently when run-kit isn't installed; `--uninstall` delegates `run-kit agent setup --uninstall`; `--print` never delegates). This graduates the toolkit's harness wiring from `run-kit agent setup`, where it was mis-homed on a leaf tool, up to the manager.
+Mechanically places one thin `shll-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/shll-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode — always written) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/` — written only when the `claude` CLI is on PATH) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates run-kit's dashboard-hook wiring to `run-kit agent setup` (skipped silently when run-kit isn't installed; `--uninstall` delegates `run-kit agent setup --uninstall`; `--print` never delegates). This graduates the toolkit's harness wiring from `run-kit agent setup`, where it was mis-homed on a leaf tool, up to the manager.
 
 Once placed, the skill maintains itself: [`shll update`](#shll-update--upgrade-everything) ends each run by re-running `shll setup agent` (so the placed content tracks the upgraded binaries), and [`shll doctor`](#shll-doctor--verify-install--wiring) flags a stale placement with a `WARN`. The skill's frontmatter description is generated from the tool roster — each tool contributes its name and a task-domain phrase ("git worktrees", "backlog ideas") so agents match on the task, not just the tool name, and run-kit additionally contributes an agent-proactive sentence (show visual content in a browser window, push notifications, run VS Code palette commands in the user's code editor via `rk code exec`) so agents reach for those capabilities unprompted.
 
@@ -277,7 +277,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 | `shll doctor` | probes `<tool> --version` + reads your rc file, reports install + wiring health |
 | `shll standards` | prints build-time-embedded copies of the canonical `docs/site/` standards (no subprocess, no network) |
 | `shll skill <tool>` | passes through the tool's own `<tool> skill` output byte-for-byte (`shll skill shll` serves an embedded copy) |
-| `shll setup agent` | places the `shll-toolkit` skill at the two global skill paths, then delegates `run-kit agent setup` for run-kit's hooks |
+| `shll setup agent` | places the `shll-toolkit` skill at the global skill paths (`~/.claude/skills/` only when `claude` is on PATH), then delegates `run-kit agent setup` for run-kit's hooks |
 
 Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt shell-init`, etc. continue to work standalone. shll's only job is to fan-out, collect output, and degrade gracefully when a tool is missing.
 

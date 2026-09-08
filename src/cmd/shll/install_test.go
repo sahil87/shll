@@ -1458,6 +1458,7 @@ func TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes(t *testing.T) {
 	// NO Next steps block at all (empty-block suppression).
 	f := allInstalledRunKitState(true /* run-kit present */)
 	installFakeRunner(t, f)
+	forceClaudeGate(t, true)
 
 	env, dir := installWiredEnvDir(t)
 	var stdout, stderr bytes.Buffer
