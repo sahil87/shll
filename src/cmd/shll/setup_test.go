@@ -52,6 +52,7 @@ func TestSetup_ParentRunsBothHalves(t *testing.T) {
 		t.Fatalf("write rc: %v", err)
 	}
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	if err := runSetup(context.Background(), os.Getenv, &stdout, &stderr, false); err != nil {
@@ -74,6 +75,7 @@ func TestSetup_WorstWinsExit(t *testing.T) {
 	// agent half must STILL run to completion, and the run exits 2 (worst-wins).
 	home := setupEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	err := runSetup(context.Background(), os.Getenv, &stdout, &stderr, false)

@@ -34,11 +34,30 @@ func runKitAbsentFake() *fakeRunner {
 	}}
 }
 
-// skillPaths returns the two absolute SKILL.md paths agent-setup writes under home.
+// skillPaths returns the two absolute SKILL.md candidate paths under home — the
+// ALL-CANDIDATES view (both tiers). Which of them an install actually writes
+// depends on the claude gate (forceClaudeGate); --uninstall and the staleness
+// probe always cover both.
 func skillPaths(home string) []string {
 	return []string{
 		filepath.Join(home, ".agents", "skills", skillDirName, skillFileName),
 		filepath.Join(home, ".claude", "skills", skillDirName, skillFileName),
+	}
+}
+
+// forceClaudeGate swaps the proc.LookPath seam for the duration of t so the
+// ~/.claude/skills/ placement gate is deterministically open (present=true) or
+// closed (present=false) without a real `claude` binary on PATH — the same
+// package-level-variable injection style as installFakeRunner.
+func forceClaudeGate(t *testing.T, present bool) {
+	t.Helper()
+	prev := proc.LookPath
+	t.Cleanup(func() { proc.LookPath = prev })
+	proc.LookPath = func(name string) bool {
+		if name == claudeToolName {
+			return present
+		}
+		return prev(name)
 	}
 }
 
@@ -47,6 +66,7 @@ func skillPaths(home string) []string {
 func TestAgentSetup_InstallPlacesBothSkills(t *testing.T) {
 	env, home := agentHomeEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
@@ -70,6 +90,7 @@ func TestAgentSetup_InstallPlacesBothSkills(t *testing.T) {
 func TestAgentSetup_Idempotent(t *testing.T) {
 	env, home := agentHomeEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 
 	var o1, e1 bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &o1, &e1, false, false, false); err != nil {
@@ -102,6 +123,7 @@ func TestAgentSetup_OverwritesDivergedContent(t *testing.T) {
 	// A stale SKILL.md (wrong bytes) is overwritten and reported as "updated".
 	env, home := agentHomeEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 	claudePath := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
 	if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -123,12 +145,77 @@ func TestAgentSetup_OverwritesDivergedContent(t *testing.T) {
 	}
 }
 
+// --- the claude gate (two-tier placement) --------------------------------------
+
+func TestAgentSetup_InstallGateClosedWritesAgentsOnly(t *testing.T) {
+	// claude NOT on PATH → only the unconditional ~/.agents/skills/ target is
+	// written, and no ~/.claude/ directory is created AT ALL (dir absence, not
+	// just file absence) — a machine without Claude Code gets no litter.
+	env, home := agentHomeEnv(t)
+	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, false)
+
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
+		t.Fatalf("runAgentSetup err = %v", err)
+	}
+	agentsPath := filepath.Join(home, ".agents", "skills", skillDirName, skillFileName)
+	data, err := os.ReadFile(agentsPath)
+	if err != nil {
+		t.Fatalf("expected SKILL.md at %s: %v", agentsPath, err)
+	}
+	if string(data) != agentSkillContent {
+		t.Errorf("placed content at %s is not the canonical skill:\n%s", agentsPath, data)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("gate-closed install must create no ~/.claude/ directory at all, stat err = %v", err)
+	}
+	// The per-path summary covers exactly the one gated target — the skipped
+	// surface is silent (Constitution V), no warning, no output noise.
+	if c := strings.Count(stdout.String(), "wrote"); c != 1 {
+		t.Errorf("expected exactly one 'wrote' line (the ~/.agents target), got:\n%s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), ".claude") {
+		t.Errorf("a gated-off target must not appear in the summary, got:\n%s", stdout.String())
+	}
+}
+
+func TestAgentSetup_GateNeverDeletes(t *testing.T) {
+	// A pre-existing ~/.claude placement survives a gate-closed install run
+	// untouched — the gate suppresses ALL writes to the gated surface while
+	// closed (including refresh rewrites); only --uninstall deletes.
+	env, home := agentHomeEnv(t)
+	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, false)
+	claudePath := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
+	if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	stale := []byte("# stale\n")
+	if err := os.WriteFile(claudePath, stale, 0o644); err != nil {
+		t.Fatalf("write stale: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
+		t.Fatalf("runAgentSetup err = %v", err)
+	}
+	data, err := os.ReadFile(claudePath)
+	if err != nil {
+		t.Fatalf("the gate must never delete a pre-existing placement: %v", err)
+	}
+	if !bytes.Equal(data, stale) {
+		t.Errorf("a gated-off pre-existing placement must be left byte-untouched, got:\n%s", data)
+	}
+}
+
 // --- --print (T004 / R8) -----------------------------------------------------
 
 func TestAgentSetup_Print(t *testing.T) {
 	env, home := agentHomeEnv(t)
 	f := runKitAbsentFake()
 	installFakeRunner(t, f)
+	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, true /*print*/, false, false); err != nil {
@@ -159,11 +246,42 @@ func TestAgentSetup_Print(t *testing.T) {
 	}
 }
 
+func TestAgentSetup_PrintReflectsGate(t *testing.T) {
+	// Gate closed → --print lists only the path a real run would write
+	// (~/.agents/skills/…), not the gated ~/.claude/skills/… path — dry-run
+	// truthfulness — and still writes nothing.
+	env, home := agentHomeEnv(t)
+	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, false)
+
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, true /*print*/, false, false); err != nil {
+		t.Fatalf("--print err = %v", err)
+	}
+	out := stdout.String()
+	if !strings.HasPrefix(out, agentSkillContent) {
+		t.Errorf("--print must lead with the canonical SKILL.md content, got:\n%s", out)
+	}
+	agentsPath := filepath.Join(home, ".agents", "skills", skillDirName, skillFileName)
+	if !strings.Contains(out, agentsPath) {
+		t.Errorf("--print must list the unconditional target %s, got:\n%s", agentsPath, out)
+	}
+	if strings.Contains(out, ".claude") {
+		t.Errorf("gate-closed --print must not list the ~/.claude target, got:\n%s", out)
+	}
+	for _, p := range skillPaths(home) {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("--print must write nothing, but %s was created", p)
+		}
+	}
+}
+
 // --- --uninstall (T004 / R8, R9) ---------------------------------------------
 
 func TestAgentSetup_Uninstall(t *testing.T) {
 	env, home := agentHomeEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 
 	// Place first, then uninstall.
 	var o1, e1 bytes.Buffer
@@ -180,6 +298,53 @@ func TestAgentSetup_Uninstall(t *testing.T) {
 		if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("--uninstall must remove the skill directory %s", dir)
 		}
+	}
+}
+
+func TestAgentSetup_UninstallIgnoresGate(t *testing.T) {
+	// Place with the gate open, then close the gate (claude has since
+	// disappeared): --uninstall must STILL remove both skill directories.
+	env, home := agentHomeEnv(t)
+	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
+
+	var o1, e1 bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &o1, &e1, false, false, false); err != nil {
+		t.Fatalf("place err = %v", err)
+	}
+	forceClaudeGate(t, false)
+	var stdout, stderr bytes.Buffer
+	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, true /*uninstall*/, false); err != nil {
+		t.Fatalf("--uninstall err = %v", err)
+	}
+	for _, p := range skillPaths(home) {
+		dir := filepath.Dir(p)
+		if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("--uninstall must remove the skill directory %s regardless of the gate", dir)
+		}
+	}
+}
+
+func TestAgentSetup_PlacementStateIgnoresGate(t *testing.T) {
+	// A stale pre-existing ~/.claude copy on a no-claude machine still reports
+	// placed + stale — the probe covers BOTH candidate paths regardless of the
+	// gate, so `shll update`'s conditional refresh and `shll doctor` keep working.
+	env, home := agentHomeEnv(t)
+	forceClaudeGate(t, false)
+	claudePath := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
+	if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(claudePath, []byte("# stale\n"), 0o644); err != nil {
+		t.Fatalf("write stale: %v", err)
+	}
+
+	placed, stale := agentSkillPlacementState(env)
+	if !placed {
+		t.Errorf("a pre-existing ~/.claude placement must report placed under a closed gate")
+	}
+	if !stale {
+		t.Errorf("a stale ~/.claude placement must report stale under a closed gate")
 	}
 }
 
@@ -223,6 +388,7 @@ func TestAgentSetup_DelegatesToRunKitWhenPresent(t *testing.T) {
 func TestAgentSetup_RunKitAbsentSkipsSilently(t *testing.T) {
 	env, home := agentHomeEnv(t)
 	installFakeRunner(t, runKitAbsentFake())
+	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
@@ -249,6 +415,7 @@ func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
 		return proc.Result{}
 	}}
 	installFakeRunner(t, f)
+	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {

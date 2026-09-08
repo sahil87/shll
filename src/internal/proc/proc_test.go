@@ -3,6 +3,8 @@ package proc
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -334,6 +336,36 @@ func TestDefaultRunner_StreamTailNilWritersRejected(t *testing.T) {
 	res = defaultRunner(context.Background(), Request{Name: "true", Transport: TransportStreamTail, Stdout: &w})
 	if res.Err == nil || res.ExitCode != -1 {
 		t.Fatalf("nil Stderr: err = %v code = %d, want non-nil/-1", res.Err, res.ExitCode)
+	}
+}
+
+// TestLookPath_ReflectsPATH exercises the production LookPath against a
+// controlled PATH: a name with no matching executable reports false, and a
+// freshly-created executable in the lone PATH entry reports true.
+func TestLookPath_ReflectsPATH(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	if LookPath("shll-nonesuch-binary-xyz") {
+		t.Errorf("LookPath = true for a missing name on a controlled PATH, want false")
+	}
+	exe := filepath.Join(dir, "present-tool")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write fake executable: %v", err)
+	}
+	if !LookPath("present-tool") {
+		t.Errorf("LookPath = false for an executable on PATH, want true")
+	}
+}
+
+// TestLookPath_SwappableSeam pins the test-seam contract: LookPath is a
+// package-level variable (like Runner) that tests can swap to force a presence
+// answer without touching the real PATH.
+func TestLookPath_SwappableSeam(t *testing.T) {
+	prev := LookPath
+	t.Cleanup(func() { LookPath = prev })
+	LookPath = func(string) bool { return true }
+	if !LookPath("anything") {
+		t.Errorf("a swapped LookPath must be honored by callers")
 	}
 }
 

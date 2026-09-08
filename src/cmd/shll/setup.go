@@ -90,17 +90,19 @@ agent harnesses' global skills directories, then delegate run-kit's dashboard-ho
 wiring to ` + "`run-kit agent setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
 driving a toolkit tool.
 
-The skill is written to exactly two global locations (covering all four harnesses):
-  ~/.agents/skills/` + skillDirName + `/SKILL.md   Codex (USER scope), Cursor + OpenCode
-  ~/.claude/skills/` + skillDirName + `/SKILL.md   Claude Code
+The skill is written to two global locations (covering all four harnesses):
+  ~/.agents/skills/` + skillDirName + `/SKILL.md   Codex (USER scope), Cursor + OpenCode — always
+  ~/.claude/skills/` + skillDirName + `/SKILL.md   Claude Code — only when the claude CLI is on PATH
 
 The skill directories are shll-owned, so placement is idempotent by construction —
 install writes them, a re-run overwrites them, and there is no merge, prompt, or
-sentinel machinery. A per-path written/updated/unchanged summary is printed.
+sentinel machinery. The claude gate never deletes: --uninstall removes both placed
+skill directories regardless of whether claude is present. A per-path
+written/updated/unchanged summary is printed.
 
 Modes:
-  shll setup agent             place the skill at both locations (overwrites; idempotent)
-  shll setup agent --print     print the SKILL.md content and both target paths, write nothing
+  shll setup agent             place the skill (overwrites; idempotent; ~/.claude gated on claude)
+  shll setup agent --print     print the SKILL.md content and the target paths a real run would write
   shll setup agent --uninstall remove both placed skill directories
 
 Pass ` + "`--yes`" + ` (or ` + "`-y`" + `) to forward ` + "`--yes`" + ` to the run-kit delegation so its own

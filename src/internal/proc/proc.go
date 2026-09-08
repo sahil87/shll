@@ -162,6 +162,17 @@ type Request struct {
 // implementation (defaultRunner) actually spawns subprocesses via os/exec.
 var Runner RunnerFunc = defaultRunner
 
+// LookPath reports whether name resolves to an executable on PATH — a pure
+// lookup (exec.LookPath); no subprocess is spawned. It is the sanctioned
+// presence probe for gating an optional surface on a sibling or brand CLI
+// (Constitution V's graceful-degradation pattern: missing → silent skip),
+// declared as a package-level variable (like Runner) so tests can force the
+// probe's answer without touching the real PATH.
+var LookPath = func(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
 // Run captures stdout from name+args using TransportCapture. stderr passes through
 // to the parent's stderr so subprocess error messages reach the user. If the binary
 // is not on PATH, the returned error is ErrNotFound (callers can match it directly

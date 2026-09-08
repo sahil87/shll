@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract, the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (install-time composition, centralized install docs), and `config-home` (fixed $HOME/.config/<tool>/ root, override cascade, env = deployment bootstrap only)."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract (incl. two-tier placement), the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (install-time composition, centralized install docs), and `config-home` (fixed $HOME/.config/<tool>/ root, override cascade, env = deployment bootstrap only)."
 ---
 # cli/standards-content
 
@@ -136,6 +136,17 @@ Rollout is per-repo, like help-dump's. A tool without a `skill` subcommand is no
 - **Description-writing rules are codified in the standard.** A § Description-writing rules subsection states the activation contract for the roster-driven description: tool names front-loaded (legacy aliases included), task-shaped trigger phrases per tool (not just nouns), what + when structure, the ≤1024 cap, and the triggers-vs-operations split — activation vocabulary in the description, operational/recipe prose in the skill body, which is read at activation. (q8i5)
 
 *Introduced by*: `260718-agst-agent-setup-skill-commands`; the standard document's § reflects it (fw9d).
+
+### Placement directories (the two-tier rule)
+
+The standard's **§ Placement directories** codifies where toolkit skills are deployed as a RULE binding every placement surface, not a snapshot folder list — two tiers:
+
+- **Unconditional tier** — the portable [agentskills.io](https://agentskills.io/specification) open-standard directory (`.agents/skills/`): ALWAYS deployed, guaranteed present, the canonical harness-neutral read channel.
+- **Gated tier** — brand-specific surfaces, each deployed ONLY when its brand CLI is on PATH: `.claude/skills/` gates on `claude`, `.opencode/commands/` gates on `opencode`. An absent brand CLI is a silent skip (never an error, never an empty brand tree); the gate suppresses new writes only and never deletes an existing placement.
+
+The rule binds BOTH deployment scopes: **repo-level** (fab-kit's `fab sync` — `.agents` always, `.claude` on `claude`, `.opencode/commands` on `opencode`) and **global/machine-level** (`shll setup agent` — `~/.agents/skills/` unconditional, `~/.claude/skills/` when `claude` is on PATH). The recorded rationale: de-branded internals (Claude Code does NOT read `.agents/skills/` — verified against Claude Code's docs and a live probe — which is the only reason the gated `.claude` channel exists at all); gate fit ("if you run Claude Code, `claude` is on PATH" — a pure PATH probe, no subprocess); taxonomy purity; fab-kit's **one-target-per-skill-set invariant** (per-brand copies for CLIs that already read `.agents/skills/` produced duplicate-skill conflict warnings — a skill set deploys to exactly ONE directory a given client reads); and the retirement stepping stone (a brand client adopting the open standard retires its gated directory by removing one tier entry). The standard's § Landed design and § placed-skill-conformance passages state the same gated contract for the global pair (`~/.agents/skills/` always; `~/.claude/skills/` when `claude` is on PATH). shll's own conformance instance of the rule is [cli/setup §the placement set](/cli/setup.md#the-placement-set-two-candidate-paths-cover-four-harnesses-the-claude-write-is-gated).
+
+*Introduced by*: 260908-hb0j-skill-placement-tiers-gate-claude.
 
 ## The three producer-surface standards (`update`, `version`, `shell-init`)
 

@@ -1,0 +1,57 @@
+id: hb0j
+name: 260908-hb0j-skill-placement-tiers-gate-claude
+created: 2026-09-08T17:08:03Z
+created_by: sahil-noon
+change_type: feat
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 9
+    acceptance_count: 15
+    acceptance_completed: 15
+confidence:
+    certain: 11
+    confident: 2
+    tentative: 0
+    unresolved: 0
+    score: 4.8
+    fuzzy: true
+    dimensions:
+        signal: 85.4
+        reversibility: 83.1
+        competence: 88.8
+        disambiguation: 85.8
+stage_metrics:
+    intake: {started_at: "2026-09-08T17:08:03Z", driver: fab-new, iterations: 1, completed_at: "2026-09-08T17:13:43Z"}
+    apply: {started_at: "2026-09-08T17:13:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-08T17:22:53Z"}
+    review: {started_at: "2026-09-08T17:22:53Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-08T17:25:23Z"}
+    hydrate: {started_at: "2026-09-08T17:25:23Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-08T17:30:39Z"}
+    ship: {started_at: "2026-09-08T17:30:39Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-08T17:33:30Z"}
+    review-pr: {started_at: "2026-09-08T17:33:30Z", driver: git-pr, iterations: 1, completed_at: "2026-09-08T17:42:38Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/97
+change_type_source: explicit
+true_impact:
+    added: 814
+    deleted: 71
+    net: 743
+    excluding:
+        added: 343
+        deleted: 43
+        net: 300
+    tests:
+        added: 202
+        deleted: 1
+        net: 201
+    computed_at: "2026-09-08T17:33:30Z"
+    computed_at_stage: ship
+summary: Gated shll setup agent's ~/.claude/skills/ write on the claude CLI (proc.LookPath seam; ~/.agents/skills/ stays unconditional; uninstall + staleness probe keep both paths) and codified the two-tier Placement-directories rule in the skill standard.
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-08T17:42:38Z

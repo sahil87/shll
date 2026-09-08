@@ -68,7 +68,7 @@ If your Homebrew is too old to ship `brew trust` (pre-6.0, where trust isn't req
 When the installs finish (or there was nothing to do), `shll install` **wires the machine automatically** — no nudges to ignore, no prompts:
 
 1. **Shell integration** — the equivalent of [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended): the `eval "$(shll shell-init <shell>)"` block is appended to your rc file (sentinel-managed and idempotent, so a re-run is a no-op), followed by an `exec $SHELL` reminder. Already-wired, unresolvable-`$SHELL`, and corrupt-block states skip quietly.
-2. **Agent harnesses** — the equivalent of `shll setup agent --yes`: the `shll-toolkit` skill is placed at the two global skill paths and run-kit's dashboard hooks are delegated, with `--yes` forwarded so run-kit's hook-wiring confirmation can't hang an unattended (`curl | sh`) run.
+2. **Agent harnesses** — the equivalent of `shll setup agent --yes`: the `shll-toolkit` skill is placed at the global skill paths (`~/.agents/skills/` always; `~/.claude/skills/` when the `claude` CLI is on PATH) and run-kit's dashboard hooks are delegated, with `--yes` forwarded so run-kit's hook-wiring confirmation can't hang an unattended (`curl | sh`) run.
 
 Both steps are best-effort: a failure warns on stderr and prints that step's manual nudge as a fallback, and never changes the install's exit code. Neither step runs under `--dry-run`. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup`:
 

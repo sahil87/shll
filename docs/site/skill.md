@@ -25,7 +25,7 @@ One line each, keyed to the subcommand:
 - `shll shell-init <shell>` — emit one eval-safe shell-init blob composing every installed tool's shell-init. Stdout is meant to be `eval`'d.
 - `shll setup` — wire this machine: both halves (shell integration, then agent harnesses), idempotent. `--yes` forwards to the run-kit delegation.
 - `shll setup shell [shell]` — append the `eval "$(shll shell-init …)"` line to your rc file (idempotent, sentinel-wrapped). `--print` / `--uninstall`.
-- `shll setup agent` — place the `shll-toolkit` Agent Skill at two global skill paths (`~/.agents/skills/` for Codex/Cursor/OpenCode, `~/.claude/skills/` for Claude Code), then delegate run-kit's dashboard hooks to `run-kit agent setup`. Idempotent (overwrite). `--print` / `--uninstall`.
+- `shll setup agent` — place the `shll-toolkit` Agent Skill at the global skill paths (`~/.agents/skills/` for Codex/Cursor/OpenCode — always; `~/.claude/skills/` for Claude Code — only when the `claude` CLI is on PATH), then delegate run-kit's dashboard hooks to `run-kit agent setup`. Idempotent (overwrite). `--print` / `--uninstall`.
 - `shll skill [tool] [topic]` — bare: one-line glossary of installed tools. `shll skill <tool>`: that tool's full agent skill bundle (this page is `shll skill shll`). `shll skill <tool> <topic>`: one of that tool's topic pages, delegated to `<tool> skill <topic>` byte-for-byte. `shll skill <tool> topics`: list that tool's topic names, one per line (empty if it ships none).
 - `shll version` — one paste-friendly version row per tool (for bug reports).
 - `shll list` — the roster with install status, descriptions, repo links (`--json`).

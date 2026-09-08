@@ -22,6 +22,12 @@ import (
 // III/IV — compose, don't absorb). It graduates the cross-toolkit harness wiring from
 // run-kit (a leaf tool) to shll (the manager).
 //
+// Placement is two-tiered (the skill standard's Placement-directories rule): the
+// open-standard ~/.agents/skills/ write is unconditional; the brand-surface
+// ~/.claude/skills/ write is GATED on the `claude` CLI being on PATH (a pure
+// proc.LookPath probe — no subprocess). The gate never deletes: --uninstall and
+// the staleness probe cover BOTH paths regardless of gate state.
+//
 // The skill directories are shll-OWNED, so there is no merge, no sentinel, no
 // diff-and-confirm: install = write, re-run/upgrade = overwrite (idempotent by
 // construction), --uninstall = delete. This file performs plain file I/O plus ONE
@@ -112,20 +118,55 @@ func agentSkillDescription() string {
 		" Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it."
 }
 
-// skillTargetRelDirs are the two global skill-DIRECTORY paths (relative to $HOME) at
-// which the toolkit bootstrap skill is placed — the minimal covering set for all four
-// harnesses (verified 2026-07-18):
+// claudeToolName is the Claude Code CLI binary name — the PATH probe
+// (proc.LookPath) that gates the claudeSkillRelDir write. Named per
+// code-quality.md (no magic strings).
+const claudeToolName = "claude"
+
+// claudeSkillRelDir is the gated-tier entry of skillTargetRelDirs: deployed only
+// when claudeToolName resolves on PATH ("if you run Claude Code, claude is on
+// PATH"). Named per code-quality.md (no magic strings).
+const claudeSkillRelDir = ".claude/skills"
+
+// skillTargetRelDirs are ALL the global skill-DIRECTORY paths (relative to $HOME)
+// at which the toolkit bootstrap skill can be placed — the minimal covering set
+// for all four harnesses (verified 2026-07-18):
 //
 //   - .agents/skills — the agentskills.io open-standard path: read natively by Codex
-//     (USER scope) and compat-read by Cursor and OpenCode.
-//   - .claude/skills — Claude Code, which does NOT read ~/.agents/.
+//     (USER scope) and compat-read by Cursor and OpenCode. UNCONDITIONAL tier:
+//     always written.
+//   - .claude/skills — Claude Code, which does NOT read ~/.agents/. GATED tier:
+//     written only when the `claude` CLI is on PATH (skillInstallRelDirs), so a
+//     machine without Claude Code gets no ~/.claude/ tree.
 //
-// Both writes are unconditional (agent-setup is an explicit "wire this machine"
-// command) and shll owns these dirs, so they are created as needed. Any future harness
+// This is the full CANDIDATE set: --uninstall and the staleness probe
+// (agentSkillPlacementState) cover ALL of it regardless of the gate, so an
+// existing ~/.claude placement still reports staleness and removes cleanly on a
+// machine where `claude` has since disappeared. The gate suppresses ALL writes
+// to the gated surface while it is closed — a gate-closed install or refresh
+// leaves a pre-existing ~/.claude copy byte-untouched (never deleted, never
+// rewritten); it converges on the first refresh after `claude` returns to PATH
+// (the post-hoc pickup property, refreshPlacedAgentSkills). Any future harness
 // adopting the open standard picks up ~/.agents/skills automatically.
 var skillTargetRelDirs = []string{
 	".agents/skills",
-	".claude/skills",
+	claudeSkillRelDir,
+}
+
+// skillInstallRelDirs returns the subset of skillTargetRelDirs an install writes
+// NOW: the unconditional open-standard dir plus each gated brand dir whose brand
+// CLI is on PATH (today: claudeSkillRelDir gated on claudeToolName). The lookup is
+// a pure PATH probe (proc.LookPath — no subprocess); tests swap that package-level
+// seam to force the gate without touching the real PATH.
+func skillInstallRelDirs() []string {
+	dirs := make([]string, 0, len(skillTargetRelDirs))
+	for _, rel := range skillTargetRelDirs {
+		if rel == claudeSkillRelDir && !proc.LookPath(claudeToolName) {
+			continue
+		}
+		dirs = append(dirs, rel)
+	}
+	return dirs
 }
 
 // agentSetupSub is the hidden deprecated top-level spelling of shll's OWN agent
@@ -215,14 +256,29 @@ func buildAgentSetupCmd(spec agentSetupCmdSpec) *cobra.Command {
 }
 
 // resolveSkillTargets returns the absolute SKILL.md paths (one per skillTargetRelDirs
-// entry) under $HOME. An empty $HOME yields no targets (nothing to place).
+// entry) under $HOME — the ALL-CANDIDATES view used by --uninstall and the
+// staleness probe, both of which keep covering both paths regardless of the gate.
+// An empty $HOME yields no targets (nothing to place).
 func resolveSkillTargets(env func(string) string) []string {
+	return skillTargetsUnder(env, skillTargetRelDirs)
+}
+
+// resolveInstallTargets returns the absolute SKILL.md paths an install (or
+// --print) would write NOW — the GATED subset (skillInstallRelDirs) under $HOME.
+// An empty $HOME yields no targets (nothing to place).
+func resolveInstallTargets(env func(string) string) []string {
+	return skillTargetsUnder(env, skillInstallRelDirs())
+}
+
+// skillTargetsUnder maps relative skill directories to absolute SKILL.md paths under
+// $HOME — the single derivation both target views share.
+func skillTargetsUnder(env func(string) string, relDirs []string) []string {
 	home := env("HOME")
 	if home == "" {
 		return nil
 	}
-	out := make([]string, 0, len(skillTargetRelDirs))
-	for _, rel := range skillTargetRelDirs {
+	out := make([]string, 0, len(relDirs))
+	for _, rel := range relDirs {
 		out = append(out, filepath.Join(home, rel, skillDirName, skillFileName))
 	}
 	return out
@@ -247,20 +303,23 @@ func runAgentSetup(ctx context.Context, env func(string) string, stdout, stderr 
 		return &errExitCode{code: usageExitCode, msg: agentSetupErrPrefix + ": --print and --uninstall are mutually exclusive"}
 	}
 
-	targets := resolveSkillTargets(env)
-
-	// --print: emit the content + both target paths, touch nothing (no delegation).
+	// --print: emit the content + the target paths a real install would write NOW
+	// (the gate-reflecting set), touch nothing (no delegation).
 	if printMode {
-		return runAgentPrint(targets, stdout, stderr)
+		return runAgentPrint(resolveInstallTargets(env), stdout, stderr)
 	}
 	if uninstallMode {
-		return runAgentUninstall(ctx, targets, yes, stdout, stderr)
+		// Uninstall covers ALL candidates regardless of the gate, so a pre-existing
+		// ~/.claude placement removes cleanly even where `claude` has disappeared.
+		return runAgentUninstall(ctx, resolveSkillTargets(env), yes, stdout, stderr)
 	}
-	return runAgentInstall(ctx, targets, yes, stdout, stderr)
+	return runAgentInstall(ctx, resolveInstallTargets(env), yes, stdout, stderr)
 }
 
-// runAgentPrint writes the canonical SKILL.md content followed by the two target paths
-// it WOULD be written to, and modifies nothing. It does not delegate to run-kit.
+// runAgentPrint writes the canonical SKILL.md content followed by the target paths
+// it WOULD be written to — the gate-reflecting install set resolved by the caller,
+// so on a no-`claude` machine only the ~/.agents/skills/ path is listed — and
+// modifies nothing. It does not delegate to run-kit.
 func runAgentPrint(targets []string, stdout, stderr io.Writer) error {
 	if _, err := io.WriteString(stdout, agentSkillContent); err != nil {
 		fmt.Fprintf(stderr, "%s: write stdout: %v\n", agentSetupErrPrefix, err)
@@ -273,9 +332,12 @@ func runAgentPrint(targets []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// runAgentInstall writes the canonical SKILL.md to every target path (creating the
-// skill directory as needed — shll owns it), printing a per-path written/updated/
-// unchanged summary, then delegates run-kit's harness hooks.
+// runAgentInstall writes the canonical SKILL.md to every given target path (the
+// gate-reflecting install set resolved by the caller — on a no-`claude` machine the
+// ~/.claude/skills/ target is absent, so no ~/.claude/ tree is created; the gate
+// never deletes a pre-existing one), creating the skill directory as needed (shll
+// owns it), printing a per-path written/updated/unchanged summary, then delegates
+// run-kit's harness hooks.
 func runAgentInstall(ctx context.Context, targets []string, yes bool, stdout, stderr io.Writer) error {
 	content := []byte(agentSkillContent)
 	anyFailed := false
@@ -338,7 +400,10 @@ func placeSkill(path string, content []byte, stdout, stderr io.Writer) error {
 
 // runAgentUninstall removes each placed skill DIRECTORY (the shll-toolkit dir under
 // each target, not just the SKILL.md file), then delegates `run-kit agent setup
-// --uninstall`. Removing an shll-owned directory is safe and needs no confirmation.
+// --uninstall`. The caller passes the ALL-CANDIDATES set (both paths regardless of
+// the placement gate), so a pre-existing ~/.claude placement removes cleanly on a
+// machine where `claude` has since disappeared. Removing an shll-owned directory is
+// safe and needs no confirmation.
 func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, stderr io.Writer) error {
 	anyFailed := false
 	for _, path := range targets {
@@ -406,10 +471,16 @@ func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr i
 // agentSkillPlacementState reports the on-disk state of the placed skills, read-only:
 // placed is true when ANY skill target file exists (the user opted in via a prior
 // `shll setup agent`); stale is true when any EXISTING target's bytes differ from the
-// running binary's canonical content. An existing-but-unreadable target counts as
-// placed with staleness unknown (never reported stale — Constitution V: don't warn on
-// a state we can't determine). Consumed by `shll update`'s conditional refresh (placed
-// only) and `shll doctor`'s shll-row staleness check (both facts).
+// running binary's canonical content. It checks BOTH candidate paths regardless of the
+// placement gate, so a pre-existing ~/.claude placement still reports staleness
+// on a machine where `claude` has disappeared — the probe is read-only; the
+// refresh that would converge it writes only the gated install set, so it lands
+// once the gate reopens (`claude` back on PATH). An existing-but-unreadable
+// target counts as placed with staleness unknown (never reported stale — Constitution
+// V: don't warn on a state we can't determine). Consumed by `shll update`'s
+// conditional refresh (placed only — satisfied by the always-present ~/.agents copy,
+// which is also what lets a post-hoc Claude Code install pick up ~/.claude/skills/ on
+// the next `shll update`) and `shll doctor`'s shll-row staleness check (both facts).
 func agentSkillPlacementState(env func(string) string) (placed, stale bool) {
 	for _, path := range resolveSkillTargets(env) {
 		data, err := os.ReadFile(path)
