@@ -298,3 +298,37 @@ func TestSetTransportForTest_CollapsesToSingleURL(t *testing.T) {
 		t.Errorf("production list = %v, want [%s %s]", manifestURLs, manifestURLDefault, manifestURLFallback)
 	}
 }
+
+func TestFetchManifest_PrimaryBodyReadFailureFallsThrough(t *testing.T) {
+	// A response that dies mid-body (Content-Length promises more bytes than
+	// arrive) is the read-body failure class: io.ReadAll returns an unexpected
+	// EOF, which must fall through to the fallback exactly like a non-200.
+	truncated := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "4096")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"schema": 1,`)
+		// Returning here closes the connection short of the declared length.
+	}
+	var fallbackHits int
+	var mu sync.Mutex
+	manifestServers(t, truncated, func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		fallbackHits++
+		mu.Unlock()
+		fmt.Fprint(w, validManifest("from-fallback"))
+	})
+
+	m, err := FetchManifest(context.Background())
+	if err != nil {
+		t.Fatalf("FetchManifest err = %v, want nil (fallback should have answered)", err)
+	}
+	if _, ok := m.Tools["from-fallback"]; !ok {
+		t.Errorf("Tools = %+v, want the fallback server's manifest", m.Tools)
+	}
+	mu.Lock()
+	hits := fallbackHits
+	mu.Unlock()
+	if hits != 1 {
+		t.Errorf("fallback hits = %d, want exactly 1", hits)
+	}
+}

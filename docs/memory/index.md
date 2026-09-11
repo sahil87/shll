@@ -14,6 +14,8 @@ fkf_version: "0.1"
 
 <!-- fab docs-index:manual:start -->
 <!-- Hand-managed rows (non-markdown descriptions, external links, groupings) — preserved verbatim. -->
+
+> **New here?** Start with the [README](../../README.md) for setup and a walkthrough. For terminology, see the [Glossary](../specs/glossary.md).
 <!-- fab docs-index:manual:end -->
 
 | Domain | Description |

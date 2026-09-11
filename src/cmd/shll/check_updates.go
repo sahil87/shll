@@ -196,9 +196,10 @@ func runCheckUpdates(ctx context.Context, stdout, stderr io.Writer, source strin
 		return errSilent
 	}
 
-	// Released backend: exactly one manifest GET per invocation (Constitution
-	// II — no caching). It is the single latest+policy source, so its failure
-	// fails the whole check (unlike the github backend's per-tool degradation).
+	// Released backend: one manifest fetch per invocation — hexokit.com first,
+	// then the shll.ai fallback, so one or two GETs, never cached (Constitution
+	// II). It is the single latest+policy source, so failure on every URL fails
+	// the whole check (unlike the github backend's per-tool degradation).
 	var manifest versions.Manifest
 	if source == sourceReleased {
 		m, err := versions.FetchManifest(ctx)
