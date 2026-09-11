@@ -123,7 +123,7 @@ var standardsRoster = []standard{
 	},
 	{
 		Name:        "install-composition",
-		Description: "No sibling `depends_on` between toolkit formulas; probe siblings at runtime; install docs centralized on shll.ai",
+		Description: "No sibling `depends_on` between toolkit formulas; probe siblings at runtime; install docs centralized on hexokit.com",
 		Scope:       "binary+repo",
 		SourcePath:  "docs/site/standards/install-composition.md",
 		EmbedName:   "install-composition.md",

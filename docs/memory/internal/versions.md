@@ -1,10 +1,10 @@
 ---
 type: memory
-description: "`internal/versions` — shll's \"latest version per tool\" resolver seam behind `shll check-updates` (both backends) and `shll changelog`'s GitHub anchor: owns the shll.ai versions-manifest fetch (schema-1 decode, typed `ErrUnavailable`), the notify-threshold `Notable(notify, installed, latest)` policy mapping, and a thin `LatestGitHub` delegation to `internal/changelog.LatestTag` (single-fetch contract preserved); package-level URL/client test seams + `SetTransportForTest`."
+description: "`internal/versions` — shll's \"latest version per tool\" resolver seam behind `shll check-updates` (both backends) and `shll changelog`'s GitHub anchor: owns the versions-manifest fetch over an ordered URL list (hexokit.com primary, shll.ai fallback; schema-1 decode, typed `ErrUnavailable`), the notify-threshold `Notable` policy mapping, and a thin `LatestGitHub` delegation to `internal/changelog.LatestTag`; package-level URL-list/client test seams + `SetTransportForTest`."
 ---
 # internal/versions
 
-The "latest version per tool" resolver seam — the single surface behind `shll check-updates` (both backends) and the GitHub anchor of `shll changelog`'s no-range resolution. It owns the shll.ai versions-manifest fetch and the notify-threshold (`notable`) computation, and delegates the GitHub backend to [internal/changelog](/internal/changelog.md)'s existing fetch — no duplicated GitHub code.
+The "latest version per tool" resolver seam — the single surface behind `shll check-updates` (both backends) and the GitHub anchor of `shll changelog`'s no-range resolution. It owns the versions-manifest fetch (hexokit.com, with shll.ai as the fallback host) and the notify-threshold (`notable`) computation, and delegates the GitHub backend to [internal/changelog](/internal/changelog.md)'s existing fetch — no duplicated GitHub code.
 
 Together with `internal/changelog` it keeps `net/http` isolated in internal packages (Constitution I spirit): command code in `src/cmd/shll` never talks to `net/http` directly. It holds no state (Constitution II): every call re-fetches. **Future `versions.json` schema evolution is absorbed here**, so consumers (run-kit exec'ing `shll check-updates --json`, `shll changelog`) never compile in manifest or version-comparison policy.
 
@@ -12,7 +12,7 @@ Source: `src/internal/versions/versions.go`, tests in `src/internal/versions/ver
 
 ## Overview
 
-The package (a) GETs `https://shll.ai/versions.json` and decodes schema 1, degrading any failure to a typed `ErrUnavailable`; (b) maps a tool's notify policy over a pending version bump to decide whether it is `notable`; and (c) delegates the GitHub-releases backend to `internal/changelog.LatestTag`, preserving that package's single-fetch contract.
+The package (a) GETs the versions manifest — `https://hexokit.com/versions.json`, falling back to `https://shll.ai/versions.json` only when that attempt is unavailable — and decodes schema 1, degrading failure on every URL to a typed `ErrUnavailable`; (b) maps a tool's notify policy over a pending version bump to decide whether it is `notable`; and (c) delegates the GitHub-releases backend to `internal/changelog.LatestTag`, preserving that package's single-fetch contract.
 
 ## Constants and the test seams
 
@@ -20,12 +20,13 @@ Every magic value is a named constant (code-quality.md):
 
 | Constant | Value | Role |
 |----------|-------|------|
-| `manifestURLDefault` | `https://shll.ai/versions.json` | production manifest URL; assigned to the `manifestURL` seam — the roster + policy authority for `--released` |
+| `manifestURLDefault` | `https://hexokit.com/versions.json` | production manifest URL — the roster + policy authority for `--released`; first entry of the `manifestURLs` seam |
+| `manifestURLFallback` | `https://shll.ai/versions.json` | the previous manifest host, tried only when the primary attempt is unavailable (shll.ai serves a byte copy through the site cutover); second entry of `manifestURLs` |
 | `manifestSchema` | `1` | the `versions.json` schema this binary understands; any other value is treated as unavailable |
 | `requestTimeout` | `10 * time.Second` | per-request `context.WithTimeout` bound (mirrors `internal/changelog`'s per-request timeout) |
 | `NotifyNever` / `NotifyPatch` / `NotifyMinor` | `never` / `patch` / `minor` | the manifest's per-tool `notify` policy values (exported — consumed by `Notable`) |
 
-**Test seams — package-level vars, mirroring `internal/changelog` and `proc.Runner`.** `var manifestURL = manifestURLDefault` (the URL) and `var httpClient = &http.Client{}` (the client; requests carry their own context timeout, so the client needs no `Timeout` field) are the injection points. The exported `SetTransportForTest(url string, client *http.Client) (restore func())` swaps both and returns a restore closure — the one cross-package entry (used by `cmd/shll`'s `check_updates_test.go`), driving the **real** `net/http` code paths against an `httptest.Server` without network. Not for production use.
+**Test seams — package-level vars, mirroring `internal/changelog` and `proc.Runner`.** `var manifestURLs = []string{manifestURLDefault, manifestURLFallback}` (the ordered URL list `FetchManifest` walks) and `var httpClient = &http.Client{}` (the client; requests carry their own context timeout, so the client needs no `Timeout` field) are the injection points. The exported `SetTransportForTest(url string, client *http.Client) (restore func())` collapses the list to the single test URL, swaps the client, and returns a restore closure — the one cross-package entry (used by `cmd/shll`'s `check_updates_test.go`), driving the **real** `net/http` code paths against an `httptest.Server` without network. Fallback ordering is exercised by this package's own tests, which assign a two-server list to `manifestURLs` directly (`manifestServers` helper). Not for production use.
 
 ## API surface
 
@@ -33,7 +34,7 @@ Every magic value is a named constant (code-quality.md):
 |--------|----------|
 | `ManifestTool{Latest, Notify, Formula}` | one tool's manifest entry (only the fields shll consumes decoded) |
 | `Manifest{Schema, GeneratedAt, Tools}` | the decoded `versions.json`; `Tools` is keyed by tool **name** (carries shll itself plus every roster tool) |
-| `FetchManifest(ctx) (Manifest, error)` | one bounded GET + decode; wraps `ErrUnavailable` on any failure (see § Degradation) |
+| `FetchManifest(ctx) (Manifest, error)` | walks `manifestURLs` in order — one bounded GET + decode per URL (`fetchManifestFrom`) — returning the first intact manifest; wraps `ErrUnavailable` when every URL fails (see § Degradation) |
 | `Notable(notify, installed, latest) bool` | the notify-threshold policy mapping (see § Notify threshold) |
 | `LatestGitHub(ctx, repo) (latest string, rels []changelog.Release, err error)` | thin delegation to `changelog.LatestTag` (see § GitHub delegation) |
 | `ErrUnavailable` | sentinel wrapped by every manifest-fetch failure |
@@ -41,17 +42,27 @@ Every magic value is a named constant (code-quality.md):
 ## Requirements
 
 ### Requirement: Manifest fetch + degradation (Constitution II, V)
-`FetchManifest` SHALL perform exactly one HTTP GET of `manifestURL` per call with a `requestTimeout`-bounded context, and MUST NOT cache. It MUST return an error wrapping `ErrUnavailable` on a transport error, timeout, non-200 status, body-read error, JSON decode failure, or a `Schema` other than `manifestSchema`. On a non-200 the body is intentionally not read — the status code alone is the degradation signal (the deferred `Body.Close()` still releases the connection). There are no retries.
+`FetchManifest` SHALL try each entry of `manifestURLs` in order (`manifestURLDefault` on hexokit.com, then `manifestURLFallback` on shll.ai), performing one HTTP GET per URL with its own `requestTimeout`-bounded context, and MUST NOT cache. An attempt fails on a transport error, timeout, non-200 status, body-read error, JSON decode failure, or a `Schema` other than `manifestSchema`; a failed attempt moves to the next URL, and the first intact manifest is returned immediately, so a reachable primary never contacts the fallback. When every URL fails, the last attempt's error MUST wrap `ErrUnavailable`. On a non-200 the body is intentionally not read — the status code alone is the degradation signal (the deferred `Body.Close()` still releases the connection). There are no retries within a URL.
 
-For the `--released` backend there is exactly one fetch, so unavailability fails the whole check (unlike the per-tool GitHub degradation) — the caller writes a diagnostic and exits 1.
+For the `--released` backend there is exactly one manifest fetch (one or two GETs), so unavailability on every URL fails the whole check (unlike the per-tool GitHub degradation) — the caller writes a diagnostic and exits 1.
 
 #### Scenario: schema-1 manifest decodes
 - **GIVEN** an httptest server serving a schema-1 manifest
 - **WHEN** `versions.FetchManifest(ctx)` runs against the swapped seam
 - **THEN** it returns the decoded `Manifest` with its `Tools` map populated
 
+#### Scenario: primary failure falls through to the fallback
+- **GIVEN** the primary URL answers a non-200, malformed JSON, `schema != 1`, or refuses the connection, and the fallback URL serves a schema-1 manifest
+- **WHEN** `FetchManifest` runs
+- **THEN** it returns the fallback's `Manifest` with no error
+
+#### Scenario: a reachable primary never contacts the fallback
+- **GIVEN** the primary URL serves a schema-1 manifest
+- **WHEN** `FetchManifest` runs
+- **THEN** the fallback server receives zero requests
+
 #### Scenario: unavailable causes wrap the sentinel
-- **GIVEN** the server returns a non-200 status, malformed JSON, or `schema != 1`
+- **GIVEN** every URL returns a non-200 status, malformed JSON, or `schema != 1`
 - **WHEN** `FetchManifest` runs
 - **THEN** it returns an error satisfying `errors.Is(err, ErrUnavailable)`
 
@@ -73,6 +84,12 @@ For the `--released` backend there is exactly one fetch, so unavailability fails
 - **THEN** exactly one GitHub GET occurs per repo (`TestChangelog_NoRangeSingleFetchPerRepo` stays green)
 
 ## Design Decisions
+
+### Ordered URL list with sequential fallback, not a single URL or a race
+**Decision**: The manifest host is an ordered package-level list `manifestURLs = {manifestURLDefault (hexokit.com), manifestURLFallback (shll.ai)}`; `FetchManifest` loops over it, returning the first intact manifest and wrapping `ErrUnavailable` only after every URL fails. The exported `SetTransportForTest` collapses the list to one URL so its signature and every existing consumer are unchanged.
+**Why**: The toolkit site moves from shll.ai to hexokit.com in phases; shll.ai keeps serving a byte copy of the manifest through the cutover, so a sequential fallback keeps every shipped binary reading a live manifest whichever host is up, with zero extra requests on the happy path and the single-degradation `ErrUnavailable` contract intact.
+**Rejected**: Racing both hosts in parallel (an extra GET on every run and cancellation complexity for no user-visible gain); an env or config override for the host (the `config-home` standard bans env preference channels and shll has no config file); leaving shll.ai as the sole URL (every shipped binary would depend forever on the redirect host's byte-copy endpoint).
+*Introduced by*: `260911-ttoa-hexokit-banner-and-policy`.
 
 ### Version parsing stays in `internal/changelog`; `versions` owns only policy
 **Decision**: `Notable` maps policy over `changelog.CompareVer` + `changelog.FirstDiffComponent` rather than re-implementing version-component parsing; `LatestGitHub` delegates to `changelog.LatestTag` rather than fetching GitHub itself.

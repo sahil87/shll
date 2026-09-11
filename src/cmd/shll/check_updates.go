@@ -23,7 +23,7 @@ import (
 // code-quality.md (no magic strings).
 const (
 	sourceFlag      = "source"
-	sourceFlagUsage = "update-check backend: released (shll.ai versions manifest + notify policy; the default) or github (release tags, no notify policy)"
+	sourceFlagUsage = "update-check backend: released (hexokit.com versions manifest + notify policy; the default) or github (release tags, no notify policy)"
 )
 
 // checkUpdatesJSONFlagUsage is the --json usage string for `shll check-updates`
@@ -139,7 +139,8 @@ or written. To apply updates, run ` + "`shll update`" + `.
 
 One backend, selected by --source:
 
-  --source released   latest versions + notify policy from https://shll.ai/versions.json
+  --source released   latest versions + notify policy from https://hexokit.com/versions.json
+                      (falls back to https://shll.ai/versions.json)
                       (the default when the flag is omitted)
   --source github     latest release tag per tool from the GitHub API (unauthenticated;
                       no notify policy in this backend)

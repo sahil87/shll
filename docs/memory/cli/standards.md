@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll standards` — agent-facing reader for the toolkit's binding standards: self-describing list (name · scope · description) + `--json` ({name, description, scope, source_path}), byte-identical `<name>` reader, unknown-name errSilent error; build-time embed (committed `src/cmd/shll/standards/*.md` + `scripts/sync-standards.sh` from `docs/site/standards/`) with the roster-driven `TestStandardsEmbedMatchesCanonical` drift guard over all nine standards; docs/site/standards/ is canonical."
+description: "`shll standards` — agent-facing reader for the toolkit's binding standards: self-describing list (name · scope · description) + `--json` ({name, description, scope, source_path}), byte-identical `<name>` reader, unknown-name errSilent error; build-time embed (committed `src/cmd/shll/standards/*.md` synced by `scripts/sync-standards.sh`) with the roster-driven `TestStandardsEmbedMatchesCanonical` drift guard; docs/site/standards/ is canonical."
 ---
 # cli/standards
 
@@ -87,7 +87,7 @@ The roster is **nine** entries, in this order (roster order == output order for 
 | `update` | `binary` | `docs/site/standards/update.md` | In-place `update` upgrade contract: `--skip-brew-update` probe, exit codes, brew-handling safety |
 | `version` | `binary` | `docs/site/standards/version.md` | `--version` shape shll probes: 2s budget, first-line token, binary-name install probe |
 | `shell-init` | `binary` | `docs/site/standards/shell-init.md` | Eval-safe `shell-init` output every shell-integration tool emits on stdout |
-| `install-composition` | `binary+repo` | `docs/site/standards/install-composition.md` | No sibling `depends_on` between toolkit formulas; probe siblings at runtime; install docs centralized on shll.ai |
+| `install-composition` | `binary+repo` | `docs/site/standards/install-composition.md` | No sibling `depends_on` between toolkit formulas; probe siblings at runtime; install docs centralized on hexokit.com |
 | `config-home` | `binary` | `docs/site/standards/config-home.md` | Fixed $HOME/.config/<tool>/ config root, override cascade, env restricted to deployment bootstrap keys |
 
 The three producer-surface standards (`update`, `version`, `shell-init`) are appended after `skill` at `Scope: "binary"` — their obligations are satisfied by the compiled tool at runtime (the `update` / `--version` / `shell-init` subcommand behavior), the same scope as `help-dump`. `install-composition` follows at `Scope: "binary+repo"` (the formula-edge half is a repo-file obligation, the runtime-probe half a binary one — the same span as `skill`). `config-home` is appended last at `Scope: "binary"` — its obligations are the compiled tool's runtime config-path resolution (km8t). Content is [cli/standards-content](/cli/standards-content.md); shll's own posture against them is [cli/standards-conformance](/cli/standards-conformance.md).
