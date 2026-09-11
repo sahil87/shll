@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-11T17:13:50Z"}
+{"args":"HexoKit rebrand plan row C1 (D14 first pass): content-only edits to readme-extraction blockquote, install-composition Policy B location, config-home example path, versions.json URL constant (hexokit.com primary, shll.ai fallback), and the shll skill bundle prose. No standards rename, roster untouched.","cmd":"fab-new","event":"command","ts":"2026-09-11T17:13:50Z"}
+{"delta":"+0.0","event":"confidence","score":4.6,"trigger":"calc-score","ts":"2026-09-11T17:16:18Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-11T17:18:18Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-11T17:19:13Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-11T17:22:44Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-11T17:26:03Z"}
+{"event":"review","result":"passed","ts":"2026-09-11T17:26:03Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-11T17:29:11Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-11T17:31:37Z"}
+{"event":"review","result":"passed","ts":"2026-09-11T17:40:11Z"}

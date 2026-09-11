@@ -23,7 +23,7 @@ import (
 // code-quality.md (no magic strings).
 const (
 	sourceFlag      = "source"
-	sourceFlagUsage = "update-check backend: released (shll.ai versions manifest + notify policy; the default) or github (release tags, no notify policy)"
+	sourceFlagUsage = "update-check backend: released (hexokit.com versions manifest + notify policy; the default) or github (release tags, no notify policy)"
 )
 
 // checkUpdatesJSONFlagUsage is the --json usage string for `shll check-updates`
@@ -139,7 +139,8 @@ or written. To apply updates, run ` + "`shll update`" + `.
 
 One backend, selected by --source:
 
-  --source released   latest versions + notify policy from https://shll.ai/versions.json
+  --source released   latest versions + notify policy from https://hexokit.com/versions.json
+                      (falls back to https://shll.ai/versions.json)
                       (the default when the flag is omitted)
   --source github     latest release tag per tool from the GitHub API (unauthenticated;
                       no notify policy in this backend)
@@ -195,9 +196,10 @@ func runCheckUpdates(ctx context.Context, stdout, stderr io.Writer, source strin
 		return errSilent
 	}
 
-	// Released backend: exactly one manifest GET per invocation (Constitution
-	// II — no caching). It is the single latest+policy source, so its failure
-	// fails the whole check (unlike the github backend's per-tool degradation).
+	// Released backend: one manifest fetch per invocation — hexokit.com first,
+	// then the shll.ai fallback, so one or two GETs, never cached (Constitution
+	// II). It is the single latest+policy source, so failure on every URL fails
+	// the whole check (unlike the github backend's per-tool degradation).
 	var manifest versions.Manifest
 	if source == sourceReleased {
 		m, err := versions.FetchManifest(ctx)

@@ -166,3 +166,169 @@ func TestLatestGitHub_UnavailableDegrades(t *testing.T) {
 		t.Fatalf("err = %v, want changelog.ErrUnavailable", err)
 	}
 }
+
+// validManifest is a minimal schema-1 body whose single tool entry lets a test
+// tell which server answered.
+func validManifest(tool string) string {
+	return fmt.Sprintf(`{"schema": 1, "generated_at": "2026-09-11T00:00:00Z", "tools": {%q: {"latest": "1.0.0", "notify": "minor", "formula": %q}}}`, tool, tool)
+}
+
+// manifestServers starts a primary and a fallback httptest.Server with the given
+// handlers and points the ordered manifestURLs seam at them (primary first) for
+// the test — the fallback-ordering counterpart of manifestServer's single-URL
+// collapse.
+func manifestServers(t *testing.T, primary, fallback http.HandlerFunc) {
+	t.Helper()
+	p := httptest.NewServer(primary)
+	f := httptest.NewServer(fallback)
+	prevURLs, prevClient := manifestURLs, httpClient
+	manifestURLs = []string{p.URL, f.URL}
+	httpClient = p.Client()
+	t.Cleanup(func() {
+		p.Close()
+		f.Close()
+		manifestURLs, httpClient = prevURLs, prevClient
+	})
+}
+
+func serve(status int, body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		fmt.Fprint(w, body)
+	}
+}
+
+func TestFetchManifest_PrimaryFailureFallsThrough(t *testing.T) {
+	// Every failure class the single-URL path degrades on must move the fetch
+	// to the next URL rather than end it: the fallback host is the whole point
+	// of the ordered list during the shll.ai → hexokit.com cutover.
+	for name, primary := range map[string]http.HandlerFunc{
+		"non-200":            serve(http.StatusInternalServerError, "boom"),
+		"malformed JSON":     serve(http.StatusOK, `{"schema": 1, "tools": [`),
+		"unsupported schema": serve(http.StatusOK, `{"schema": 2, "tools": {}}`),
+	} {
+		t.Run(name, func(t *testing.T) {
+			manifestServers(t, primary, serve(http.StatusOK, validManifest("from-fallback")))
+			m, err := FetchManifest(context.Background())
+			if err != nil {
+				t.Fatalf("FetchManifest err = %v, want nil (fallback should have answered)", err)
+			}
+			if _, ok := m.Tools["from-fallback"]; !ok {
+				t.Errorf("Tools = %+v, want the fallback server's manifest", m.Tools)
+			}
+		})
+	}
+}
+
+func TestFetchManifest_PrimaryRefusedFallsThrough(t *testing.T) {
+	// A transport error (connection refused — the host is down, not merely
+	// erroring) is the fallback's headline case.
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+	f := httptest.NewServer(serve(http.StatusOK, validManifest("from-fallback")))
+	prevURLs, prevClient := manifestURLs, httpClient
+	manifestURLs = []string{deadURL, f.URL}
+	httpClient = f.Client()
+	t.Cleanup(func() {
+		f.Close()
+		manifestURLs, httpClient = prevURLs, prevClient
+	})
+
+	m, err := FetchManifest(context.Background())
+	if err != nil {
+		t.Fatalf("FetchManifest err = %v, want nil", err)
+	}
+	if _, ok := m.Tools["from-fallback"]; !ok {
+		t.Errorf("Tools = %+v, want the fallback server's manifest", m.Tools)
+	}
+}
+
+func TestFetchManifest_PrimarySuccessSkipsFallback(t *testing.T) {
+	// The happy path must cost exactly one request: a reachable primary means
+	// the fallback host is never contacted.
+	var fallbackHits int
+	var mu sync.Mutex
+	manifestServers(t,
+		serve(http.StatusOK, validManifest("from-primary")),
+		func(w http.ResponseWriter, _ *http.Request) {
+			mu.Lock()
+			fallbackHits++
+			mu.Unlock()
+			fmt.Fprint(w, validManifest("from-fallback"))
+		})
+
+	m, err := FetchManifest(context.Background())
+	if err != nil {
+		t.Fatalf("FetchManifest err = %v, want nil", err)
+	}
+	if _, ok := m.Tools["from-primary"]; !ok {
+		t.Errorf("Tools = %+v, want the primary server's manifest", m.Tools)
+	}
+	mu.Lock()
+	hits := fallbackHits
+	mu.Unlock()
+	if hits != 0 {
+		t.Errorf("fallback hits = %d, want 0 (primary succeeded)", hits)
+	}
+}
+
+func TestFetchManifest_AllUnavailable(t *testing.T) {
+	manifestServers(t, serve(http.StatusInternalServerError, "boom"), serve(http.StatusBadGateway, "worse"))
+	_, err := FetchManifest(context.Background())
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable when every URL fails", err)
+	}
+}
+
+func TestSetTransportForTest_CollapsesToSingleURL(t *testing.T) {
+	// The exported seam collapses the ordered list to the one test URL — the
+	// contract cmd/shll's check_updates_test.go relies on — and the restore
+	// func puts the production list back.
+	prev := append([]string(nil), manifestURLs...)
+	restore := SetTransportForTest("http://127.0.0.1:1/versions.json", nil)
+	if len(manifestURLs) != 1 || manifestURLs[0] != "http://127.0.0.1:1/versions.json" {
+		t.Errorf("manifestURLs during test = %v, want the single test URL", manifestURLs)
+	}
+	restore()
+	if len(manifestURLs) != len(prev) || manifestURLs[0] != prev[0] || manifestURLs[1] != prev[1] {
+		t.Errorf("manifestURLs after restore = %v, want %v", manifestURLs, prev)
+	}
+	if manifestURLs[0] != manifestURLDefault || manifestURLs[1] != manifestURLFallback {
+		t.Errorf("production list = %v, want [%s %s]", manifestURLs, manifestURLDefault, manifestURLFallback)
+	}
+}
+
+func TestFetchManifest_PrimaryBodyReadFailureFallsThrough(t *testing.T) {
+	// A response that dies mid-body (Content-Length promises more bytes than
+	// arrive) is the read-body failure class: io.ReadAll returns an unexpected
+	// EOF, which must fall through to the fallback exactly like a non-200.
+	truncated := func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "4096")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"schema": 1,`)
+		// Returning here closes the connection short of the declared length.
+	}
+	var fallbackHits int
+	var mu sync.Mutex
+	manifestServers(t, truncated, func(w http.ResponseWriter, _ *http.Request) {
+		mu.Lock()
+		fallbackHits++
+		mu.Unlock()
+		fmt.Fprint(w, validManifest("from-fallback"))
+	})
+
+	m, err := FetchManifest(context.Background())
+	if err != nil {
+		t.Fatalf("FetchManifest err = %v, want nil (fallback should have answered)", err)
+	}
+	if _, ok := m.Tools["from-fallback"]; !ok {
+		t.Errorf("Tools = %+v, want the fallback server's manifest", m.Tools)
+	}
+	mu.Lock()
+	hits := fallbackHits
+	mu.Unlock()
+	if hits != 1 {
+		t.Errorf("fallback hits = %d, want exactly 1", hits)
+	}
+}

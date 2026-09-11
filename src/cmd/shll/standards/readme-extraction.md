@@ -9,7 +9,7 @@ This page is the **producer-facing standard**: the structure your repo keeps. Th
 **1. Head — the slice starts after the GitHub chrome.** Keep the top of the README in this exact order: a single markdown `# Title` H1, then the canonical toolkit blockquote, then a contiguous run of badge lines, then your prose. The first non-chrome line is where the site slice begins — make it your tagline. No YAML frontmatter, HTML `<h1>`, or HTML comment above the H1 (anything unrecognized as chrome leaks into the slice as content). The blockquote is this exact line in all seven repos:
 
 ```markdown
-> Part of the [shll toolkit](https://shll.ai) — see all projects there.
+> Part of [HexoKit](https://hexokit.com) — see all projects there.
 ```
 
 **2. Tail — the slice ends at the first footer heading.** The pull stops immediately before the first heading (case-insensitive `##`/`###`) named `Contributing`, `Development`, `Building`, `License`, or `Acknowledgements`. Everything site-worthy goes above the first of those. `Install`, `Changelog`, `Roadmap`, and `FAQ` are deliberately **kept** — tool-specific install detail belongs on the site.
@@ -18,7 +18,7 @@ This page is the **producer-facing standard**: the structure your repo keeps. Th
 
 **4. Mermaid → rendered image.** Inline ```` ```mermaid ```` fences are stripped on pull (the site doesn't render mermaid). A diagram destined for the site is committed as a rendered image (SVG preferred) and referenced absolutely; keep the mermaid source alongside for GitHub if you like.
 
-**5. Links leaving the published set are absolute-by-author.** The site publishes exactly two things from your repo: the README slice and `docs/site/**`. A link to anything else — source files, `docs/specs/`, `CONTRIBUTING.md` — MUST be written as an absolute `https://…` URL by you; a relative link like `[x](docs/specs/y.md)` 404s on the site. Only two relative forms are auto-rewritten: README links **into** `docs/site/` written naturally as `docs/site/<path>.md`, and relative links **between** `docs/site/` pages. Avoid putting a `docs/site/` link behind a badge (`[![alt](img)](docs/site/x.md)`) or in a reference-style definition (`[id]: docs/site/x.md`) — those shapes aren't rewritten.
+**5. Links leaving the published set are absolute-by-author.** The site publishes exactly two things from your repo: the README slice and `docs/site/**`. A link to anything else — source files, `docs/specs/`, `CONTRIBUTING.md` — MUST be written as an absolute `https://…` URL by you; a relative link like `[x](docs/specs/y.md)` 404s on the site. Only two relative forms are auto-rewritten: README links **into** `docs/site/` written naturally as `docs/site/<path>.md`, and relative links **between** `docs/site/` pages. The rewrite is parser-scoped (a remark plugin over `link`/`image`/`definition` nodes), so a `docs/site/` link behind a badge (`[![alt](img)](docs/site/x.md)`) or in a reference-style definition (`[id]: docs/site/x.md`) is rewritten too — and code/inline-code is never touched. Plain inline links remain the most readable form, but the two wrapped shapes no longer 404.
 
 **6. No GitHub-only theme tricks.** `#gh-dark-mode-only` / `#gh-light-mode-only` image fragments are stripped on pull. Prefer theme-agnostic screenshots; for a genuine light/dark pair use `<picture><source media="(prefers-color-scheme:…)">`.
 

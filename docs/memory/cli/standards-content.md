@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract (incl. two-tier placement), the help-dump `aliases` field, the three producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (install-time composition, centralized install docs), and `config-home` (fixed $HOME/.config/<tool>/ root, override cascade, env = deployment bootstrap only)."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract (incl. two-tier placement), the help-dump `aliases` field, the producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (centralized install docs on hexokit.com), `config-home` (fixed $HOME/.config/<tool>/ root), and the readme-extraction blockquote naming HexoKit."
 ---
 # cli/standards-content
 
@@ -202,7 +202,7 @@ Binds the tools that expose shell integration — today `tu`, `hop`, `wt`; `shll
 `docs/site/standards/install-composition.md` (w6ay) is the standard for **how the toolkit composes at install time**: every tool installs as an independent tap formula, and `shll install` is the single composition point (it installs the full roster and accepts a subset). It implements principles №7 (compose, don't reinvent — sibling capability is probed, never assumed via a package edge) and №8 (graceful degradation — a missing sibling is a skip with a hint, not a crash), at scope `binary+repo`. It carries two policies:
 
 - **Policy A — no inter-tool formula dependencies (and probe at runtime).** Toolkit formulas MUST NOT declare `depends_on` on sibling toolkit formulas — a formula edge duplicates the roster knowledge `shll install` already owns and forces lockstep installs/uninstalls. Its binary half: a tool that invokes a sibling at runtime MUST probe first (`command -v <tool>` in shell/skill code, `exec.LookPath` in Go) and degrade gracefully on a missing sibling with an actionable install hint — never crash. The hint format is verbatim: `wt is not installed. Install it: brew install sahil87/tap/wt`. The page carries the precedent receipt: `fab-kit` and `hop` previously declared `depends_on` on `wt`/`idea`; those edges are removed, and the `all` meta-formula is retired in favor of `shll install`.
-- **Policy B — install documentation is centralized on shll.ai.** Per-tool READMEs and the tap README MUST NOT carry per-formula `brew install` instructions; they link to https://shll.ai (the curl bootstrap / `shll install`). The supported-vs-unsupported line is explicit: individual formula installs remain **supported** (`brew install sahil87/tap/<tool>` works, `shll install` accepts a subset) — what is unsupported is **documenting** them per-repo, which drifts (seven copies of the install dance, each chased on every install-story change).
+- **Policy B — install documentation is centralized on hexokit.com.** Per-tool READMEs and the tap README MUST NOT carry per-formula `brew install` instructions; they link to https://hexokit.com (the curl bootstrap / `shll install`). The supported-vs-unsupported line is explicit: individual formula installs remain **supported** (`brew install sahil87/tap/<tool>` works, `shll install` accepts a subset) — what is unsupported is **documenting** them per-repo, which drifts (seven copies of the install dance, each chased on every install-story change).
 
 A third, shll-half section — **Install runs the machine wiring in-process** — documents the install→setup composition: `shll install` ends every non-`--dry-run` install by running the setup halves in-process (the sentinel-managed rc block, then the skill placement + `run-kit agent setup --yes` delegation), best-effort with `--no-shell-setup`/`--no-agent-setup` opt-outs, and **`shll setup` is the consolidated, re-runnable entry point** — bare `shll setup` runs both halves (both always run; worst-wins exit), `shll setup shell [shell]` / `shll setup agent` run one half each — the recovery path when a shell or an agent harness is added later. The section binds shll's own manager behavior only, imposing no obligation on the six roster tools. (`principles.md`'s idempotency line likewise names the pair: "`shll install` and `shll setup` are idempotent by contract".) The hidden pre-consolidation spellings (`shll shell-setup`, alias `shll shell-install`; `shll agent-setup`) get a one-paragraph compat note there — see [cli/setup](/cli/setup.md).
 
@@ -212,7 +212,7 @@ The page follows the house register (single `#` H1 `Standard: install-compositio
 
 #### Scope asymmetry: Policy A binds all seven formulas, Policy B excludes shll's own README
 **Decision**: Policy A binds all **seven tap formulas** (including `shll`'s — its formula must equally avoid sibling edges) and every binary that invokes a sibling. Policy B binds the **six roster-tool repos plus the tap README** but explicitly **not** shll's own README.
-**Why**: shll's README, together with shll.ai, *is* the centralized install documentation Policy B points at — binding shll to "link to shll.ai instead" would be circular (shll is the consumer here). Policy A has no such asymmetry: a sibling formula edge is a defect regardless of which formula declares it, shll's included.
+**Why**: shll's README, together with hexokit.com, *is* the centralized install documentation Policy B points at — binding shll to "link to hexokit.com instead" would be circular (shll is the consumer here). Policy A has no such asymmetry: a sibling formula edge is a defect regardless of which formula declares it, shll's included.
 **Rejected**: Binding shll's README under Policy B (circular); exempting shll from Policy A too (unjustified — the anti-lockstep reason applies to every formula). The carve-out mirrors `update.md`'s established shll-out-of-producer-scope phrasing.
 *Introduced by*: `260720-w6ay-install-composition-standard`.
 
@@ -231,7 +231,7 @@ The page follows the house register (single `#` H1 `Standard: install-compositio
 - **Env is deployment bootstrap only (MUST)**: env forms exist only for keys needed at/before process start, per-deployment (e.g. run-kit's `RK_PORT`/`RK_HOST`); env is never an override channel for preference keys (the page names run-kit's RK_AUTO_NAME misstep as the banned failure mode).
 - **State is not config (MAY, bounded)**: XDG-honoring state dirs (`$XDG_STATE_HOME/<tool-name>/`) are allowed only for droppable, never-authoritative files — the asymmetry is deliberate (an env mismatch on a droppable cache cannot fork behavior).
 - **The fab-kit exception**: `~/.fab-kit/` is the documented, closed exception (config co-located with its version cache, per fab-kit's own decision record). New tools get no exception.
-- **Conformance receipts** (page's own audit, 2026-08-23): `hop` is the reference implementation (`src/internal/config/resolve.go` + env-immovability test); `idea` conforms (`systemConfigDir` → `~/.config/idea`); `run-kit` is adopting via its config-consolidation plan; `wt`/`tu` have no config file and are bound when they grow one.
+- **Conformance receipts** (page's own audit, 2026-08-23): `hop` is the reference implementation (`src/internal/config/resolve.go` + env-immovability test); `idea` conforms (`systemConfigDir` → `~/.config/idea`); `run-kit` is adopting via its config-consolidation plan (example path `$HOME/.config/hexokit/config.yaml`); `wt`/`tu` have no config file and are bound when they grow one.
 
 The page follows the house register (single `#` H1 `Standard: config-home`, implements-principle line, MUST/SHOULD sections, closing `## Verifying conformance` checklist).
 
@@ -248,6 +248,24 @@ The page follows the house register (single `#` H1 `Standard: config-home`, impl
 **Why**: The obligations are satisfied by the compiled tool's runtime path resolution, exactly like `update`/`version`/`shell-init`; the SHOULD-level pin test does not create a repo half (those three also imply tests and stay `binary`).
 **Rejected**: `binary+repo` (nothing lives canonically as a repo file the way the `skill` bundle does); a new scope value (`TestStandardsRosterIntegrity` pins the four-value vocabulary).
 *Introduced by*: `260823-km8t-config-home-standard`.
+
+## The `readme-extraction` standard's mandated blockquote
+
+`docs/site/standards/readme-extraction.md` rule 1 fixes the head order of every toolkit README (`#` H1 → the canonical toolkit blockquote → a contiguous badge run → prose) and gives the blockquote as one exact line for all seven repos:
+
+```markdown
+> Part of [HexoKit](https://hexokit.com) — see all projects there.
+```
+
+The blockquote is the toolkit's most visible cross-repo brand surface (the first line under the H1 on every repo page); the consuming site's extractor matches any leading blockquote, so its text is a pure content decision with no pipeline coupling. shll's own `README.md` carries the same line ([cli/standards-conformance](/cli/standards-conformance.md)).
+
+### Design Decisions
+
+#### Brand surfaces change as standards *content*; the standards themselves are not renamed
+**Decision**: The HexoKit rebrand reaches the standards only as content edits — the mandated blockquote names HexoKit, `install-composition` Policy B's centralized location is hexokit.com, `config-home`'s example path is `$HOME/.config/hexokit/config.yaml` — while `shll standards` stays the command, the nine documents keep their names and `docs/site/standards/` location, and the `shll-toolkit` skill directory and rc sentinel keep their names. Site-naming mentions of `shll.ai` inside the standards (intro phrases, "the site pulls and renders") change only once shll.ai stops being the consuming site.
+**Why**: `shll` is the toolkit manager — a tool name like `hop`, not a brand — so renaming its command or its documents buys nothing; the blockquote and the install-docs location are the two lines whose staleness would reintroduce a two-brand split on every repo page, and the roster's `Name`/`Formula`/`Repo` are runtime-coupled to the tap formula and GitHub repo, so they move only with those renames.
+**Rejected**: Renaming the standards or the `shll standards` command (no reader benefit, churn in every consumer); flipping every `shll.ai` mention at once (the consuming-site mentions would become false ahead of the site cutover).
+*Introduced by*: `260911-ttoa-hexokit-banner-and-policy`.
 
 ## Cross-references
 

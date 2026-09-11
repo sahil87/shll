@@ -46,6 +46,8 @@ Proven by `src/cmd/shll/main_test.go` (`TestTranslateExit_Contract`, `TestTransl
 
 The readme-extraction standard requires the head order `#` H1 → canonical toolkit blockquote → **badges** → prose. shll's README was missing the contiguous badge run. Fixed by inserting the byte-identical 3-badge run all six sibling repos carry (Latest release / Downloads / Stars, pointed at `sahil87/shll`) immediately after the blockquote in `README.md`.
 
+The canonical toolkit blockquote on README line 3 is `> Part of [HexoKit](https://hexokit.com) — see all projects there.` — the exact line the readme-extraction standard mandates for all seven repos (ttoa), so the publisher stays conformant with its own rule 1.
+
 ## Conformant by design (non-gaps)
 
 Two audit items were determined **conformant as-is** — recorded so a future audit does not re-open them as gaps:

@@ -2,8 +2,9 @@
 // single surface behind `shll check-updates` (both backends) and the GitHub
 // anchor of `shll changelog`'s no-range resolution.
 //
-// It owns the shll.ai versions-manifest fetch (schema decode + notify policy)
-// and the notify-threshold ("notable") computation, and delegates the GitHub
+// It owns the versions-manifest fetch (hexokit.com, with shll.ai as the
+// fallback host; schema decode + notify policy) and the notify-threshold
+// ("notable") computation, and delegates the GitHub
 // backend to internal/changelog's existing fetch — no duplicated GitHub code.
 // Together with internal/changelog it keeps net/http isolated in internal
 // packages (Constitution I spirit): command code in src/cmd/shll never talks
@@ -25,10 +26,17 @@ import (
 	"github.com/sahil87/shll/internal/changelog"
 )
 
-// manifestURLDefault is the production shll.ai versions manifest — the roster +
-// policy authority for the `--released` backend. Named constant per
-// code-quality.md (no magic strings); assigned to the manifestURL seam below.
-const manifestURLDefault = "https://shll.ai/versions.json"
+// manifestURLDefault is the production hexokit.com versions manifest — the
+// roster + policy authority for the `--released` backend, and the first URL
+// FetchManifest tries. Named constant per code-quality.md (no magic strings);
+// heads the manifestURLs seam below.
+const manifestURLDefault = "https://hexokit.com/versions.json"
+
+// manifestURLFallback is the previous manifest host, tried only when the
+// hexokit.com fetch is unavailable: shll.ai keeps serving a byte copy of the
+// manifest through the site cutover, so an older host outage never blinds
+// `shll check-updates`. Second entry of the manifestURLs seam.
+const manifestURLFallback = "https://shll.ai/versions.json"
 
 // manifestSchema is the versions.json schema this binary understands. A
 // manifest reporting any other schema is treated as unavailable — shll is the
@@ -52,12 +60,13 @@ const (
 	NotifyMinor = "minor"
 )
 
-// manifestURL is the package-level URL seam (mirrors internal/changelog's
-// baseURL and proc.Runner's package-level-swappable injection). Production
-// uses manifestURLDefault; tests swap it for an httptest.Server URL so the
-// real net/http code paths (status codes, JSON decode, timeout) are exercised
-// without network access.
-var manifestURL = manifestURLDefault
+// manifestURLs is the package-level ordered URL seam (mirrors internal/changelog's
+// baseURL and proc.Runner's package-level-swappable injection). FetchManifest
+// tries the entries in order and stops at the first intact manifest. Production
+// uses {manifestURLDefault, manifestURLFallback}; tests swap in httptest.Server
+// URLs so the real net/http code paths (status codes, JSON decode, timeout,
+// fallback ordering) are exercised without network access.
+var manifestURLs = []string{manifestURLDefault, manifestURLFallback}
 
 // httpClient is the package-level client seam, swappable in tests. Requests
 // carry their own context timeout (requestTimeout), so the client itself
@@ -67,23 +76,26 @@ var httpClient = &http.Client{}
 // SetTransportForTest points the package's manifest-URL + client seams at a
 // test server and returns a restore func that reverts them — the same
 // package-level-swap seam internal/changelog exports, for the one
-// cross-package consumer (cmd/shll's check_updates_test.go). Not for
+// cross-package consumer (cmd/shll's check_updates_test.go). The ordered URL
+// list collapses to the single test URL, so a caller exercises exactly one
+// fetch; fallback ordering is covered by this package's own tests. Not for
 // production use.
 func SetTransportForTest(url string, client *http.Client) (restore func()) {
-	prevURL, prevClient := manifestURL, httpClient
-	manifestURL = url
+	prevURLs, prevClient := manifestURLs, httpClient
+	manifestURLs = []string{url}
 	if client != nil {
 		httpClient = client
 	}
 	return func() {
-		manifestURL = prevURL
+		manifestURLs = prevURLs
 		httpClient = prevClient
 	}
 }
 
 // ErrUnavailable is the sentinel wrapped by every manifest-fetch failure —
 // network error, timeout, non-200 status, JSON decode failure, or an
-// unsupported schema. For the `--released` backend there is exactly one fetch,
+// unsupported schema — after every URL in manifestURLs has been tried. For the
+// `--released` backend there is exactly one manifest fetch (one or two GETs),
 // so unavailability fails the whole check (unlike the per-tool GitHub
 // degradation) — the caller writes a diagnostic and exits 1.
 var ErrUnavailable = errors.New("versions: manifest unavailable")
@@ -97,7 +109,7 @@ type ManifestTool struct {
 	Formula string `json:"formula"`
 }
 
-// Manifest is the decoded shll.ai versions.json (schema 1): the schema tag,
+// Manifest is the decoded versions.json (schema 1): the schema tag,
 // the generation timestamp, and the per-tool map keyed by tool NAME (the
 // manifest carries shll itself plus every roster tool).
 type Manifest struct {
@@ -106,19 +118,37 @@ type Manifest struct {
 	Tools       map[string]ManifestTool `json:"tools"`
 }
 
-// FetchManifest GETs the shll.ai versions manifest with a bounded context
-// timeout and decodes it. It returns an error wrapping ErrUnavailable on a
-// transport error, timeout, non-200 status, decode failure, or an unsupported
-// schema value — the single degradation point for the `--released` backend.
-// No retries, no caching (Constitution II): every call re-fetches.
+// FetchManifest GETs the versions manifest, trying each manifestURLs entry in
+// order (hexokit.com first, then the shll.ai fallback) and decoding the first
+// one that arrives intact. An attempt that fails for any reason — transport
+// error, timeout, non-200 status, decode failure, or an unsupported schema
+// value — moves on to the next URL; a success returns immediately, so the
+// fallback is never contacted on the happy path. When every URL fails, the
+// last attempt's error (wrapping ErrUnavailable) is returned — the single
+// degradation point for the `--released` backend. No retries within a URL,
+// no caching (Constitution II): every call re-fetches.
 func FetchManifest(ctx context.Context) (Manifest, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	err := fmt.Errorf("%w: no manifest URL configured", ErrUnavailable)
+	for _, url := range manifestURLs {
+		var m Manifest
+		if m, err = fetchManifestFrom(ctx, url); err == nil {
+			return m, nil
+		}
+	}
+	return Manifest{}, err
+}
+
+// fetchManifestFrom is the single-URL attempt FetchManifest loops over: one
+// requestTimeout-bounded GET of url, a schema-1 decode, and an error wrapping
+// ErrUnavailable on any failure.
+func fetchManifestFrom(ctx context.Context, url string) (Manifest, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodGet, manifestURL, nil)
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("%w: build request: %v", ErrUnavailable, err)
 	}

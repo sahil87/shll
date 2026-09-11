@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll check-updates` — read-only update-check surface for shll-self + every roster tool: the `--source released|github` enum flag (default `released` = shll.ai versions manifest + notify policy; `github` = release tags), the `--json` machine contract (schema 1: `{schema, source, tools[]}` with unresolvable-row omission, `notify`/`notable` on released rows only), the notify-threshold `notable` semantics, version-style human table, and the 0/1/2 exit codes with per-tool github-backend degradation."
+description: "`shll check-updates` — read-only update-check surface for shll-self + every roster tool: the `--source released|github` enum flag (default `released` = hexokit.com versions manifest + notify policy, shll.ai as fallback host; `github` = release tags), the `--json` machine contract (schema 1, unresolvable rows omitted, `notify`/`notable` on released rows only), the `notable` threshold semantics, version-style human table, and 0/1/2 exit codes with per-tool github-backend degradation."
 ---
 # cli/check-updates
 
@@ -23,7 +23,7 @@ Source: `src/cmd/shll/check_updates.go`; the latest-version resolver seam in [in
 Two flags:
 
 - **`--source`** (string, default `released`, no shorthand) — the backend selector, an enum over the source constants `sourceReleased` (`released`) and `sourceGithub` (`github`):
-  - `released` (the **default backend** — running with no `--source` behaves as `--source released`): resolve latest versions + notify policy from the shll.ai versions manifest.
+  - `released` (the **default backend** — running with no `--source` behaves as `--source released`): resolve latest versions + notify policy from the hexokit.com versions manifest (`https://hexokit.com/versions.json`, with `https://shll.ai/versions.json` tried only when that fetch is unavailable).
   - `github`: resolve latest release tags via the GitHub API (unauthenticated). The value is deliberately `github`, **not** `homebrew`: the source is GitHub releases, not brew. No notify policy exists in this backend.
   The two values double as the `--json` envelope's `source` field values — flag name, flag value, and envelope output are one vocabulary. `cobra.RunE` reads the flag via `cmd.Flags().GetString(sourceFlag)` and passes it raw to the seam; validation lives in the seam (see § Exit codes and § Design Decisions), not in cobra.
 - **`--json`** (the shared `jsonFlag` constant from `list.go`) — emit the machine contract instead of the human table.
@@ -40,13 +40,13 @@ shll-self's installed anchor is its **brew-formula** version (`installedVersion(
 
 ### `released` — the manifest is the roster + policy authority
 
-Exactly **one** HTTP GET of `https://shll.ai/versions.json` per invocation (via [`versions.FetchManifest`](/internal/versions.md), no caching — Constitution II). `latest` and `notify` come from the manifest, looked up by tool **name**. Because it is the single latest+policy source, a manifest fetch failure (transport error, timeout, non-200, decode failure, or an unsupported `schema`) **fails the whole check**: a stderr diagnostic + `errSilent` (exit 1). Pinned by `TestCheckUpdates_ManifestFetchFailureExit1`, `TestCheckUpdates_UnsupportedSchemaFailsCheck`. Selected by `--source released` (the default).
+One manifest fetch per invocation — `https://hexokit.com/versions.json` first, `https://shll.ai/versions.json` only if that attempt is unavailable — via [`versions.FetchManifest`](/internal/versions.md)'s ordered URL list (no caching — Constitution II). `latest` and `notify` come from the manifest, looked up by tool **name**. Because it is the single latest+policy source, a manifest fetch failure on every URL (transport error, timeout, non-200, decode failure, or an unsupported `schema`) **fails the whole check**: a stderr diagnostic + `errSilent` (exit 1). Pinned by `TestCheckUpdates_ManifestFetchFailureExit1`, `TestCheckUpdates_UnsupportedSchemaFailsCheck`. Selected by `--source released` (the default).
 
 ### `github` — delegated, concurrent, per-tool degradation
 
 Each tool's latest release tag resolves via [`versions.LatestGitHub`](/internal/versions.md) (a thin delegation to `internal/changelog.LatestTag` — no duplicated GitHub fetch code). No notify policy exists here. A per-tool fetch failure **degrades per-tool** — the JSON row is omitted, the human row shows `unavailable` — and the run still exits 0 (the changelog degradation precedent, Constitution V). Pinned by `TestCheckUpdates_GithubPerToolFailureDegrades`. Selected by `--source github`.
 
-The freshness caveat is accepted: `versions.json` regenerates on shll.ai site deploys from daily-refreshed help envelopes, so it can lag/lead the tap — fine for a check/notify surface.
+The freshness caveat is accepted: `versions.json` regenerates on site deploys from daily-refreshed help envelopes, so it can lag/lead the tap — fine for a check/notify surface.
 
 ## Resolution — concurrent, order-preserving
 
