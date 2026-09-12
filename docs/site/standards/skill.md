@@ -1,6 +1,6 @@
 # Standard: skill
 
-The agent skill-bundle contract for every CLI in the [shll toolkit](https://shll.ai). Each tool exposes a `<tool> skill` subcommand that prints a stable, one-page markdown **skill bundle** for the agent *using* the tool — embedded in the binary, versioned with it, byte-identical to the tool repo's canonical `docs/site/skill.md`. It closes a real gap: nothing else serves an agent operating an installed tool from any repo, offline.
+The agent skill-bundle contract for every CLI in the [HexoKit toolkit](https://hexokit.com/toolkit/). Each tool exposes a `<tool> skill` subcommand that prints a stable, one-page markdown **skill bundle** for the agent *using* the tool — embedded in the binary, versioned with it, byte-identical to the tool repo's canonical `docs/site/skill.md`. It closes a real gap: nothing else serves an agent operating an installed tool from any repo, offline.
 
 This page is the **producer-facing standard**: what your tool's `skill` bundle must be and how the subcommand must behave. It is a sibling of the [help-dump standard](help-dump.md) — where help-dump serves the *structure* of the command tree, `skill` serves the *usage knowledge* an agent needs to wield the tool well. Together with [readme-extraction](readme-extraction.md) they implement principles №3 and №10 of the [toolkit CLI principles](principles.md). Scope: **binary + repo** (the subcommand ships in the binary; the canonical bundle lives in the repo).
 
@@ -9,7 +9,7 @@ This page is the **producer-facing standard**: what your tool's `skill` bundle m
 Three existing surfaces each fall short for an agent that just wants to *use* an installed tool:
 
 - **`-h` / `help-dump`** is flag reference — the shape of every command, not when to reach for which, or how the tool composes.
-- **README / `docs/site`** needs the repo checked out or a network round-trip to shll.ai.
+- **README / `docs/site`** needs the repo checked out or a network round-trip to hexokit.com.
 - **`fab/project` context** is repo-*development*-scoped — it orients a contributor, not a caller.
 
 A `<tool> skill` bundle is offline (embedded), present on every machine that has the tool, and **version-locked by construction**: the prose ships inside the same binary as the flags it describes, so it can never document a capability the installed binary lacks.
@@ -46,7 +46,7 @@ The bundle is a **usage briefing**, not a second README and not flag reference. 
 - **Output & exit-code contracts** — stdout-vs-stderr split, `--json` availability, the exit-code convention (`0`/`1`/`2`) a caller branches on.
 - **Gotchas** — the non-obvious traps an agent hits on first use.
 
-Explicitly **out** of the bundle: exhaustive flag tables (defer to `-h`), full command trees (defer to `help-dump` and the [shll.ai commands page](https://shll.ai)), and installation prose (that is README / `docs/site/install.md`).
+Explicitly **out** of the bundle: exhaustive flag tables (defer to `-h`), full command trees (defer to `help-dump` and the tool's [hexokit.com commands page](https://hexokit.com/toolkit/)), and installation prose (that is README / `docs/site/install.md`).
 
 ## Rules with teeth
 
@@ -54,14 +54,14 @@ Explicitly **out** of the bundle: exhaustive flag tables (defer to `-h`), full c
 - **Bounded — ≤150 lines.** A hard budget, per principle №9. Agents pull a bundle into context at use time via `shll skill <tool>` (see [Landed design](#landed-design-shll-setup-agent)), and the bare `shll skill` glossary lists one line per installed tool; a bloated bundle taxes every conversation that pulls it. If it doesn't fit in 150 lines, it is trying to be a README — or it is a large-scope tool whose depth belongs in [topic pages](#topic-pages-large-scope-tools), never in a bigger core.
 - **Byte-identical to the canonical file.** `<tool> skill` stdout MUST equal `docs/site/skill.md` byte-for-byte. The content is embedded at build time via a **sync + drift-guard** pattern — committed embedded copies, a sync script that refreshes them from the canonical `docs/site/` source, and a drift-guard test that fails the build when they diverge. This is the exact mechanism `shll standards` established for the standards documents; reuse it.
 - **Enforced by failing tests, not review.** In each adopting repo, the ≤150-line budget (core bundle and every topic page) and the reserved [`skill topics` contract](#topic-pages-large-scope-tools) MUST be pinned by a test that fails on violation — extending the drift-guard test or adding a small conformance test both conform. The outcome (a failing test) is mandated; the mechanism is the repo's choice. Prose checklists drift between audits; tests don't.
-- **Renders on the site for free.** Because `docs/site/skill.md` is part of the pulled `docs/site/**` tree, the bundle also renders at `/<tool>/skill` on shll.ai automatically — the same page an agent reads offline via `<tool> skill`.
+- **Renders on the site for free.** Because `docs/site/skill.md` is part of the pulled `docs/site/**` tree, the bundle also renders at `/<tool>/skill` on hexokit.com automatically — the same page an agent reads offline via `<tool> skill`.
 
 ## Topic pages (large-scope tools)
 
 The ≤150-line budget prices the use-time pull — each `shll skill <tool>` serves exactly one core bundle (see [Landed design](#landed-design-shll-setup-agent)) — so it deliberately does not scale with tool size. A tool whose usage knowledge genuinely exceeds one page — run-kit and fab-kit are the expected cases — does not get a bigger budget; it splits depth into **topic pages**:
 
 - **`<tool> skill <topic>`** prints one topic page (e.g. `rk skill windows`, `fab skill dispatch`) under the same invocation contract: raw markdown to stdout, stderr empty on success, exit 0.
-- Each topic page is canonical at **`docs/site/skill/<topic>.md`** and independently bounded at ≤150 lines, with the same rules with teeth — static-only, byte-identical to its canonical file, embedded via the sync + drift-guard pattern. (The core stays `docs/site/skill.md`; the file and the `skill/` directory coexist, and each topic renders at `/<tool>/skill/<topic>` on shll.ai as part of the pulled tree.)
+- Each topic page is canonical at **`docs/site/skill/<topic>.md`** and independently bounded at ≤150 lines, with the same rules with teeth — static-only, byte-identical to its canonical file, embedded via the sync + drift-guard pattern. (The core stays `docs/site/skill.md`; the file and the `skill/` directory coexist, and each topic renders at `/<tool>/skill/<topic>` on hexokit.com as part of the pulled tree.)
 - The core bundle carries a **topic index** — one line per topic naming what it covers and the command that serves it — so depth is discovered from the core and pulled at use time by the agent that needs it.
 - The `skill` subcommand's **help text MUST enumerate the shipped topic names** — e.g. a `Topics: code, display, mux, tutorial` line in the long help. The mandate is that the names appear; the exact format is illustrative, not prescribed. The enumeration is static by construction (topics are embedded at build time — no runtime lookups), and a core-bundle-only tool's help text is unaffected. This covers the surfaces a caller consults *before* paying the core bundle's context cost: `--help` is where you look first, and "Pass a topic" prose that names none is a blind spot.
 - Bare `<tool> skill` never inlines topic pages, and the runtime two-step (`shll skill <tool>`) serves **core bundles only**, never topic pages — a tool's ambient context cost stays ≤150 lines no matter how many topics it ships.
@@ -135,7 +135,7 @@ Before shipping a change that touches your tool's `skill` bundle:
 - stdout is byte-identical to the repo's canonical `docs/site/skill.md` (a drift-guard test pins this).
 - The bundle is ≤150 lines and carries no dynamic, environment-derived content.
 - The bundle stays in genre — usage briefing, not a README clone or a flag table.
-- `docs/site/skill.md` renders at `/<tool>/skill` on shll.ai (it is part of the pulled tree).
+- `docs/site/skill.md` renders at `/<tool>/skill` on hexokit.com (it is part of the pulled tree).
 - If the tool ships topic pages: each `<tool> skill <topic>` meets the same contract (stdout-only, static, ≤150 lines, byte-identical to `docs/site/skill/<topic>.md`), the core's topic index lists every shipped topic, and an unknown topic exits non-zero with the valid topics on stderr.
 - If the tool ships topic pages: the `skill` subcommand's help text names every shipped topic.
 - `<tool> skill topics` prints the shipped topic names one per line, raw to stdout, stderr empty, exit 0 — empty output when the tool ships no topic pages (binds every adopting tool).

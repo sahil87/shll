@@ -1,8 +1,11 @@
 #!/bin/sh
-# shll toolkit bootstrap — served at https://shll.ai/install
+# HexoKit toolkit bootstrap — served at https://hexokit.com/install
+# (shll.ai/install is a byte copy). hexokit.com appends a product-first
+# default at deploy time: with no tool arguments it converges shll + HexoKit
+# only; this raw script alone converges everything.
 #
-#   curl -fsSL https://shll.ai/install | sh                # converge everything
-#   curl -fsSL https://shll.ai/install | sh -s -- hop wt   # converge a subset
+#   curl -fsSL https://hexokit.com/install | sh                # shll + HexoKit (raw script: everything)
+#   curl -fsSL https://hexokit.com/install | sh -s -- hop wt   # converge a subset
 #
 # This script owns the whole pre-brew phase: it preflights the tools the
 # install needs (git/CLT, curl, tmux), bootstraps Homebrew headlessly when

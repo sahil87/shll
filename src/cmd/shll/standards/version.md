@@ -1,6 +1,6 @@
 # Standard: version
 
-How every binary in the [shll toolkit](https://shll.ai) reports its own version. `<tool> --version` is the one probe shll runs to answer three questions at once: what version is installed, is the tool healthy, and — because the probe doubles as an install check — is the tool installed at all. [shll](https://shll.ai) parses it under a tight timeout with a first-line-only token scan, so the output shape is a contract, not a courtesy.
+How every binary in the [HexoKit toolkit](https://hexokit.com/toolkit/) reports its own version. `<tool> --version` is the one probe shll runs to answer three questions at once: what version is installed, is the tool healthy, and — because the probe doubles as an install check — is the tool installed at all. [shll](https://hexokit.com/shll/) parses it under a tight timeout with a first-line-only token scan, so the output shape is a contract, not a courtesy.
 
 This page is the **producer-facing standard**: what your `--version` must emit. The consumer side — `shll version`'s aligned table, `shll doctor`'s health check, and the shared install probe — is shll's job and lives in its own memory. A tool author's entire obligation is keeping `--version` conformant to this page.
 

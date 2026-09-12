@@ -1,8 +1,8 @@
 # Standard: README & docs/site structure
 
-How every repo in the [shll toolkit](https://shll.ai) structures its `README.md` and `docs/site/` tree so [shll.ai](https://shll.ai) can pull and render them mechanically. The site pulls a **deduced, curated slice** of the README (rendered at `/<tool>/readme`) and every page of the optional `docs/site/**` tree (each at `/<tool>/<path>`), daily and on demand. Nothing is hand-copied; the tool repo is canonical and pushes nothing.
+How every repo in the [HexoKit toolkit](https://hexokit.com/toolkit/) structures its `README.md` and `docs/site/` tree so [hexokit.com](https://hexokit.com) can pull and render them mechanically. The site pulls a **deduced, curated slice** of the README (rendered at `/<tool>/readme`) and every page of the optional `docs/site/**` tree (each at `/<tool>/<path>`), daily and on demand. Nothing is hand-copied; the tool repo is canonical and pushes nothing.
 
-This page is the **producer-facing standard**: the structure your repo keeps. The consumer mechanics — extraction code, pull workflows, lints, link rewriting — are shll.ai's job, specified with their machine anchor in the [shll.ai README-extraction contract](https://github.com/sahil87/shll.ai/blob/main/docs/specs/readme-extraction-contract.md). This is the README-prose sibling of the [help-dump standard](help-dump.md), and together they implement principles №3 and №10 of the [toolkit CLI principles](principles.md).
+This page is the **producer-facing standard**: the structure your repo keeps. The consumer mechanics — extraction code, pull workflows, lints, link rewriting — are hexokit.com's job, specified with their machine anchor in the [hexokit-site README-extraction contract](https://github.com/sahil87/hexokit-site/blob/main/docs/specs/readme-extraction-contract.md). This is the README-prose sibling of the [help-dump standard](help-dump.md), and together they implement principles №3 and №10 of the [toolkit CLI principles](principles.md).
 
 ## README structure
 
@@ -14,7 +14,7 @@ This page is the **producer-facing standard**: the structure your repo keeps. Th
 
 **2. Tail — the slice ends at the first footer heading.** The pull stops immediately before the first heading (case-insensitive `##`/`###`) named `Contributing`, `Development`, `Building`, `License`, or `Acknowledgements`. Everything site-worthy goes above the first of those. `Install`, `Changelog`, `Roadmap`, and `FAQ` are deliberately **kept** — tool-specific install detail belongs on the site.
 
-**3. Images absolute, everywhere.** Every image in `README.md` and `docs/site/**` MUST be an absolute `https://…` URL (e.g. `raw.githubusercontent.com/sahil87/<repo>/main/…`). shll.ai vendors zero image binaries; a relative image renders broken. Keep meaningful `![alt](…)` text — it travels verbatim.
+**3. Images absolute, everywhere.** Every image in `README.md` and `docs/site/**` MUST be an absolute `https://…` URL (e.g. `raw.githubusercontent.com/sahil87/<repo>/main/…`). hexokit.com vendors zero image binaries; a relative image renders broken. Keep meaningful `![alt](…)` text — it travels verbatim.
 
 **4. Mermaid → rendered image.** Inline ```` ```mermaid ```` fences are stripped on pull (the site doesn't render mermaid). A diagram destined for the site is committed as a rendered image (SVG preferred) and referenced absolutely; keep the mermaid source alongside for GitHub if you like.
 
@@ -24,7 +24,7 @@ This page is the **producer-facing standard**: the structure your repo keeps. Th
 
 **7. Command/flag accuracy.** The site cross-checks your pulled prose against the tool's [help-dump](help-dump.md) output and emits a CI warning for commands or flags that don't exist. It never blocks the pull — your README is canonical and ships verbatim — but treat the warning as a defect in the README and fix it there.
 
-**8. The README is the hub.** Cross-link the deeper pages: the install section links to `docs/site/install.md` (natural repo-relative path — the site rewrites it, GitHub resolves it), and point at the generated command reference with the absolute URL `https://shll.ai/<tool>/commands/`.
+**8. The README is the hub.** Cross-link the deeper pages: the install section links to `docs/site/install.md` (natural repo-relative path — the site rewrites it, GitHub resolves it), and point at the generated command reference with the absolute URL `https://hexokit.com/<tool>/commands/`.
 
 ## The docs/site tree
 

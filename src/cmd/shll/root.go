@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const rootLong = `shll — meta-CLI for the shll toolkit.
+const rootLong = `shll — meta-CLI for the HexoKit toolkit.
 
 shll composes operations that span every per-tool CLI (hop, wt, fab-kit, run-kit, tu, idea)
 so you have one entry point for cross-toolkit concerns.
@@ -28,7 +28,7 @@ Per-tool CLIs continue to work standalone — shll wraps them, it does not repla
 func newRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "shll",
-		Short:         "meta-CLI for the shll toolkit",
+		Short:         "meta-CLI for the HexoKit toolkit",
 		Long:          rootLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,

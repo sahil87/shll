@@ -159,8 +159,8 @@ type standardJSONItem struct {
 func newStandardsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "standards [name]",
-		Short: "read the shll toolkit's binding standards (offline, embedded)",
-		Long: `Read the shll toolkit's binding, producer-facing standards.
+		Short: "read the HexoKit toolkit's binding standards (offline, embedded)",
+		Long: `Read the HexoKit toolkit's binding, producer-facing standards.
 
 Bare ` + "`shll standards`" + ` lists every available standard with its scope and a
 one-line description of what it governs and when it applies (name, scope, description) —

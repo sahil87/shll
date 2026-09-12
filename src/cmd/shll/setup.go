@@ -10,7 +10,7 @@ import (
 )
 
 // setup.go implements the `shll setup` command family — the consolidated,
-// re-runnable entry point for wiring a machine for the shll toolkit:
+// re-runnable entry point for wiring a machine for the HexoKit toolkit:
 //
 //	shll setup                both halves: shell integration, then agent harnesses
 //	shll setup shell [shell]  the shell half only (full shell-setup surface)
@@ -36,7 +36,7 @@ const (
 // setupLong is the parent command's Long help. The bare form's surface is
 // --yes-only by design (minimal surface; the halves' full flag sets live on the
 // subcommands).
-const setupLong = `Wire this machine for the shll toolkit — both halves, in order:
+const setupLong = `Wire this machine for the HexoKit toolkit — both halves, in order:
 shell integration (the ` + "`eval \"$(shll shell-init <shell>)\"`" + ` line in your rc file),
 then agent-harness wiring (the shll-toolkit skill plus run-kit's dashboard
 hooks). Both halves are idempotent — re-running is safe, e.g. after installing
@@ -85,7 +85,7 @@ future release.`
 
 // setupAgentLong is the full help for `shll setup agent` — the agent-setup
 // surface under its new spelling.
-const setupAgentLong = `Mechanically place one thin Agent Skill — the shll toolkit bootstrap — into the
+const setupAgentLong = `Mechanically place one thin Agent Skill — the HexoKit toolkit bootstrap — into the
 agent harnesses' global skills directories, then delegate run-kit's dashboard-hook
 wiring to ` + "`run-kit agent setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
 driving a toolkit tool.
@@ -119,7 +119,7 @@ func newSetupCmd() *cobra.Command {
 	var yesMode bool
 	cmd := &cobra.Command{
 		Use:           setupSub,
-		Short:         "wire this machine for the shll toolkit (shell + agent harnesses)",
+		Short:         "wire this machine for the HexoKit toolkit (shell + agent harnesses)",
 		Long:          setupLong,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -151,7 +151,7 @@ func newSetupShellCmd() *cobra.Command {
 func newSetupAgentCmd() *cobra.Command {
 	return buildAgentSetupCmd(agentSetupCmdSpec{
 		use:   setupAgentLeaf,
-		short: "place the shll toolkit skill for agent harnesses",
+		short: "place the HexoKit toolkit skill for agent harnesses",
 		long:  setupAgentLong,
 	})
 }

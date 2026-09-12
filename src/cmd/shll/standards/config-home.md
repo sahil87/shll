@@ -1,6 +1,6 @@
 # Standard: config-home
 
-Where a [shll toolkit](https://shll.ai) tool's configuration lives, and how override layers stack. Every tool that has a config file resolves it under one fixed, environment-independent root — `$HOME/.config/<tool-name>/` — and layers overrides in one order. The point is determinism: a tool that is simultaneously a daemon, a CLI, and agent-driven must provably read the same config in every process context, and a path that an environment variable can move silently forks which file is read.
+Where a [HexoKit toolkit](https://hexokit.com/toolkit/) tool's configuration lives, and how override layers stack. Every tool that has a config file resolves it under one fixed, environment-independent root — `$HOME/.config/<tool-name>/` — and layers overrides in one order. The point is determinism: a tool that is simultaneously a daemon, a CLI, and agent-driven must provably read the same config in every process context, and a path that an environment variable can move silently forks which file is read.
 
 This page is the **producer-facing standard**: how your tool must resolve its config path and stack its override layers. It exists because two tools (`hop`, `idea`) independently converged on the same pattern with near-identical justifying comments, and a third (`run-kit`) audit found the opposite — config scattered across seven surfaces with no precedence rule, where the wrong home (an env var) was reachable faster than the right one.
 

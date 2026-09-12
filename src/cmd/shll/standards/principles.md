@@ -1,6 +1,6 @@
 # Toolkit CLI principles
 
-The ten principles every CLI in the [shll toolkit](https://shll.ai) is built against — `shll`, `hop`, `wt`, `tu`, `idea`, `run-kit`, and `fab`. They exist because these tools are operated at least as often by AI agents as by humans, and an agent cannot squint at ambiguous output, answer a surprise prompt, or guess what a tool meant.
+The ten principles every CLI in the [HexoKit toolkit](https://hexokit.com/toolkit/) is built against — `shll`, `hop`, `wt`, `tu`, `idea`, `run-kit`, and `fab`. They exist because these tools are operated at least as often by AI agents as by humans, and an agent cannot squint at ambiguous output, answer a surprise prompt, or guess what a tool meant.
 
 Each principle is a testable contract: an **obligation** (MUST/SHOULD, in the [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119) sense), a named **failure mode**, and an **enforcement receipt** — where the toolkit already implements or checks it. The receipt is what separates a standard from a wish list: a principle with no shipped mechanism behind it is marked as such.
 
@@ -28,7 +28,7 @@ The set is two-tiered. This page is the **foundation** — the principles every 
 | Contract | Implements | Scope | What it standardizes |
 |----------|-----------|-------|----------------------|
 | [help-dump](help-dump.md) | №3 | binary | The JSON command tree every tool emits from `help-dump` |
-| [readme-extraction](readme-extraction.md) | №10 | repo | README + `docs/site/` structure shll.ai pulls and renders |
+| [readme-extraction](readme-extraction.md) | №10 | repo | README + `docs/site/` structure hexokit.com pulls and renders |
 | [skill](skill.md) | №3, №10 | binary + repo | The offline, embedded `<tool> skill` agent usage bundle |
 | [update](update.md) | №7, №6, №1 | binary | The in-place `update` upgrade contract — prompt-free unconditionally (tightening №1 for this subcommand), the `--skip-brew-update` probe, and brew-handling safety rules |
 | [version](version.md) | №4, №2 | binary | The `--version` shape shll probes — 2s budget, first-line token, name-equals-tool install probe |
@@ -58,11 +58,11 @@ The set is two-tiered. This page is the **foundation** — the principles every 
 
 ## 3. Help is a published contract
 
-**Obligation (MUST).** Help text is layered — a short summary at the top, concrete usage examples after the flags — so a reader can drill from "what is this" to "how do I invoke it" without a manual. And help is not just text on a terminal: every tool MUST expose a hidden `help-dump` subcommand that emits the full command tree as JSON, produced by programmatically walking the command tree (never by parsing `-h` output), per the [help-dump standard](help-dump.md). That dump is pulled by shll.ai and rendered as each tool's command reference — help text is a **release artifact**, fresh by construction.
+**Obligation (MUST).** Help text is layered — a short summary at the top, concrete usage examples after the flags — so a reader can drill from "what is this" to "how do I invoke it" without a manual. And help is not just text on a terminal: every tool MUST expose a hidden `help-dump` subcommand that emits the full command tree as JSON, produced by programmatically walking the command tree (never by parsing `-h` output), per the [help-dump standard](help-dump.md). That dump is pulled by hexokit.com and rendered as each tool's command reference — help text is a **release artifact**, fresh by construction.
 
 **Failure mode.** Hand-maintained docs drift from the real CLI; agents learn commands that no longer exist.
 
-**Enforced by.** `help-dump` conformance is pinned by tests in each tool repo (byte-for-byte fidelity against real `-h` output in shll), and shll.ai validates every pulled dump against a Zod schema before rendering. Beyond the machine tree, the [skill standard](skill.md) defines a one-page `<tool> skill` bundle — the agent-facing *usage* contract, embedded in the binary and versioned with it — as the human-readable companion to `help-dump`'s structure.
+**Enforced by.** `help-dump` conformance is pinned by tests in each tool repo (byte-for-byte fidelity against real `-h` output in shll), and hexokit.com validates every pulled dump against a Zod schema before rendering. Beyond the machine tree, the [skill standard](skill.md) defines a one-page `<tool> skill` bundle — the agent-facing *usage* contract, embedded in the binary and versioned with it — as the human-readable companion to `help-dump`'s structure.
 
 ## 4. Fail fast with actionable errors
 
@@ -114,12 +114,12 @@ The set is two-tiered. This page is the **foundation** — the principles every 
 
 ## 10. Agent-discoverable documentation
 
-**Obligation (SHOULD).** A fresh agent in a tool's repo — or using its binary — should not have to rediscover the toolkit's idioms from `--help` round-trips. Each repo publishes its documentation through filesystem convention: a README structured for mechanical extraction and a `docs/site/` tree of depth pages, per the [readme-extraction standard](readme-extraction.md), both pulled and rendered on shll.ai without hand-copying. Any agent entry file (`CLAUDE.md`/`AGENTS.md`) a repo ships points at these standards rather than restating them — an anti-drift rule, not an existence requirement; no repo is obliged to carry one. And an agent *using* an installed tool — from any repo, offline — SHOULD be able to read a one-page usage bundle via `<tool> skill`, per the [skill standard](skill.md) (SHOULD, phased per-repo).
+**Obligation (SHOULD).** A fresh agent in a tool's repo — or using its binary — should not have to rediscover the toolkit's idioms from `--help` round-trips. Each repo publishes its documentation through filesystem convention: a README structured for mechanical extraction and a `docs/site/` tree of depth pages, per the [readme-extraction standard](readme-extraction.md), both pulled and rendered on hexokit.com without hand-copying. Any agent entry file (`CLAUDE.md`/`AGENTS.md`) a repo ships points at these standards rather than restating them — an anti-drift rule, not an existence requirement; no repo is obliged to carry one. And an agent *using* an installed tool — from any repo, offline — SHOULD be able to read a one-page usage bundle via `<tool> skill`, per the [skill standard](skill.md) (SHOULD, phased per-repo).
 
 **Failure mode.** Every agent session starts from zero: pull `--help`, infer, try, parse the error, try again — a loop paid on every invocation, forever.
 
-**Enforced by.** The shll.ai pull pipeline is live for all seven tools (daily, mirror-and-prune), with report-only lints that flag structural violations in CI. This is the toolkit's weakest principle today by design — SHOULD, not MUST — because per-repo skill bundles are still being rolled out.
+**Enforced by.** The hexokit.com pull pipeline is live for all seven tools (daily, mirror-and-prune), with report-only lints that flag structural violations in CI. This is the toolkit's weakest principle today by design — SHOULD, not MUST — because per-repo skill bundles are still being rolled out.
 
 ## Consuming these standards
 
-This page and its eight companion standards ([help-dump](help-dump.md), [readme-extraction](readme-extraction.md), [skill](skill.md), [update](update.md), [version](version.md), [shell-init](shell-init.md), [install-composition](install-composition.md), [config-home](config-home.md)) are canonical here, in the [shll repo](https://github.com/sahil87/shll)'s `docs/site/standards/` tree, and render on [shll.ai](https://shll.ai) at `/shll/standards/…`. The implementation-anchored consumer contracts (schemas, extraction code, pull workflows) live in the [shll.ai repo's specs](https://github.com/sahil87/shll.ai/tree/main/docs/specs) and link back here.
+This page and its eight companion standards ([help-dump](help-dump.md), [readme-extraction](readme-extraction.md), [skill](skill.md), [update](update.md), [version](version.md), [shell-init](shell-init.md), [install-composition](install-composition.md), [config-home](config-home.md)) are canonical here, in the [shll repo](https://github.com/sahil87/shll)'s `docs/site/standards/` tree, and render on [hexokit.com](https://hexokit.com) at `/shll/standards/…`. The implementation-anchored consumer contracts (schemas, extraction code, pull workflows) live in the [hexokit-site repo's specs](https://github.com/sahil87/hexokit-site/tree/main/docs/specs) and link back here.

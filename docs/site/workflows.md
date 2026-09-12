@@ -1,13 +1,14 @@
 # Workflows
 
-Task-oriented walkthroughs for `shll`, the meta-CLI for the [shll toolkit](https://shll.ai). Each section starts from a goal and shows which `shll` command gets you there and what it actually does under the hood. For install paths and shell wiring, see [Install & shell wiring](install.md).
+Task-oriented walkthroughs for `shll`, the meta-CLI for the [HexoKit toolkit](https://hexokit.com/toolkit/). Each section starts from a goal and shows which `shll` command gets you there and what it actually does under the hood. For install paths and shell wiring, see [Install & shell wiring](install.md).
 
 ## Clean-machine bootstrap
 
 From a fresh machine to a fully wired toolkit:
 
 ```sh
-curl -fsSL https://shll.ai/install | sh                                  # bootstrap: trust + install shll, then install the roster
+curl -fsSL https://hexokit.com/install | sh                              # bootstrap: trust + install shll, then HexoKit (run-kit)
+shll install                                                             # the rest of the toolkit
 shll setup shell                                                         # pure rc wiring — no trust flag
 exec $SHELL                                                              # reload so the shell integration takes effect
 ```
@@ -95,4 +96,4 @@ This is Constitution Principle IV — **Composition, Not Replacement**: `hop upd
 ## See also
 
 - [Install & shell wiring](install.md) — every install path and the full `shll setup shell` rc-wiring contract.
-- [shll.ai](https://shll.ai) — the always-current command reference.
+- [hexokit.com/shll/commands](https://hexokit.com/shll/commands/) — the always-current command reference.

@@ -1,6 +1,6 @@
 # Standard: update
 
-How every CLI in the [shll toolkit](https://shll.ai) upgrades itself in place. Each tool exposes an `update` subcommand that swaps its own keg via Homebrew and runs whatever post-upgrade steps it owns; [shll](https://shll.ai) composes those by delegating to each installed tool's `update` rather than calling `brew upgrade` itself — so no tool's post-upgrade side effects are lost.
+How every CLI in the [HexoKit toolkit](https://hexokit.com/toolkit/) upgrades itself in place. Each tool exposes an `update` subcommand that swaps its own keg via Homebrew and runs whatever post-upgrade steps it owns; [shll](https://hexokit.com/shll/) composes those by delegating to each installed tool's `update` rather than calling `brew upgrade` itself — so no tool's post-upgrade side effects are lost.
 
 This page is the **producer-facing standard**: what your tool's `update` must do. The consumer side — `shll update`'s probe-first ordering, the per-tool summary tail, and the post-upgrade release digest — is shll's job and lives in its own memory. A tool author's entire obligation is keeping `update` conformant to this page.
 

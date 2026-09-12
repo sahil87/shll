@@ -1,6 +1,6 @@
 # Install & shell wiring
 
-The deep guide to getting `shll` and the rest of the [shll toolkit](https://shll.ai) onto a machine and wired into your shell. The README's Install section is the short version; this page covers every install path and the full `shll setup shell` rc-wiring contract.
+The deep guide to getting `shll` and the rest of the [HexoKit toolkit](https://hexokit.com/toolkit/) onto a machine and wired into your shell. The README's Install section is the short version; this page covers every install path and the full `shll setup shell` rc-wiring contract.
 
 `shll` doesn't replace the per-tool CLIs — it composes them. Everything below either shells out to `brew` or invokes a sub-tool's own command; `shll` keeps no state of its own.
 
@@ -8,16 +8,17 @@ The deep guide to getting `shll` and the rest of the [shll toolkit](https://shll
 
 ## Bootstrap via Homebrew
 
-The recommended path is the one-liner — it bootstraps `shll` itself, then hands off to `shll install` for the rest of the roster and finishes with `shll update`, so the machine converges to *complete and current*: missing tools are installed, and already-installed tools are upgraded. It needs curl to download: minimal Ubuntu/Debian images ship without it, so there run `sudo apt-get install -y curl` first.
+The recommended path is the one-liner — it bootstraps `shll` itself, then hands off to `shll install` and finishes with `shll update`, so what it installs converges to *complete and current*: missing tools are installed, and already-installed tools are upgraded. hexokit.com's copy is **product-first**: with no tool arguments it installs `shll` and HexoKit (`run-kit`) and prints the one command for the rest of the toolkit; name tools after `sh -s --` to pick exactly what you want. It needs curl to download: minimal Ubuntu/Debian images ship without it, so there run `sudo apt-get install -y curl` first.
 
 ```sh
-curl -fsSL https://shll.ai/install | sh
+curl -fsSL https://hexokit.com/install | sh     # shll + HexoKit
+shll install                                    # the rest of the toolkit
 ```
 
 Install a subset by naming tools after `sh -s --`:
 
 ```sh
-curl -fsSL https://shll.ai/install | sh -s -- hop wt
+curl -fsSL https://hexokit.com/install | sh -s -- hop wt
 ```
 
 The script preflights the machine before touching Homebrew — it probes git (on macOS via `xcode-select -p`, the real Command Line Tools check; the `/usr/bin/git` shim false-positives when the CLT is absent), curl, and tmux, then reports every miss at once with its per-platform fix command. Missing curl (or missing git on Linux without Homebrew) is fatal; missing tmux is a warning with its install hint, never a block.
@@ -33,7 +34,7 @@ An existing Homebrew is used as-is (≥ 6.0.4 — on 6.0.0–6.0.3, run `brew up
 The script hands off install-then-update: `shll install` with every arg verbatim, then `exec shll update` with the tool names. That has two consequences worth knowing:
 
 - **Updating installed tools runs their update contracts** — each tool's own `update` side effects included (e.g. run-kit restarts its daemon). Freshly installed tools are cheap no-op updates. A failed install stops the bootstrap, so the update pass never runs over a broken install.
-- **The shell integration and agent-harness steps below run automatically** at the end of every bootstrap (they belong to `shll install`) — **best-effort**: a step that fails warns and prints its manual nudge instead, never failing the install — and the opt-out flags ride the same argument passthrough (`curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup`). Tool names ride **both** verbs (`sh -s -- hop` installs *and updates* only hop); flags reach `shll install` only — they are filtered out of the update pass.
+- **The shell integration and agent-harness steps below run automatically** at the end of every bootstrap (they belong to `shll install`) — **best-effort**: a step that fails warns and prints its manual nudge instead, never failing the install — and the opt-out flags ride the same argument passthrough (`curl -fsSL https://hexokit.com/install | sh -s -- --no-agent-setup`). Tool names ride **both** verbs (`sh -s -- hop` installs *and updates* only hop); flags reach `shll install` only — they are filtered out of the update pass.
 
 > **A failed download exits 0.** If the download itself fails, `curl -fsSL … | sh` still **exits 0 silently** — `sh` reads the empty input and succeeds — so an `&&`-chained next step proceeds as if the install worked. Curl's error does appear on stderr (that's the `-S`), but the pipeline's exit code cannot be trusted. (The script's `main()` wrapper protects against *partial* execution of a truncated download, not against a *failed* one.) After a run that seemed to do nothing, check `command -v shll` — or re-read stderr — before chaining on.
 
@@ -191,5 +192,5 @@ shll install                                                             # trust
 ## See also
 
 - [Workflows](workflows.md) — clean-machine bootstrap, day-to-day `shll update`, version dumps, and the composition model.
-- [shll.ai](https://shll.ai) — the always-current command reference (CI publishes shll's help tree on every release).
+- [hexokit.com/shll/commands](https://hexokit.com/shll/commands/) — the always-current command reference (hexokit.com pulls shll's help tree daily).
 - [github.com/sahil87/shll](https://github.com/sahil87/shll) — the source repository.
