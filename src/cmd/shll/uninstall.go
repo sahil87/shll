@@ -87,7 +87,7 @@ func newUninstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "uninstall [tool...]",
 		Short: "brew uninstall shll tools (a clean-slate repair path)",
-		Long: `Uninstall shll toolkit tools via Homebrew — the clean-slate repair path
+		Long: `Uninstall HexoKit toolkit tools via Homebrew — the clean-slate repair path
 that pairs with ` + "`shll install`" + `.
 
 With no arguments, shll uninstall removes every INSTALLED brew-managed roster tool

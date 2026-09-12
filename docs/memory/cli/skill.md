@@ -51,7 +51,7 @@ The default is derivable from `Name` + `skillSubcommand`, so only the exception 
 It never prints a bundle H1 (`# … skill`) — the glossary and the bundles are disjoint outputs. Descriptions come from each tool's hardcoded `Description` field / `shllSelfDescription`, single-sourced on the roster (Constitution III — cannot drift from the managed set). Shape:
 
 ```
-shll     the manager for the shll toolkit
+shll     the manager for the HexoKit toolkit
 wt       Git worktree management — create, list, open, delete worktrees
 hop      Fast directory/project jumping across worktrees
 
@@ -135,7 +135,7 @@ The `skill --help` Long text teaches the reserved topic (`shll skill <tool> topi
 
 ## The bundle: authored, embedded, drift-guarded, budget-bounded
 
-shll's own bundle is authored canonically at **`docs/site/skill.md`** (the [standards-directory restructure](/cli/standards-content.md#the-docssitestandards-restructure) reserved this path — a tool's own bundle lives at `docs/site/skill.md`, which is why the standards *documents* moved into `docs/site/standards/` to avoid the collision). It is a ≤150-line static usage briefing per the `skill` standard, and it renders at `shll.ai/shll/skill` for free.
+shll's own bundle is authored canonically at **`docs/site/skill.md`** (the [standards-directory restructure](/cli/standards-content.md#the-docssitestandards-restructure) reserved this path — a tool's own bundle lives at `docs/site/skill.md`, which is why the standards *documents* moved into `docs/site/standards/` to avoid the collision). It is a ≤150-line static usage briefing per the `skill` standard, and it renders at `hexokit.com/shll/skill` for free.
 
 **The embed mechanism is the `shll standards` precedent, reused verbatim** (the Go module root is `src/`, and `docs/site/` sits above it, so `//go:embed` cannot reach the canonical file directly):
 

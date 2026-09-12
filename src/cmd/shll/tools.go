@@ -17,7 +17,7 @@ const formulaPrefix = "sahil87/tap/"
 // constant per code-quality.md (no magic strings).
 const tapName = "sahil87/tap"
 
-// Tool describes one entry in the hardcoded shll toolkit roster. The list is
+// Tool describes one entry in the hardcoded HexoKit toolkit roster. The list is
 // the source of truth for `shll update`, `shll shell-init`, and `shll version`
 // (Constitution III — Tool Roster Source of Truth). Adding a new tool requires
 // a shll release; no runtime discovery.
@@ -158,7 +158,7 @@ func isRkDesktopRefusal(out []byte) bool {
 	return strings.Contains(string(out), rkDesktopRefusalToken)
 }
 
-// githubOrgBase is the GitHub organization base URL for the shll toolkit.
+// githubOrgBase is the GitHub organization base URL for the HexoKit toolkit.
 // A tool's source-repo URL is githubOrgBase + tool.Repo. Named constant per
 // code-quality.md (no magic strings) so `shll list` never open-codes the URL.
 const githubOrgBase = "https://github.com/sahil87/"
@@ -204,7 +204,7 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 	}
 }
 
-// Roster is the hardcoded shll toolkit list. Order matters: it is declared
+// Roster is the hardcoded HexoKit toolkit list. Order matters: it is declared
 // IMPORTANCE-DESCENDING with dependency adjacency — the tools a user reaches for
 // first lead the list, and a tool sits immediately after the runtime it depends
 // on (rk-desktop directly after run-kit, whose `rk desktop …` subcommands it
@@ -246,7 +246,7 @@ const shllTargetToken = "shll"
 // shllSelfDescription is the manager-framing one-liner printed for the shll-self
 // entry by every command that shows the toolkit. Named per code-quality.md (no
 // magic strings).
-const shllSelfDescription = "the manager for the shll toolkit"
+const shllSelfDescription = "the manager for the HexoKit toolkit"
 
 // shllSelf is the single shared descriptor representing shll ITSELF as a
 // displayable entry — the one source of truth reused by every command that shows

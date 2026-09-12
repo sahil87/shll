@@ -73,9 +73,9 @@ var agentSkillContent = `---
 name: ` + skillDirName + `
 description: ` + agentSkillDescription() + `
 ---
-# shll toolkit
+# HexoKit toolkit
 
-This machine has the shll toolkit installed. Before driving one of its tools:
+This machine has the HexoKit toolkit installed. Before driving one of its tools:
 
 1. ` + "`shll skill`" + ` — the installed tools, one line each
 2. ` + "`shll skill <tool>`" + ` — that tool's full agent skill bundle (when to use it,
@@ -109,7 +109,7 @@ func agentSkillDescription() string {
 			proactive = append(proactive, t.ProactiveHint)
 		}
 	}
-	desc := "Use when driving any shll toolkit CLI or shll itself — " +
+	desc := "Use when driving any HexoKit toolkit CLI or shll — " +
 		strings.Join(clauses, ", ") + "."
 	if len(proactive) > 0 {
 		desc += " " + strings.Join(proactive, " ")

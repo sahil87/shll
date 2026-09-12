@@ -4,7 +4,7 @@ description: "`shll setup` — the re-runnable machine-wiring family: bare `setu
 ---
 # cli/setup
 
-`shll setup` — the consolidated, re-runnable entry point for wiring a machine for the shll toolkit: the same two halves `shll install` runs in-process at the end of every install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), exposed as one command family. Three visible commands:
+`shll setup` — the consolidated, re-runnable entry point for wiring a machine for the HexoKit toolkit: the same two halves `shll install` runs in-process at the end of every install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), exposed as one command family. Three visible commands:
 
 - **`shll setup`** — the runnable parent: the shell half, then the agent half (install's `runPostInstallSetup` order). Its ONLY flag is `--yes`/`-y`, forwarded to the agent half's run-kit delegation — no composite `--print`/`--uninstall` modes, no `[shell]` positional; those live on the subcommands.
 - **`shll setup shell [shell]`** — the shell half alone, carrying the full shell surface: `[shell]` positional, `--print`, `--uninstall`, `--rc-file`.
@@ -307,7 +307,7 @@ Cursor and OpenCode will see the same-name skill from both locations; the bytes 
 `agentSkillDescription()` builds the single-line frontmatter description from the Roster in one pass:
 
 ```
-Use when driving any shll toolkit CLI or shll itself — {clause, …}. {ProactiveHint, …} Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it.
+Use when driving any HexoKit toolkit CLI or shll — {clause, …}. {ProactiveHint, …} Run `shll skill` to list the installed tools; run `shll skill <tool>` for that tool's full usage bundle before using it.
 ```
 
 - Each Roster tool contributes `"<SkillHint> (<name>)"` (name = `Name`, or `Name/LegacyName` when a `LegacyName` exists).

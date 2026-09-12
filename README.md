@@ -4,30 +4,31 @@
 
 [![Latest release](https://img.shields.io/github/v/release/sahil87/shll)](https://github.com/sahil87/shll/releases) [![Downloads](https://img.shields.io/github/downloads/sahil87/shll/total)](https://github.com/sahil87/shll/releases) [![Stars](https://img.shields.io/github/stars/sahil87/shll?style=social)](https://github.com/sahil87/shll/stargazers)
 
-One command to install, update, and shell-wire every tool in the [shll toolkit](https://shll.ai) (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). `shll` doesn't replace the per-tool CLIs — it composes them.
+One command to install, update, and shell-wire every tool in the [HexoKit toolkit](https://hexokit.com/toolkit/) (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
 ## Install
 
 From a clean machine to a fully wired toolkit:
 
 ```sh
-curl -fsSL https://shll.ai/install | sh          # install shll + the whole roster, then auto-wire shell + agent harnesses
+curl -fsSL https://hexokit.com/install | sh      # install shll + HexoKit (run-kit), then auto-wire shell + agent harnesses
+shll install                                     # the rest of the toolkit: rk-desktop, fab-kit, wt, idea, tu, hop
 exec $SHELL                                      # reload so the shell integration takes effect
 ```
 
 Install a subset by naming tools after `sh -s --`:
 
 ```sh
-curl -fsSL https://shll.ai/install | sh -s -- hop wt
+curl -fsSL https://hexokit.com/install | sh -s -- hop wt
 ```
 
 The script preflights what the install needs — git (the Xcode Command Line Tools on macOS), curl, and tmux — and reports every miss at once with its per-platform fix command. On minimal Ubuntu/Debian images (which ship without curl), run `sudo apt-get install -y curl` first. When Homebrew is absent the script bootstraps it headlessly (official installer, `NONINTERACTIVE=1`) and prints the brew `shellenv` line to keep in your rc file; an existing Homebrew is used as-is (≥ 6.0.4 required — on 6.0.0–6.0.3, run `brew update` first). It's idempotent — safe to re-run, and a no-op for anything already installed.
 
 One pitfall worth knowing: if the download itself fails, `curl -fsSL … | sh` still **exits 0** — `sh` runs the empty input happily — so an `&&`-chained next step proceeds as if the install worked. Check curl's stderr, or `command -v shll` after; details in the [install guide](docs/site/install.md).
 
-`shll install` ends by wiring the machine automatically: it runs the equivalent of `shll setup shell` (the rc-file eval line, sentinel-managed and idempotent) and `shll setup agent --yes` (one thin `shll-toolkit` Agent Skill at the harnesses' global skill paths — `~/.agents/skills/` always, `~/.claude/skills/` when the `claude` CLI is on PATH — plus run-kit's dashboard hooks). Both steps are best-effort — a failure warns and prints the step's manual nudge, and never fails the install. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup` (no agent wiring), which ride the bootstrap's argument passthrough: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup`.
+`shll install` ends by wiring the machine automatically: it runs the equivalent of `shll setup shell` (the rc-file eval line, sentinel-managed and idempotent) and `shll setup agent --yes` (one thin `shll-toolkit` Agent Skill at the harnesses' global skill paths — `~/.agents/skills/` always, `~/.claude/skills/` when the `claude` CLI is on PATH — plus run-kit's dashboard hooks). Both steps are best-effort — a failure warns and prints the step's manual nudge, and never fails the install. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup` (no agent wiring), which ride the bootstrap's argument passthrough: `curl -fsSL https://hexokit.com/install | sh -s -- --no-agent-setup`.
 
-Everything else — the manual brew bootstrap, from-source builds, shell-wiring detail, and tap-trust troubleshooting — lives in the [install guide](docs/site/install.md) on [https://shll.ai](https://shll.ai).
+Everything else — the manual brew bootstrap, from-source builds, shell-wiring detail, and tap-trust troubleshooting — lives in the [install guide](docs/site/install.md) on [hexokit.com](https://hexokit.com/shll/install/).
 
 ## Why shll?
 
@@ -90,7 +91,7 @@ shll check-updates --json              # machine contract (what run-kit's daemon
 shll check-updates --source github     # compare against GitHub release tags instead
 ```
 
-The toolkit's single update-*check* surface: for shll itself plus every roster tool, it reports the installed version vs the latest available — and never updates anything (that's `shll update`'s job). One backend, selected by `--source`: `--source released` (the default when the flag is omitted) fetches [shll.ai/versions.json](https://shll.ai/versions.json), the roster + notify-policy authority, once per run; `--source github` reads each tool's latest GitHub release tag instead (no notify policy in that backend). Installed versions come from Homebrew, so brew must be present.
+The toolkit's single update-*check* surface: for shll itself plus every roster tool, it reports the installed version vs the latest available — and never updates anything (that's `shll update`'s job). One backend, selected by `--source`: `--source released` (the default when the flag is omitted) fetches [hexokit.com/versions.json](https://hexokit.com/versions.json) (falling back to shll.ai's byte copy), the roster + notify-policy authority, once per run; `--source github` reads each tool's latest GitHub release tag instead (no notify policy in that backend). Installed versions come from Homebrew, so brew must be present.
 
 The human output is a `shll version`-style aligned table — `shll  0.1.5 → 0.1.6  update available (notable)`, `wt  0.1.3  up to date`, `idea  not installed`. The `(notable)` marker means the pending bump crosses the tool's notify threshold from the manifest (`patch` = any bump is notable; `minor` = only minor-or-higher bumps; `never` = none).
 
@@ -182,7 +183,7 @@ One row for `shll` itself plus each roster tool, in roster order. Uninstalled to
 
 ```sh
 $ shll list
-ok  shll     the manager for the shll toolkit                                                                                                    https://github.com/sahil87/shll
+ok  shll     the manager for the HexoKit toolkit                                                                                                    https://github.com/sahil87/shll
 ok  wt       Git worktree management — create, list, open, delete worktrees                                                                      https://github.com/sahil87/wt
 ok  idea     Backlog idea management from the terminal                                                                                           https://github.com/sahil87/idea
 ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)                                                              https://github.com/sahil87/tu
@@ -234,7 +235,7 @@ The agent-facing reader for the toolkit's standards ([docs/site/standards/princi
 
 ```sh
 $ shll skill                  # glossary: one line per installed tool (shll first)
-shll     the manager for the shll toolkit
+shll     the manager for the HexoKit toolkit
 wt       Git worktree management — create, list, open, delete worktrees
 hop      Fast directory/project jumping across worktrees
 
@@ -269,7 +270,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 |----------------|------------------------|
 | `shll install` | `brew trust --formula sahil87/tap/<formula>` then `brew install sahil87/tap/<formula>` per missing tool (`--no-trust` skips the trust step), then the automatic shell-wiring and agent-wiring steps (`--no-shell-setup` / `--no-agent-setup` opt out) |
 | `shll update` | `brew update --quiet` once, self-upgrade, then each installed tool's own `update` (delegated; `brew upgrade` fallback only when a tool has no `update`) |
-| `shll check-updates` | fetches `shll.ai/versions.json` (or GitHub releases with `--source github`), joins against `brew list --versions`, reports pending updates — read-only |
+| `shll check-updates` | fetches `hexokit.com/versions.json` (shll.ai fallback; or GitHub releases with `--source github`), joins against `brew list --versions`, reports pending updates — read-only |
 | `shll changelog` | fetches each tool's GitHub releases (public API), filters to the requested version range, renders the notes |
 | `shll shell-init zsh` | concatenates the stdout of each installed tool's `<tool> shell-init zsh` |
 | `shll version` | invokes `<tool> --version` per tool, formats as a table |
@@ -287,13 +288,13 @@ Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt 
 - [docs/site/workflows.md](docs/site/workflows.md) — task-oriented walkthroughs (clean-machine bootstrap, day-to-day `shll update`, version dumps, the composition model)
 - [docs/site/standards/principles.md](docs/site/standards/principles.md) — the ten CLI principles every toolkit tool is built against (agent-native contracts: obligations, failure modes, enforcement receipts)
 - [docs/site/standards/help-dump.md](docs/site/standards/help-dump.md) — producer standard for the machine-readable help contract (`help-dump` JSON every tool must emit)
-- [docs/site/standards/readme-extraction.md](docs/site/standards/readme-extraction.md) — producer standard for README & `docs/site/` structure (what shll.ai pulls and renders per tool)
+- [docs/site/standards/readme-extraction.md](docs/site/standards/readme-extraction.md) — producer standard for README & `docs/site/` structure (what hexokit.com pulls and renders per tool)
 - [docs/site/standards/skill.md](docs/site/standards/skill.md) — producer standard for the offline, embedded `<tool> skill` agent bundle (one-page usage briefing, versioned with the binary)
 - [docs/site/standards/update.md](docs/site/standards/update.md) — producer standard for the in-place `update` subcommand (`--skip-brew-update` probe, exit-code semantics, brew-handling safety, naming/release alignment)
 - [docs/site/standards/version.md](docs/site/standards/version.md) — producer standard for the `--version` surface shll probes (2s budget, first-non-empty-line token, binary-name-equals-tool install probe)
 - [docs/site/standards/shell-init.md](docs/site/standards/shell-init.md) — producer standard for the eval-safe `shell-init` output shll concatenates (stdout-only shell source, diagnostics to stderr, fail-non-zero)
 - `shll --help` — full subcommand listing
-- **Command reference at [shll.ai/shll/commands](https://shll.ai/shll/commands/)** — a browsable, always-current command tree. On every release, shll's CI exports its CLI help tree as a machine-readable `help/shll.json` and publishes it to [shll.ai](https://shll.ai), which renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
+- **Command reference at [hexokit.com/shll/commands](https://hexokit.com/shll/commands/)** — a browsable, always-current command tree. [hexokit.com](https://hexokit.com) pulls shll's CLI help tree daily as a machine-readable `help/shll.json` and renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:
   [fab-kit](https://github.com/sahil87/fab-kit) ·
   [run-kit](https://github.com/sahil87/run-kit) ·

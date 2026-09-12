@@ -1,6 +1,6 @@
 # Standard: shell-init
 
-How every [shll toolkit](https://shll.ai) tool that integrates with the shell emits its startup code. `<tool> shell-init <shell>` prints shell source that the user (or [shll](https://shll.ai)) `eval`s in every new shell — so its stdout runs, verbatim, at the top of every session on every machine. That makes eval-safety non-negotiable: one stray line poisons shell startup fleet-wide.
+How every [HexoKit toolkit](https://hexokit.com/toolkit/) tool that integrates with the shell emits its startup code. `<tool> shell-init <shell>` prints shell source that the user (or [shll](https://hexokit.com/shll/)) `eval`s in every new shell — so its stdout runs, verbatim, at the top of every session on every machine. That makes eval-safety non-negotiable: one stray line poisons shell startup fleet-wide.
 
 This page is the **producer-facing standard**: what your `shell-init` must emit. The consumer side — `shll shell-init`'s composition order and how it concatenates the per-tool blobs — is shll's job and lives in its own memory. A tool author's entire obligation is keeping `shell-init` conformant to this page.
 

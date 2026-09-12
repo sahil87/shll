@@ -2,9 +2,9 @@
 
 ## Overview
 
-`shll` is a meta-CLI for the shll toolkit. It composes operations that span all the per-tool CLIs (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so users have one entry point for cross-toolkit concerns.
+`shll` is a meta-CLI for the HexoKit toolkit. It composes operations that span all the per-tool CLIs (`hop`, `wt`, `fab-kit`, `rk`, `tu`, `idea`) so users have one entry point for cross-toolkit concerns.
 
-The name comes from the project's landing domain: [`shll.ai`](https://shll.ai). The website's repo lives at `hop shll.ai where` → `/home/sahil/code/sahil87/shll.ai`.
+The name predates the HexoKit rebrand: it came from the toolkit's original landing domain, shll.ai, which is now a permanent redirect host for [hexokit.com](https://hexokit.com). The site's repo is `sahil87/hexokit-site` (`/home/sahil/code/sahil87/hexokit-site`); `sahil87/shll.ai` holds only the redirect stub.
 
 ## Tech stack
 
@@ -26,7 +26,7 @@ shll/
 │   ├── cmd/shll/         # cobra entry + subcommand files (main.go, update.go, shell_init.go, version.go)
 │   └── internal/
 │       └── proc/         # subprocess wrapper (Run, RunForeground, ErrNotFound)
-├── scripts/              # build.sh, install-local.sh (dev build+copy), release.sh; install.sh = curl|sh bootstrap served at shll.ai/install
+├── scripts/              # build.sh, install-local.sh (dev build+copy), release.sh; install.sh = curl|sh bootstrap served at hexokit.com/install (shll.ai/install is a byte copy)
 ├── justfile              # one-line recipes delegating to scripts/
 ├── README.md
 ├── LICENSE

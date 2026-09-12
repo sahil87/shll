@@ -133,7 +133,7 @@ func newCheckUpdatesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check-updates",
 		Short: "check which shll tools have updates available (read-only, never updates)",
-		Long: `Check for pending shll toolkit updates — installed version vs latest available —
+		Long: `Check for pending HexoKit toolkit updates — installed version vs latest available —
 for shll itself plus every roster tool. Read-only: nothing is upgraded, installed,
 or written. To apply updates, run ` + "`shll update`" + `.
 

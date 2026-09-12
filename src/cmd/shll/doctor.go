@@ -100,7 +100,7 @@ func newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "verify every shll tool is installed, runnable, and wired",
-		Long: `Verify the shll toolkit is correctly installed and wired. For every roster
+		Long: `Verify the HexoKit toolkit is correctly installed and wired. For every roster
 tool, doctor checks that (1) the binary is on PATH, (2) it reports a version (so
 a half-installed/stale brew link is caught), (3) its Homebrew formula is trusted
 (so a future 'brew upgrade' won't be refused on Homebrew 6.0+), and (4) — for

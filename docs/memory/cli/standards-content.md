@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming decisions (`skill` not `agent`), the `skill` standard's contract (incl. two-tier placement), the help-dump `aliases` field, the producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (centralized install docs on hexokit.com), `config-home` (fixed $HOME/.config/<tool>/ root), and the readme-extraction blockquote naming HexoKit."
+description: "The toolkit-wide standards *documents* the shll repo hosts and serves: the `docs/site/standards/` restructure and naming (`skill` not `agent`), the `skill` standard's contract (incl. two-tier placement), the help-dump `aliases` field, the producer-surface standards (`update`/`version`/`shell-init`), `install-composition` (centralized install docs on hexokit.com), `config-home` (fixed $HOME/.config/<tool>/ root), the HexoKit blockquote, and hexokit.com as the consuming site throughout."
 ---
 # cli/standards-content
 
@@ -37,7 +37,7 @@ docs/site/
 **Why** (three reasons):
 
 1. **Genre separation.** A flat `docs/site/` would mix shll's *own* tool docs with *toolkit-wide* standards — a browser (human or agent) could not tell that `help-dump.md` is a 7-repo standard rather than a shll feature doc. The subdirectory makes the genre boundary structural.
-2. **URL mirrors the command.** shll.ai renders nested `docs/site` trees, so the pages land at `shll.ai/shll/standards/<name>` — mirroring `shll standards <name>` exactly. The web URL and the CLI invocation become the same name.
+2. **URL mirrors the command.** hexokit.com renders nested `docs/site` trees, so the pages land at `hexokit.com/shll/standards/<name>` — mirroring `shll standards <name>` exactly. The web URL and the CLI invocation become the same name.
 3. **Resolves a filename collision.** Each tool's own `skill` bundle lives at `docs/site/skill.md` in that tool's repo (see the [skill standard](#the-skill-standard) below) — including shll's own (served by `shll skill shll`, agst) — which would collide with the `skill` standard *document* in a flat layout. The two coexist as `docs/site/skill.md` (shll's bundle) and `docs/site/standards/skill.md` (the standard). See [cli/skill](/cli/skill.md).
 
 **Rejected**: keeping the standards flat and disambiguating by filename prefix (`principle-*`, `subcommand-*`/`repo-*`, `contract-*`). Filenames should be the artifact name; taxonomy is expressed via **location** (the `standards/` dir) + **list metadata** (the `scope` column — see [cli/standards §the scope field](/cli/standards.md#the-scope-field)), not baked into the filename.
@@ -50,7 +50,7 @@ Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ 
 
 ## The `help-dump` standard defines the optional `aliases` field
 
-`docs/site/standards/help-dump.md`'s **Output shape** documents an optional `aliases` node field: producers SHOULD emit it when the framework exposes alias metadata (e.g. Cobra `cmd.Aliases`) and MUST omit the key entirely — never `[]` or `null` — for a command with no aliases; consumers MUST treat an alias-form invocation (the `path` with its `name` replaced by any listed alias) as a valid command. The Node example carries an `"aliases": ["mk"]` line with an `omitted when none` comment, and a normative sentence beside it cross-links [Schema evolution](https://shll.ai/shll/standards/help-dump#schema-evolution).
+`docs/site/standards/help-dump.md`'s **Output shape** documents an optional `aliases` node field: producers SHOULD emit it when the framework exposes alias metadata (e.g. Cobra `cmd.Aliases`) and MUST omit the key entirely — never `[]` or `null` — for a command with no aliases; consumers MUST treat an alias-form invocation (the `path` with its `name` replaced by any listed alias) as a valid command. The Node example carries an `"aliases": ["mk"]` line with an `omitted when none` comment, and a normative sentence beside it cross-links [Schema evolution](https://hexokit.com/shll/standards/help-dump#schema-evolution).
 
 `aliases` is the **first field defined under the standard's § Schema evolution clause** — its rule that new fields MUST be optional so each tool adopts on its own release cadence (no seven-repo flag-day, no `schema_version` bump, older captures keep validating). shll implements the field on its `shell-setup` command's `shell-install` alias — but that command is `Hidden`, so the filter prunes it from shll's own dump and the emitted field is pinned by the synthetic-tree contract test (see [cli/help-dump-contract](/cli/help-dump-contract.md)); the other six tools adopt on their own cadence.
 
@@ -58,14 +58,14 @@ Intra-family relative links (principles ↔ help-dump ↔ readme-extraction ↔ 
 
 ## The `skill` standard
 
-`docs/site/standards/skill.md` (i70w) is the fourth producer-facing standard: the **agent skill-bundle contract** for every toolkit CLI. It specifies that each tool exposes a `<tool> skill` subcommand printing a stable, one-page markdown **skill bundle** for the agent *using* the tool — embedded in the binary, versioned with it, byte-identical to that tool repo's canonical `docs/site/skill.md`. It mirrors the [help-dump standard](https://shll.ai/shll/standards/help-dump)'s register/structure (single `#` H1, invocation contract, rules with teeth, verification section) and implements toolkit principles №3 + №10 at **scope `binary+repo`**.
+`docs/site/standards/skill.md` (i70w) is the fourth producer-facing standard: the **agent skill-bundle contract** for every toolkit CLI. It specifies that each tool exposes a `<tool> skill` subcommand printing a stable, one-page markdown **skill bundle** for the agent *using* the tool — embedded in the binary, versioned with it, byte-identical to that tool repo's canonical `docs/site/skill.md`. It mirrors the [help-dump standard](https://hexokit.com/shll/standards/help-dump)'s register/structure (single `#` H1, invocation contract, rules with teeth, verification section) and implements toolkit principles №3 + №10 at **scope `binary+repo`**.
 
 ### The gap it fills
 
 Nothing today serves an agent *operating* an installed tool from any repo, offline:
 
 - **`-h` / help-dump** is flag reference — command shape, not when-to-reach-for-which or how the tool composes.
-- **README / `docs/site`** needs the repo checked out or a network round-trip to shll.ai.
+- **README / `docs/site`** needs the repo checked out or a network round-trip to hexokit.com.
 - **`fab/project` context** is repo-*development*-scoped — it orients a contributor, not a caller.
 
 A `<tool> skill` bundle is offline (embedded), present on every machine with the tool, and **version-locked by construction**: the prose ships inside the same binary as the flags it describes, so it can never document a capability the installed binary lacks.
@@ -75,7 +75,7 @@ A `<tool> skill` bundle is offline (embedded), present on every machine with the
 - **Command name exactly `skill`.** Prints raw markdown to stdout, byte-identical to the repo's canonical `docs/site/skill.md`; stderr empty; exit 0; no rendering, pager, or added framing.
 - **Static-only bundle.** The bytes are identical on every invocation, on every machine, for a given release — no timestamps, no environment lookups, no session state. This is the load the standard draws vs. its precedent (below).
 - **≤150-line hard budget** (principle №9). Agents pull a bundle into a paying context at use time via `shll skill <tool>` (see [Landed design](#landed-design-shll-setup-agent-skills-placement-not-context-aggregation)), and the bare `shll skill` glossary lists one line per installed tool — so a bloated bundle taxes every conversation that pulls it. Over budget means it is trying to be a README.
-- **Genre discipline.** A usage briefing — when-to-use, capabilities map, composition patterns, output/exit-code contracts, gotchas. NOT a second README, NOT flag reference (defer to `-h` and the shll.ai commands page).
+- **Genre discipline.** A usage briefing — when-to-use, capabilities map, composition patterns, output/exit-code contracts, gotchas. NOT a second README, NOT flag reference (defer to `-h` and the tool's hexokit.com commands page).
 - **Sync + drift-guard embed.** Content is embedded at build via committed copies + a sync script + a drift-guard test — the exact mechanism `shll standards` established (see [cli/standards §the build-time embed mechanism](/cli/standards.md#the-build-time-embed-mechanism)); each adopting repo reuses it.
 - **Mechanically enforced, not checklist-only.** The ≤150-line budget (core bundle and every topic page) and the reserved `skill topics` contract are pinned in each adopting repo by a test that fails on violation — extending the drift-guard test or adding a small conformance test both conform; the outcome (a failing test) is mandated, the mechanism is the repo's choice. (q8i5)
 - **Renders on the site for free** at `/<tool>/skill` (part of the pulled `docs/site/**` tree).
@@ -262,10 +262,10 @@ The blockquote is the toolkit's most visible cross-repo brand surface (the first
 ### Design Decisions
 
 #### Brand surfaces change as standards *content*; the standards themselves are not renamed
-**Decision**: The HexoKit rebrand reaches the standards only as content edits — the mandated blockquote names HexoKit, `install-composition` Policy B's centralized location is hexokit.com, `config-home`'s example path is `$HOME/.config/hexokit/config.yaml` — while `shll standards` stays the command, the nine documents keep their names and `docs/site/standards/` location, and the `shll-toolkit` skill directory and rc sentinel keep their names. Site-naming mentions of `shll.ai` inside the standards (intro phrases, "the site pulls and renders") change only once shll.ai stops being the consuming site.
-**Why**: `shll` is the toolkit manager — a tool name like `hop`, not a brand — so renaming its command or its documents buys nothing; the blockquote and the install-docs location are the two lines whose staleness would reintroduce a two-brand split on every repo page, and the roster's `Name`/`Formula`/`Repo` are runtime-coupled to the tap formula and GitHub repo, so they move only with those renames.
-**Rejected**: Renaming the standards or the `shll standards` command (no reader benefit, churn in every consumer); flipping every `shll.ai` mention at once (the consuming-site mentions would become false ahead of the site cutover).
-*Introduced by*: `260911-ttoa-hexokit-banner-and-policy`.
+**Decision**: The HexoKit rebrand reaches the standards only as content edits — the mandated blockquote names HexoKit, `install-composition` Policy B's centralized location is hexokit.com, `config-home`'s example path is `$HOME/.config/hexokit/config.yaml`, every intro phrase names the family as `[HexoKit toolkit](https://hexokit.com/toolkit/)`, and every consuming-site role (pulls, renders, validates, vendors no images, owns `captured_at`) is hexokit.com, with the machine-anchor contract links pointing at the `sahil87/hexokit-site` specs — while `shll standards` stays the command, the nine documents keep their names and `docs/site/standards/` location, and the `shll-toolkit` skill directory, its frontmatter `name:`, and the rc sentinel keep their names. The standards contain no `shll.ai` mention; elsewhere in this repo shll.ai is named only as the `versions.json` / `/install` byte-copy fallback host (the binary, the install docs, and the check-updates and versions memory) and as the redirect host in the project context.
+**Why**: `shll` is the toolkit manager — a tool name like `hop`, not a brand — so renaming its command or its documents buys nothing; the blockquote and the install-docs location are the lines whose staleness would reintroduce a two-brand split on every repo page, the consuming-site mentions are a correctness fix once shll.ai is a redirect host, and the roster's `Name`/`Formula`/`Repo` are runtime-coupled to the tap formula and GitHub repo, so they move only with those renames.
+**Rejected**: Renaming the standards or the `shll standards` command (no reader benefit, churn in every consumer); keeping `shll.ai` as the named consuming site after the cutover (every producer repo would be told to link a redirect host, and the two contract links would dead-end on tombstoned specs).
+*Introduced by*: `260911-ttoa-hexokit-banner-and-policy` (blockquote, Policy B, config-home example); `260912-dk8f-standards-consumer-site-sweep` (intros, consuming-site roles, contract links).
 
 ## Cross-references
 
@@ -274,4 +274,4 @@ The blockquote is the toolkit's most visible cross-repo brand surface (the first
 - The **command** that reads/serves these documents (roster, embed mechanism, drift guard, output shapes, the `scope` field): [cli/standards](/cli/standards.md).
 - The `standards.go` file-layout row and where `standards` sits in the subcommand surface: [cli/commands](/cli/commands.md).
 - The shll-side consumer machinery these three standards codify (probe-first ordering, digest, timeout, composer concatenation): [cli/update](/cli/update.md), [cli/version](/cli/version.md), [cli/shell-init](/cli/shell-init.md).
-- Live canonical documents (rendered): [principles](https://shll.ai/shll/standards/principles), [help-dump](https://shll.ai/shll/standards/help-dump), [readme-extraction](https://shll.ai/shll/standards/readme-extraction), [skill](https://shll.ai/shll/standards/skill), [update](https://shll.ai/shll/standards/update), [version](https://shll.ai/shll/standards/version), [shell-init](https://shll.ai/shll/standards/shell-init), [install-composition](https://shll.ai/shll/standards/install-composition), [config-home](https://shll.ai/shll/standards/config-home).
+- Live canonical documents (rendered): [principles](https://hexokit.com/shll/standards/principles), [help-dump](https://hexokit.com/shll/standards/help-dump), [readme-extraction](https://hexokit.com/shll/standards/readme-extraction), [skill](https://hexokit.com/shll/standards/skill), [update](https://hexokit.com/shll/standards/update), [version](https://hexokit.com/shll/standards/version), [shell-init](https://hexokit.com/shll/standards/shell-init), [install-composition](https://hexokit.com/shll/standards/install-composition), [config-home](https://hexokit.com/shll/standards/config-home).

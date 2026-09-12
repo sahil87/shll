@@ -1,6 +1,6 @@
 # Standard: install-composition
 
-How the [shll toolkit](https://shll.ai) composes at install time. Every tool installs as an independent tap formula, and [`shll install`](https://shll.ai) is the single composition point — it installs the full roster and accepts a subset. Nothing else expresses "these tools belong together": not a formula dependency edge, not a per-repo install snippet.
+How the [HexoKit toolkit](https://hexokit.com/toolkit/) composes at install time. Every tool installs as an independent tap formula, and [`shll install`](https://hexokit.com/shll/install/) is the single composition point — it installs the full roster and accepts a subset. Nothing else expresses "these tools belong together": not a formula dependency edge, not a per-repo install snippet.
 
 This page is the **producer-facing standard**, in two halves: **Policy A** — no inter-tool Homebrew dependencies; a sibling invoked at runtime is probed, never assumed — and **Policy B** — install documentation is centralized on hexokit.com. It implements principles №7 (compose, don't reinvent — sibling capability is probed, never assumed via a package edge) and №8 (graceful degradation — a missing sibling is a skip with a hint, not a crash) of the [toolkit CLI principles](principles.md).
 

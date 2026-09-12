@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap on `v*` tags. Carries no shll.ai publish step — shll.ai pulls via its own scheduled `shll help-dump` job."
+description: "`release.yml` — cross-compile, publish a GitHub Release, and update the Homebrew tap on `v*` tags. Carries no hexokit.com publish step — hexokit.com pulls via its own scheduled `shll help-dump` job."
 ---
 # ci/release-workflow
 
@@ -27,18 +27,18 @@ Per Constitution VI, releases are cut by tagging `v*`; the workflow cross-compil
 
 All third-party actions are pinned to commit SHAs.
 
-## shll.ai help-tree integration
+## hexokit.com help-tree integration
 
-shll.ai's integration is pull-based: its own scheduled job (`scheduled-help-refresh.yml`, on shll.ai's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself. The producer is the `help-dump` command (shipped with shll); the transport lives entirely in shll.ai. This workflow publishes nothing to `sahil87/shll.ai` and references no `SHLLAI_TOKEN`. (7huv)
+hexokit.com's integration is pull-based: its own scheduled job (`scheduled-help-refresh.yml`, on hexokit-site's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself. The producer is the `help-dump` command (shipped with shll); the transport lives entirely in hexokit.com. This workflow publishes nothing to `sahil87/hexokit-site` and references no `SHLLAI_TOKEN`. (7huv)
 
 The JSON contract `help-dump` produces is documented in [cli/help-dump-contract](/cli/help-dump-contract.md).
 
 ## Design Decisions
 
-### No push transport — shll.ai pulls
-**Decision**: The release workflow carries no shll.ai publish step; the `help-dump` producer stays in shll, and shll.ai's scheduled puller owns the transport.
-**Why**: A push transport runs on every release for no consumer (shll.ai's puller runs `shll help-dump` itself — its change `oa63`), and fails loudly once the shll.ai-side auto-merge / `SHLLAI_TOKEN` prerequisites are revoked. Keeping the `help-dump` command intact preserves the producer while eliminating the dead cross-repo push.
-**Rejected**: Removing the `help-dump` command along with the transport — shll.ai's puller still consumes it.
+### No push transport — hexokit.com pulls
+**Decision**: The release workflow carries no hexokit.com publish step; the `help-dump` producer stays in shll, and hexokit.com's scheduled puller owns the transport.
+**Why**: A push transport runs on every release for no consumer (hexokit.com's puller runs `shll help-dump` itself — its change `oa63`), and fails loudly once the site-side auto-merge / `SHLLAI_TOKEN` prerequisites are revoked. Keeping the `help-dump` command intact preserves the producer while eliminating the dead cross-repo push.
+**Rejected**: Removing the `help-dump` command along with the transport — hexokit.com's puller still consumes it.
 *Introduced by*: `260603-7huv-teardown-shllai-push`
 
 ## Constitution conformance
