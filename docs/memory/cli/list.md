@@ -8,7 +8,7 @@ description: "`shll list` — toolkit roster with install status, descriptions, 
 
 Source: `src/cmd/shll/list.go` (+ `list_test.go`). Reuses the shared install probe in `src/cmd/shll/version.go` (`toolInstalled`/`probeToolVersion`), the `Roster` and `githubOrgBase` from `src/cmd/shll/tools.go`, and `colorEnabled` from `src/cmd/shll/ui.go`.
 
-`list` is the real command behind the `shll list` example on the shll.ai homepage (`index.mdx`, in the separate `sahil87/shll.ai` repo). shll.ai picks `list` up automatically via the `help-dump` walk (the `rootLong` listing flows into `help/shll.json`).
+`list` is the real command behind the `shll list` example on the hexokit.com toolkit page (in the separate `sahil87/hexokit-site` repo). hexokit.com picks `list` up automatically via the `help-dump` walk (the `rootLong` listing flows into `help/shll.json`).
 
 ## Output shapes
 
@@ -19,7 +19,7 @@ Source: `src/cmd/shll/list.go` (+ `list_test.go`). Reuses the shared install pro
 A shll-first row, then one row per roster tool in `Roster` order (importance-descending with dependency adjacency: `run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop` — t26g). Columns: **status indicator · name · description · repo URL**. Column-aligned via `text/tabwriter` (`src/cmd/shll/list.go:130`) with the **same writer config as `version`**: minwidth 0, tabwidth 0, padding 2, padchar space, no flags.
 
 ```
-ok  shll       the manager for the shll toolkit                                                                                                      https://github.com/sahil87/shll
+ok  shll       the manager for the HexoKit toolkit                                                                                                      https://github.com/sahil87/shll
 ok  run-kit    Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user and push notifications (rk stays as an alias)  https://github.com/sahil87/run-kit
 --  rk-desktop Run-kit desktop viewer shell — the macOS companion app, managed via `rk desktop install`/`rk desktop update`                         https://github.com/sahil87/run-kit
 ok  fab-kit    Spec-driven workspace & workflow toolkit (the `fab` CLI)                                                                               https://github.com/sahil87/fab-kit
@@ -31,7 +31,7 @@ ok  hop        Fast directory/project jumping across worktrees                  
 
 (The example shows the non-TTY ASCII status markers and `rk-desktop` missing; on a color-enabled terminal the status cells are the green `✓` / red `✗` glyphs. rk-desktop's status comes from its delegated `rk desktop status` probe — no `--version` surface exists — and its repo column is `.../run-kit`, not `.../rk-desktop` (see [The run-kit repo-slug footgun](#the-run-kit-repo-slug-footgun)). A pre-rename install whose binary is still `rk` on PATH is shown *installed* via the [legacy-name probe fallback](/cli/version.md#the-legacy-name-path-probe-fallback), still under the display name `run-kit`.)
 
-- **A shll-first self-row (bb7r).** `list` prepends a `shll` row using the **plain installed marker** (`ok` / green `✓` — the *same* rendering as an installed tool, NOT a distinct "self" marker: maximum visual uniformity was chosen), the manager description `"the manager for the shll toolkit"`, and the repo URL `https://github.com/sahil87/shll`. shll is always present (it is the running binary), so the marker is always installed — see [The prepended shll-first row](#the-prepended-shll-first-row). There are `len(Roster)+1` = 8 rows.
+- **A shll-first self-row (bb7r).** `list` prepends a `shll` row using the **plain installed marker** (`ok` / green `✓` — the *same* rendering as an installed tool, NOT a distinct "self" marker: maximum visual uniformity was chosen), the manager description `"the manager for the HexoKit toolkit"`, and the repo URL `https://github.com/sahil87/shll`. shll is always present (it is the running binary), so the marker is always installed — see [The prepended shll-first row](#the-prepended-shll-first-row). There are `len(Roster)+1` = 8 rows.
 - The repo column is the full `https://github.com/sahil87/<Repo>` URL, built by `repoURL(t)` (the single URL-composition point — see [The run-kit repo-slug footgun](#the-run-kit-repo-slug-footgun) below). For the shll row it is `repoURL(shllSelf)` → `https://github.com/sahil87/shll`.
 
 ### `--json`: bare JSON array
@@ -42,7 +42,7 @@ ok  hop        Fast directory/project jumping across worktrees                  
 [
   {
     "name": "shll",
-    "description": "the manager for the shll toolkit",
+    "description": "the manager for the HexoKit toolkit",
     "repo": "https://github.com/sahil87/shll",
     "installed": true,
     "self": true
@@ -69,7 +69,7 @@ ok  hop        Fast directory/project jumping across worktrees                  
 
 ## The prepended shll-first row
 
-Both renderers prepend a shll-first entry before walking the roster — `writeListTable` (`src/cmd/shll/list.go:128`) writes a leading table row, and `writeListJSON` (`src/cmd/shll/list.go:174`) prepends a leading `listItem`. Both derive their fields from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:268`): `shllSelf.Name` (`"shll"`), `shllSelf.Description` (`"the manager for the shll toolkit"`), and `repoURL(shllSelf)` (`https://github.com/sahil87/shll`). This is the single source of truth for "shll as a displayable entry", reused by `list`/`doctor`/`install` — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor).
+Both renderers prepend a shll-first entry before walking the roster — `writeListTable` (`src/cmd/shll/list.go:128`) writes a leading table row, and `writeListJSON` (`src/cmd/shll/list.go:174`) prepends a leading `listItem`. Both derive their fields from the shared `shllSelf` descriptor (`src/cmd/shll/tools.go:268`): `shllSelf.Name` (`"shll"`), `shllSelf.Description` (`"the manager for the HexoKit toolkit"`), and `repoURL(shllSelf)` (`https://github.com/sahil87/shll`). This is the single source of truth for "shll as a displayable entry", reused by `list`/`doctor`/`install` — see [cli/commands §the shared `shllSelf` descriptor](/cli/commands.md#the-shared-shllself-descriptor).
 
 - **Table row** uses the **plain installed marker** — `statusMarker(true, color)` — the *same* rendering as an installed tool. Maximum visual uniformity was deliberately chosen over a distinct "self" marker; shll is always present (it is the running binary), so it always shows installed.
 - **`--json` object** carries `Installed:true` and `Self:true`. The `Self` field is `omitempty`, so it is absent on the 7 managed tools and present only on shll — letting consumers filter shll out via `select(.self != true)` before driving installs (you cannot brew-install the running orchestrator).

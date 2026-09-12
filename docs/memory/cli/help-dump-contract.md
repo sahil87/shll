@@ -4,9 +4,9 @@ description: "Hidden `shll help-dump` subcommand — the frozen `help/<tool>.jso
 ---
 # cli/help-dump-contract
 
-The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of the 7 toolkit tools that each expose a machine-readable export of their CLI surface for `sahil87/shll.ai`, which renders an expandable "Command reference" per tool page. shll.ai **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump` (see [ci/release-workflow](/ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is shll.ai's `help/wt.json`, which is a *post-capture* file (it carries the shll.ai-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and shll.ai adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
+The frozen `help/<tool>.json` contract and the rules for producing it. shll is one of the 7 toolkit tools that each expose a machine-readable export of their CLI surface for `sahil87/hexokit-site`, which renders an expandable "Command reference" per tool page. hexokit.com **pulls** this export on a schedule (its change `oa63`): it `brew install`s each tool and runs the tool's `help-dump` (see [ci/release-workflow](/ci/release-workflow.md)). **The contract is shared and frozen across all 7 tools** — the reference sample is hexokit.com's `help/wt.json`, which is a *post-capture* file (it carries the hexokit.com-stamped `captured_at`). shll's producer mirrors that shape **minus `captured_at`**: the tool-emitted stdout envelope is `{tool, version, schema_version, root}`, and hexokit.com adds `captured_at` when it stores the pulled document. Do not change the JSON shape without a coordinated 7-tool bump of `schema_version`.
 
-Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; shll.ai's scheduled puller (`scheduled-help-refresh.yml`, on shll.ai's side) consumes it. This repo's release workflow publishes nothing to shll.ai (7huv — see [ci/release-workflow](/ci/release-workflow.md)).
+Source: `src/cmd/shll/help_dump.go` (producer), `src/cmd/shll/help_dump_test.go` (conformance). `help-dump` emits the document to stdout; hexokit.com's scheduled puller (`scheduled-help-refresh.yml`, on hexokit.com's side) consumes it. This repo's release workflow publishes nothing to hexokit.com (7huv — see [ci/release-workflow](/ci/release-workflow.md)).
 
 ## The JSON contract (frozen — schema_version 1)
 
@@ -21,14 +21,14 @@ The **tool-emitted envelope** — exactly what `shll help-dump` writes to stdout
 }
 ```
 
-`captured_at` is **shll.ai-owned**: shll.ai's puller stamps it onto the captured document post-capture, so the *stored* `help/<tool>.json` (e.g. the `wt.json` reference) does carry it — but the tool-emitted stdout envelope above MUST NOT. §3 of the contract forbids the tool emitting it — a tool cannot know its own capture time. (7huv)
+`captured_at` is **hexokit.com-owned**: hexokit.com's puller stamps it onto the captured document post-capture, so the *stored* `help/<tool>.json` (e.g. the `wt.json` reference) does carry it — but the tool-emitted stdout envelope above MUST NOT. §3 of the contract forbids the tool emitting it — a tool cannot know its own capture time. (7huv)
 
 Top-level field meanings (field order is contractual — encoded via Go struct field order, see below):
 
 | Field | Meaning |
 |-------|---------|
 | `tool` | literal `"shll"` (constant `helpDumpTool`). |
-| `version` | the binary's version — read from `cmd.Root().Version` (ldflags-stamped `main.version`), **never hardcoded**. When shll.ai's puller `brew install`s shll, this is the released tag (`v0.5.0`); a local unstamped build emits `dev`. |
+| `version` | the binary's version — read from `cmd.Root().Version` (ldflags-stamped `main.version`), **never hardcoded**. When hexokit.com's puller `brew install`s shll, this is the released tag (`v0.5.0`); a local unstamped build emits `dev`. |
 | `schema_version` | literal int `1` (constant `helpDumpSchemaVersion`). Bump only on a breaking shape change, coordinated across all 7 tools. |
 | `root` | the recursive `Node` tree, anchored at the cobra root command. |
 
@@ -39,7 +39,7 @@ A **Node** is recursive:
   "name": "setup",
   "aliases": ["setup-alias"],
   "path": "shll setup",
-  "short": "wire this machine for the shll toolkit (shell + agent harnesses)",
+  "short": "wire this machine for the HexoKit toolkit (shell + agent harnesses)",
   "usage": "shll setup [flags]",
   "text": "<RAW -h output, byte-for-byte, newlines preserved>",
   "commands": []
@@ -76,7 +76,7 @@ Applied to every node's **children**, recursively (the root is the dump anchor a
 
 - `cmd.Name() == "completion"` — cobra auto-generated (constant `cmdNameCompletion`).
 - `cmd.Name() == "help"` — cobra auto-generated (constant `cmdNameHelp`).
-- `cmd.Hidden == true` — this **self-excludes `help-dump`**, which is itself `Hidden: true`, and prunes the hidden compat spellings `shell-setup` / `agent-setup` (see [cli/setup](/cli/setup.md)), so the rendered shll.ai reference drops the old spellings and carries the visible `setup` family instead.
+- `cmd.Hidden == true` — this **self-excludes `help-dump`**, which is itself `Hidden: true`, and prunes the hidden compat spellings `shell-setup` / `agent-setup` (see [cli/setup](/cli/setup.md)), so the rendered hexokit.com reference drops the old spellings and carries the visible `setup` family instead.
 - `!cmd.IsAvailableCommand()` — defensive; covers deprecated/unavailable commands.
 
 ### Prune-before-render (the text↔commands coherence rule)
@@ -138,7 +138,7 @@ shll's only aliased command is the HIDDEN `shell-setup` (alias `shell-install`, 
 
 `src/cmd/shll/help_dump_test.go` (8 tests):
 
-- Contract-shape — synthetic root + plain-visible/aliased-visible/hidden/`completion`/`help` children: top-level keys present, `schema_version == 1`, `tool == "shll"`, leaf `commands` is `[]` (not null), filtered children absent, **and `captured_at` is absent** (the envelope must not emit the shll.ai-owned field). The synthetic tree's `aliased` child carries two aliases in a fixed order (`["alias-one", "alias-two"]`), and the test asserts (a) that child's `aliases` equals the declared list **in order**, and (b) via a **raw-JSON key-presence** decode (a `json.RawMessage` per node — a typed `helpNode` cannot distinguish an absent key from a zero slice), that the root and the unaliased `visible` node emit **no `aliases` key** while `aliased` emits one.
+- Contract-shape — synthetic root + plain-visible/aliased-visible/hidden/`completion`/`help` children: top-level keys present, `schema_version == 1`, `tool == "shll"`, leaf `commands` is `[]` (not null), filtered children absent, **and `captured_at` is absent** (the envelope must not emit the hexokit.com-owned field). The synthetic tree's `aliased` child carries two aliases in a fixed order (`["alias-one", "alias-two"]`), and the test asserts (a) that child's `aliases` equals the declared list **in order**, and (b) via a **raw-JSON key-presence** decode (a `json.RawMessage` per node — a typed `helpNode` cannot distinguish an absent key from a zero slice), that the root and the unaliased `visible` node emit **no `aliases` key** while `aliased` emits one.
 - `text` byte-for-byte — every visible command in the real `newRootCmd()` compared against captured `cmd.Help()` output.
 - Self-exclusion — `help-dump` absent from the real-tree dump.
 - Version passthrough — `root.Version = "v9.9.9"` → `doc.version == "v9.9.9"`.
@@ -149,6 +149,6 @@ shll's only aliased command is the HIDDEN `shell-setup` (alias `shell-install`, 
 
 ## Cross-references
 
-- Transport: `help-dump` writes to stdout; shll.ai's scheduled puller consumes it; the release workflow publishes nothing to shll.ai (7huv): [ci/release-workflow](/ci/release-workflow.md).
+- Transport: `help-dump` writes to stdout; hexokit.com's scheduled puller consumes it; the release workflow publishes nothing to hexokit.com (7huv): [ci/release-workflow](/ci/release-workflow.md).
 - Root command wiring, version ldflags injection: [cli/commands](/cli/commands.md).
-- The reference sample `help/wt.json` lives in `sahil87/shll.ai`, not this repo — the byte-for-byte `text` test against real `-h` is the enforceable fidelity contract.
+- The reference sample `help/wt.json` lives in `sahil87/hexokit-site`, not this repo — the byte-for-byte `text` test against real `-h` is the enforceable fidelity contract.

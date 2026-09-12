@@ -4,7 +4,7 @@ description: "`shll standards` — agent-facing reader for the toolkit's binding
 ---
 # cli/standards
 
-`shll standards` — the agent-facing reader for the shll toolkit's binding, producer-facing standards. Bare form lists every available standard with its **scope** and a one-line "what it governs and when it applies" description (a self-describing glossary); `shll standards <name>` prints the full markdown document to stdout, byte-identical to its canonical `docs/site/standards/` source. Content is embedded into the binary at build time, so output is offline and versioned with the release.
+`shll standards` — the agent-facing reader for the HexoKit toolkit's binding, producer-facing standards. Bare form lists every available standard with its **scope** and a one-line "what it governs and when it applies" description (a self-describing glossary); `shll standards <name>` prints the full markdown document to stdout, byte-identical to its canonical `docs/site/standards/` source. Content is embedded into the binary at build time, so output is offline and versioned with the release.
 
 > The standards *documents* themselves (the `docs/site/standards/` restructure rationale and the `skill` standard's contract) are documented in [cli/standards-content](/cli/standards-content.md). This file is the **command** — the reader surface, roster, embed mechanism, and drift guard.
 
@@ -109,7 +109,7 @@ Two named constants keep the embed path and flag free of magic strings (code-qua
 
 ## The build-time embed mechanism
 
-> `docs/site/standards/` is the single canonical source for the nine standards documents, pulled and rendered by shll.ai (each page lands at `shll.ai/shll/standards/<name>`, mirroring `shll standards <name>`) — see [cli/standards-content](/cli/standards-content.md) for the directory rationale and the individual standards' contracts. (vo8c, i70w)
+> `docs/site/standards/` is the single canonical source for the nine standards documents, pulled and rendered by hexokit.com (each page lands at `hexokit.com/shll/standards/<name>`, mirroring `shll standards <name>`) — see [cli/standards-content](/cli/standards-content.md) for the directory rationale and the individual standards' contracts. (vo8c, i70w)
 
 **The known constraint** (why a plain embed is impossible): the Go module root is `src/` (`src/go.mod`), and `docs/site/` sits **above** it — `//go:embed` cannot reach above the module root, so `//go:embed ../../../docs/site/*.md` is not allowed by the toolchain. The mechanism bridges the gap:
 
@@ -157,7 +157,7 @@ Helpers: `standardByName(name) (standard, bool)` and `validStandards() string` b
 
 - **`shll audit`** — the future conformance checker that pairs with `standards` (what it checks, where it runs) needs its own design. Not part of this change.
 - **Deploying "run `shll standards`" stanzas** to other toolkit repos' agent entry files — separate, per-repo work.
-- Any change to shll.ai's pull/render pipeline — `docs/site/` stays canonical and structurally untouched.
+- Any change to hexokit.com's pull/render pipeline — `docs/site/` stays canonical and structurally untouched.
 - Rendering markdown, paging, or syntax-highlighting the document output — raw bytes only.
 
 ## Test seam

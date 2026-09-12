@@ -1,21 +1,21 @@
 ---
 type: memory
-description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at shll.ai/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, tty-gated phase lines + OSC 9;4, then converges install-then-update: `shll install \"$@\"` + `exec shll update` (tool names only; flags reach install alone). Load-bearing — shll.ai raw-fetches it from `main`."
+description: "`scripts/install.sh` — the `curl …` pipe-to-`sh` toolkit bootstrap served at hexokit.com/install: POSIX-sh, main()-truncation-guarded, owns the pre-brew phase (git/curl/tmux preflight, headless Homebrew bootstrap, `$BREW` + shellenv threading), capability-probed tap-trust, tty-gated phase lines + OSC 9;4, then converges install-then-update: `shll install \"$@\"` + `exec shll update` (tool names only; flags reach install alone). Load-bearing — hexokit-site raw-fetches it from `main`."
 ---
 # ci/install-bootstrap
 
 The copy-paste install one-liner. Source: `scripts/install.sh`.
 
 ```sh
-curl -fsSL https://shll.ai/install | sh                # converge everything (install + update)
-curl -fsSL https://shll.ai/install | sh -s -- hop wt   # converge a subset
+curl -fsSL https://hexokit.com/install | sh                # shll + HexoKit (hexokit.com's product-first default; the raw script alone converges everything)
+curl -fsSL https://hexokit.com/install | sh -s -- hop wt   # converge a subset
 ```
 
 ## Overview
 
 `scripts/install.sh` is a POSIX-sh bootstrap that owns the whole **pre-brew phase**: it preflights the dependencies the install needs (git/CLT, curl, tmux), bootstraps Homebrew headlessly when absent, then solves the circularity that `shll` cannot trust/install its own Homebrew formula before that binary exists on `PATH`. Once `shll` is present it **converges the machine to complete and current**: `shll install "$@"` fills the gaps, then `exec shll update` (tool names only) upgrades the already-installed tools — running each tool's own update contract, side effects included (e.g. run-kit's daemon restart); freshly installed tools are cheap no-op updates. Both verbs own all the post-brew intelligence — roster knowledge, subset filtering, per-formula trust for the other six tools, graceful skips (Constitution III — wrap, don't reinvent). The script carries none of that logic. The script's three phases (preflight → brew bootstrap → shll handoff) announce themselves with tty-gated `→`/`✓` phase lines.
 
-**The intended outcome is a fully wired machine.** `shll install` auto-runs `shll setup shell` and `shll setup agent --yes` in-process at the end of every non-dry-run install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), so the curl-bootstrap user normally lands with shell integration and agent harnesses wired — not with nudges to ignore. Both steps are best-effort: a failure warns and falls back to that step's manual nudge, never failing the install. The opt-out flags ride the script's verbatim arg passthrough **into `shll install`**: `curl -fsSL https://shll.ai/install | sh -s -- --no-agent-setup` → `shll install --no-agent-setup` — and that flag passthrough is public surface alongside the tool-name subset args. Only the tool names ride the update pass: install-only flags are not `shll update` flags, so the script filters every dash-prefixed arg out of the update argv (generic `-*` match — no flag-name knowledge in the script).
+**The intended outcome is a fully wired machine.** `shll install` auto-runs `shll setup shell` and `shll setup agent --yes` in-process at the end of every non-dry-run install (see [cli/install §the post-install auto-run steps](/cli/install.md#the-post-install-auto-run-steps-and-the-next-steps-block)), so the curl-bootstrap user normally lands with shell integration and agent harnesses wired — not with nudges to ignore. Both steps are best-effort: a failure warns and falls back to that step's manual nudge, never failing the install. The opt-out flags ride the script's verbatim arg passthrough **into `shll install`**: `curl -fsSL https://hexokit.com/install | sh -s -- --no-agent-setup` → `shll install --no-agent-setup` — and that flag passthrough is public surface alongside the tool-name subset args. Only the tool names ride the update pass: install-only flags are not `shll update` flags, so the script filters every dash-prefixed arg out of the update argv (generic `-*` match — no flag-name knowledge in the script).
 
 ## Behavior contract
 
@@ -97,9 +97,9 @@ The script SHALL announce its three phases (preflight → brew bootstrap → shl
 - **WHEN** it runs
 - **THEN** the phase lines print as plain `→`/`✓` glyphs with no ANSI color and no OSC sequence is emitted
 
-## The shll.ai raw-fetch URL contract
+## The hexokit.com raw-fetch URL contract
 
-`scripts/install.sh` on `main` is what shll.ai serves at `shll.ai/install`. The site repo's build fetches `https://raw.githubusercontent.com/sahil87/shll/main/scripts/install.sh` into its `public/install` with a fail-hard `curl -f` (sahil87/shll.ai#84).
+`scripts/install.sh` on `main` is what hexokit.com serves at `hexokit.com/install`. The site repo's (`sahil87/hexokit-site`) deploy fetches `https://raw.githubusercontent.com/sahil87/shll/main/scripts/install.sh` into its `public/install` with a fail-hard `curl -f`, then appends a **product-first composition block**: with no tool arguments the served script runs `main run-kit` (installs `shll` + HexoKit only) and prints `shll install` as the next step for the rest of the toolkit; tool arguments pass through unchanged. The raw script alone converges the whole roster. `shll.ai/install` is a byte copy of hexokit.com's composed file, refreshed by the redirect stub's deploy (D4 of the rebrand plan — the endpoint is baked into shipped binaries and never lapses). The script's header comment names hexokit.com as the served host and describes the composition.
 
 **The path is load-bearing.** Renaming or moving `scripts/install.sh` breaks the site deploy (the raw-fetch 404s). This is why the local dev script lives at a different path — see [The local dev script](#the-local-dev-script).
 
