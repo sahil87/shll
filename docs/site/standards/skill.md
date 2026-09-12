@@ -46,7 +46,7 @@ The bundle is a **usage briefing**, not a second README and not flag reference. 
 - **Output & exit-code contracts** — stdout-vs-stderr split, `--json` availability, the exit-code convention (`0`/`1`/`2`) a caller branches on.
 - **Gotchas** — the non-obvious traps an agent hits on first use.
 
-Explicitly **out** of the bundle: exhaustive flag tables (defer to `-h`), full command trees (defer to `help-dump` and the tool's [hexokit.com commands page](https://hexokit.com/toolkit/)), and installation prose (that is README / `docs/site/install.md`).
+Explicitly **out** of the bundle: exhaustive flag tables (defer to `-h`), full command trees (defer to `help-dump` and the tool's commands page on hexokit.com — `https://hexokit.com/<tool>/commands/`, per the [readme-extraction standard](readme-extraction.md) rule 8), and installation prose (that is README / `docs/site/install.md`).
 
 ## Rules with teeth
 

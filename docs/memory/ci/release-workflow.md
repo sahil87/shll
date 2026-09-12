@@ -29,7 +29,7 @@ All third-party actions are pinned to commit SHAs.
 
 ## hexokit.com help-tree integration
 
-hexokit.com's integration is pull-based: its own scheduled job (`scheduled-help-refresh.yml`, on hexokit.com's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself. The producer is the `help-dump` command (shipped with shll); the transport lives entirely in hexokit.com. This workflow publishes nothing to `sahil87/hexokit.com` and references no `SHLLAI_TOKEN`. (7huv)
+hexokit.com's integration is pull-based: its own scheduled job (`scheduled-help-refresh.yml`, on hexokit-site's side) `brew install`s shll, runs `shll help-dump`, and commits the captured JSON itself. The producer is the `help-dump` command (shipped with shll); the transport lives entirely in hexokit.com. This workflow publishes nothing to `sahil87/hexokit-site` and references no `SHLLAI_TOKEN`. (7huv)
 
 The JSON contract `help-dump` produces is documented in [cli/help-dump-contract](/cli/help-dump-contract.md).
 
