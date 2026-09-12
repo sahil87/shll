@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll update` — brew detection, probe-spec installed-detection for delegated (non-brew) roster entries, sequential delegated upgrades with brew-managed-only self-heals (relink, brew-upgrade fallback), exit-code aggregation, the `What changed:` release digest, placement-gated agent-skill refresh with `--yes`/`-y` forwarding, a linear streamed write phase with null-stdin streamed-tail children, determinate OSC 9;4 progress on TTY stderr (tmux-wrapped), and the `rk` legacy alias."
+description: "`shll update` — brew detection, probe-spec installed-detection for delegated (non-brew) roster entries, sequential delegated upgrades with brew-managed-only self-heals (relink, brew-upgrade fallback), exit-code aggregation, the `What changed:` release digest, placement-gated agent-skill refresh with `--yes`/`-y` forwarding, a linear streamed write phase (null-stdin streamed-tail children, a still-waiting heartbeat for silent children, OSC 9;4 progress on TTY stderr), and the `rk` legacy alias."
 ---
 # cli/update
 
@@ -215,7 +215,7 @@ Pinned by `TestUpdate_DelegatedFailureBrewFallbackRescues` (fail → note + fall
 | `brew upgrade <formula>` (self-upgrade + no-`Update`-argv fallback) / `brew link <tool>` (relink heal) | `proc.RunStreamedTail` (null stdin, live tee + bounded tail) | Same — preserves brew's colored progress output. |
 | `shll setup agent [--yes]` (end-of-run agent-skill refresh) | `proc.RunForeground` (inherited stdio) | The one deliberate exception — run-kit's hook confirmation is a documented interactive path when `--yes` is absent (Design Decision below). |
 
-This split is a Constitution-aligned choice: probes capture (so shll can branch on the result), user-visible write operations stream live (so the user sees brew / the tool working) with null stdin (so a prompt attempt fails fast). All write-phase children route through `proc.RunStreamedTail` via the shared `runStreamedChild` helper (`brew.go`) — there is no per-request env override (see [trust posture](#trust-posture-and-the-homebrew-604-floor)). See [Null-stdin streamed children](#null-stdin-streamed-children) and [internal/proc §TransportStreamTail](/internal/proc.md#transportstreamtail-used-by-procrunstreamedtail).
+This split is a Constitution-aligned choice: probes capture (so shll can branch on the result), user-visible write operations stream live (so the user sees brew / the tool working) with null stdin (so a prompt attempt fails fast). All write-phase children route through `proc.RunStreamedTail` via the shared `runStreamedChild` helper (`brew.go`), which also arms the [silence heartbeat](#silence-heartbeat-on-write-phase-children) — there is no per-request env override (see [trust posture](#trust-posture-and-the-homebrew-604-floor)). See [Null-stdin streamed children](#null-stdin-streamed-children) and [internal/proc §TransportStreamTail](/internal/proc.md#transportstreamtail-used-by-procrunstreamedtail).
 
 ## Sequential, not parallel — scoped to *upgrades*
 
@@ -273,9 +273,22 @@ The duration in the summary tail is measured via an injectable package-level clo
 Every write-phase child — `brew update --quiet`, the shll-self `brew upgrade`, the relink heal's `brew link`, each delegated `<tool> update [--skip-brew-update]` / `rk desktop update`, and the brew-upgrade fallbacks — runs through `runStreamedChild(ctx, stdout, stderr, argv...)` (`src/cmd/shll/brew.go`), the shared thin wrapper over `proc.RunStreamedTail` (yud0):
 
 - **Null stdin (`cmd.Stdin = nil`).** A child that attempts an interactive prompt reads EOF and fails fast instead of hanging the walk — the toolkit's prompt-free standard is *enforced*, not accommodated (a genuinely unavoidable question reads `/dev/tty` in the tool itself). The end-of-run agent-skill refresh is the one exception — it keeps `proc.RunForeground` (inherited stdin) because its run-kit hook confirmation is a documented interactive path when `--yes` is absent.
-- **Live tee, never buffered.** Child stdout/stderr stream to the run's writers in real time; children see a pipe, so tty-only child rendering (e.g. brew progress bars) degrades — accepted, since the toolkit standard already requires children to behave non-interactively.
+- **Live tee, never buffered.** Child stdout/stderr stream to the run's writers in real time; children see a pipe, so tty-only child rendering (e.g. brew progress bars) degrades — accepted, since the toolkit standard already requires children to behave non-interactively. The blind spot that leaves — a brew download that renders nothing on a pipe — is what the [silence heartbeat](#silence-heartbeat-on-write-phase-children) below covers (e3x5).
 - **Bounded tail capture, currently unconsumed.** The transport also captures the last ~4KB of interleaved output (`tailRingSize`) into `Result.Tail`; no caller consumes it (kept for API stability — see [internal/proc §TransportStreamTail](/internal/proc.md#transportstreamtail-used-by-procrunstreamedtail)). A failed child's cause is already visible in the linear scrollback, so no tail re-print frame exists.
 - **Exit-code semantics unchanged.** A non-zero exit is reported via `code` with `err == nil` (the caller branches on the code); `ErrNotFound`/pre-start I/O failures surface as `(-1, err)` — the same contract `proc.RunForeground` had, so the relink-heal/fallback branching is untouched. Delegation argvs (`upgradeArgv`, `--skip-brew-update` probing, `t.Install`) are byte-identical; only the transport changed.
+
+## Silence heartbeat on write-phase children
+
+Every child that rides `runStreamedChild` — so every write-phase child of `shll update` AND `shll install` (brew update/upgrade/install/link/trust, each delegated `<tool> update` / `rk desktop update`) — is watched for silence (e3x5). `runStreamedChild` (`brew.go`) is a one-liner over `runStreamedChildWithHeartbeat` (`src/cmd/shll/heartbeat.go`), which wraps both tee writers in an `activityWriter` (stamps a `silenceWatch` on every write, forwards bytes verbatim) and runs one watcher goroutine for the child's lifetime:
+
+- **Trigger.** No byte on either stream for `childSilenceHeartbeat` (30s) → one line on **stderr** (diagnostics, principle №2), from the named constant `childHeartbeatFmt`: `shll: still waiting on 'brew upgrade sahil87/tap/shll' (no output for 30s; a slow or stalled download is the usual cause, and no deadline is imposed)`. Plain ASCII — it lands on every stream kind, so it carries none of the glyphs `ui.go` degrades. The argv is `argvString`'s rendering; the silence is `formatDuration`'s.
+- **Back-off, reset on output.** The required silence doubles after each line (30s, 1m, 2m, 4m, …) so a long stall yields a short series, not a fixed-interval drumbeat (principle №9); any child output resets both the clock and the threshold. `silenceWatch.due` owns that arithmetic and is unit-tested with synthetic times; the watcher polls it every `heartbeatPollInterval` (1s).
+- **Never a deadline.** The watcher only prints — it never cancels the context or signals the child, so the update standard's brew-safety clause is untouched and exit-code semantics pass through unchanged.
+- **Outside the transport.** The heartbeat writes to the caller's stderr directly — not through the `activityWriter` (so it does not reset the clock) and not through `internal/proc` (so it never enters the bounded tail ring; the tail stays pure child output). The watcher is stopped and joined before `runStreamedChild` returns, so no line can land after the child's exit is reported. `internal/proc` is unchanged.
+- **Real clock.** The watch runs on `time.Now`, deliberately NOT the `nowFunc` seam (clock.go): that seam feeds the summary tail's duration golden a scripted sequence of times, and a poller reading it would consume those values. Timing tests pass millisecond thresholds through `runStreamedChildWithHeartbeat` instead; an instant child (every existing fake-runner test) emits zero heartbeat bytes, so the goldens are byte-identical.
+- **Why it exists.** Observed 2026-09-12: `shll update shll` sat for minutes on `brew upgrade sahil87/tap/shll` while the bottle download crawled over a degraded route to `release-assets.githubusercontent.com` (one of GitHub's four anycast IPs unreachable from the machine, ~10s per connect attempt, brew's HEAD probe of the asset alone 45s). Homebrew 6's download queue renders progress only on a TTY and goes quiet whenever its download concurrency is above 1; shll's tee hands brew a pipe, so between `==> Fetching …` and the finished download the terminal showed nothing — a slow download indistinguishable from a hang.
+
+Pinned by `heartbeat_test.go` — see [Test seam](#test-seam). Rationale: [the heartbeat Design Decision](#heartbeat-on-silence-not-a-deadline-a-pty-or-a-brew-env-knob) below.
 
 ## OSC 9;4 terminal progress
 
@@ -426,6 +439,20 @@ This is the reason for the early short-circuit in step 5 above. The check is a l
 > **Rejected**: hardening every subprocess in the two commands uniformly (breaks the documented interactive refresh contract).
 > *Introduced by*: 260820-yud0-install-update-terminal-ux
 
+### Heartbeat on silence, not a deadline, a pty, or a brew env knob
+
+> **Decision**: A silent write-phase child gets a still-waiting line on stderr after 30s of no output, backing off (doubling) between lines; shll still never bounds or signals brew.
+> **Why**: The failure the user experiences is a *silent* wait, not a wrong result — visibility fixes it fully. brew legitimately blocks for minutes on the network, so any bound would either fire on healthy slow runs or be too long to help, and the standard's brew-safety clause forbids short timeouts and `SIGKILL`. The line names the exact child argv and the silence so far — what a user needs to decide whether to keep waiting.
+> **Rejected**: a bounded `brew fetch` phase before `brew upgrade` (killing a brew child orphans its `curl` — observed live: the SIGTERM'd brew left `curl` running against the very `.incomplete` file the next attempt resumes — and the standard says no short timeouts; a fetch phase also repeats brew's own HEAD probe); a pty for brew children (already rejected for the transport — new dependency and platform surface, and tty progress bars would pollute the tail ring); defaulting `HOMEBREW_DOWNLOAD_CONCURRENCY=1` so brew prints `==> Downloading <url>` on a pipe (adds the URL line, but silently changes brew's download behavior for every shll-spawned brew — and by inheritance every delegated tool's brew — and contradicts the no-environment-injection posture; a candidate follow-up, not part of this change); a fixed-interval heartbeat (a 10-minute stall would print 20 near-identical lines).
+> *Introduced by*: 260912-e3x5-update-silence-heartbeat
+
+### Real clock for the watch, explicit timings for tests
+
+> **Decision**: `silenceWatch` runs on `time.Now`; `runStreamedChildWithHeartbeat` takes the threshold and poll interval as parameters, and `runStreamedChild` passes the production constants.
+> **Why**: The `nowFunc` seam exists so the summary tail's duration golden can consume a scripted sequence of times; a watcher polling it would eat those values and race the scripted closure. Explicit parameters keep the timing tests deterministic without a mutable package var for the threshold.
+> **Rejected**: polling `nowFunc`; a package-level threshold var swapped by tests (mutable state where a parameter suffices).
+> *Introduced by*: 260912-e3x5-update-silence-heartbeat
+
 ### Fallback on any failure, ordered after the relink heal
 
 > **Decision**: The fallback triggers on any failure (non-zero exit or exec/transport error) of the *final* delegated outcome, evaluated after the ErrNotFound → `brew link` → retry heal.
@@ -490,6 +517,11 @@ Covered scenarios (`src/cmd/shll/update_test.go`):
 - `TestUpdate_ProgressRemoveOnBrewUpdateFailure` *(rbdd)* — `brew update` fails after the reporter started → `indeterminate` then the deferred `remove`, no `set`/`errorState` ever emitted.
 - `TestUpdate_ProgressSilentOnNonWritePaths` *(rbdd)* — dry-run and the no-tools short-circuit emit zero OSC bytes even with the TTY seam forced.
 - `TestUpdate_RefreshSubprocessKeepsForegroundTransport` *(yud0)* — the end-of-run agent-skill refresh subprocess keeps `TransportForeground` (inherited stdin) while the write-phase children ride `TransportStreamTail`.
+- `TestSilenceWatch_DueDoublesThenResetsOnOutput` *(e3x5)* — synthetic times: not due at 29s, due at 30s, the threshold doubles (45s not due, 60s due), a `touch` at 70s resets so 99s is not due and 100s is due again at 30s.
+- `TestActivityWriter_ForwardsBytesAndTouches` *(e3x5)* — bytes forwarded verbatim; the write counts as output (no heartbeat due right after it).
+- `TestRunStreamedChild_HeartbeatOnSilentChild` *(e3x5)* — a fake child silent for 60ms against a 10ms threshold (via `runStreamedChildWithHeartbeat`) → at least one `still waiting on 'brew upgrade sahil87/tap/shll'` line on stderr, nothing on stdout, exactly one `TransportStreamTail` request.
+- `TestRunStreamedChild_ChildOutputSuppressesHeartbeat` *(e3x5)* — a child writing every 10ms for 150ms against a 200ms threshold → no heartbeat, all 15 lines forwarded through the wrapper.
+- `TestRunStreamedChild_FastChildNoHeartbeat` *(e3x5)* — the production `runStreamedChild` with an instant child → both buffers empty and a non-zero exit passes through as `(3, nil)`; the guarantee the existing install/update goldens rest on.
 
 The `progressReporter` itself (sequence forms, gating, NO_COLOR independence, tmux ESC-doubling envelope) is unit-tested in `progress_test.go`, which forces the enabled branch via the `forceProgressTTY` t.Cleanup helper (swapping the `progressWriterIsTTY` seam).
 

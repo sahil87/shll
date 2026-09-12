@@ -67,7 +67,10 @@ are preserved. rk-desktop is not a brew formula — it delegates to ` + "`rk des
 brew-managed roster tool that exposes no ` + "`update`" + ` is upgraded via
 ` + "`brew upgrade sahil87/tap/<formula>`" + ` instead. Uninstalled tools (including shll
 itself, e.g. on a ` + "`go install`" + ` dev build) are skipped silently. Brew and per-tool
-progress output streams directly to your terminal.
+progress output streams directly to your terminal. If a step goes quiet for 30s
+(typically a slow or stalled download inside brew), shll prints a still-waiting
+line to stderr and keeps waiting, backing off between repeats; it never imposes
+a deadline on brew.
 
 When agent skills were previously placed via ` + "`shll setup agent`" + `, the run ends by
 re-running ` + "`shll setup agent`" + ` so the placed skills track the freshly upgraded
