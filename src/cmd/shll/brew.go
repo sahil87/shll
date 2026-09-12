@@ -17,14 +17,15 @@ const brewBinary = "brew"
 // runStreamedChild runs one install/update write-phase child (brew
 // trust/install/update/upgrade/link, delegated <tool> update, rk desktop
 // install|update) via the null-stdin streamed-tail transport: output tees live
-// to the run's writers. Exit-code semantics pass
-// through RunStreamedTail unchanged (non-zero exit is reported via code, err
-// stays nil). The end-of-run agent-skill refresh deliberately does NOT use
-// this — it keeps RunForeground (inherited stdin, the documented interactive
-// path).
+// to the run's writers, and a still-waiting heartbeat lands on stderr whenever
+// the child has been silent for childSilenceHeartbeat (backing off after each
+// line — see heartbeat.go), so a slow brew download reads as a wait rather
+// than a hang. Exit-code semantics pass through RunStreamedTail unchanged
+// (non-zero exit is reported via code, err stays nil). The end-of-run
+// agent-skill refresh deliberately does NOT use this — it keeps RunForeground
+// (inherited stdin, the documented interactive path).
 func runStreamedChild(ctx context.Context, stdout, stderr io.Writer, argv ...string) (int, error) {
-	code, _, err := proc.RunStreamedTail(ctx, stdout, stderr, argv[0], argv[1:]...)
-	return code, err
+	return runStreamedChildWithHeartbeat(ctx, stdout, stderr, childSilenceHeartbeat, heartbeatPollInterval, argv...)
 }
 
 // brewMissingHint is the exact stderr line printed by `shll update` when the

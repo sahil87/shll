@@ -1,0 +1,57 @@
+id: e3x5
+name: 260912-e3x5-update-silence-heartbeat
+created: 2026-09-12T05:15:42Z
+created_by: sahil-noon
+change_type: fix
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: active
+plan:
+    generated: true
+    task_count: 6
+    acceptance_count: 13
+    acceptance_completed: 13
+confidence:
+    certain: 5
+    confident: 1
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 77.5
+        reversibility: 90.0
+        competence: 85.0
+        disambiguation: 82.5
+stage_metrics:
+    intake: {started_at: "2026-09-12T05:15:42Z", driver: fab-new, iterations: 1, completed_at: "2026-09-12T05:21:26Z"}
+    apply: {started_at: "2026-09-12T05:21:26Z", driver: claude-code, iterations: 1, completed_at: "2026-09-12T05:21:26Z"}
+    review: {started_at: "2026-09-12T05:21:26Z", driver: claude-code, iterations: 1, completed_at: "2026-09-12T05:21:26Z"}
+    hydrate: {started_at: "2026-09-12T05:21:26Z", driver: claude-code, iterations: 1, completed_at: "2026-09-12T05:21:26Z"}
+    ship: {started_at: "2026-09-12T05:21:26Z", driver: claude-code, iterations: 1, completed_at: "2026-09-12T05:22:37Z"}
+    review-pr: {started_at: "2026-09-12T05:22:37Z", driver: git-pr, iterations: 1}
+prs:
+    - https://github.com/sahil87/shll/pull/99
+change_type_source: explicit
+true_impact:
+    added: 673
+    deleted: 16
+    net: 657
+    excluding:
+        added: 314
+        deleted: 10
+        net: 304
+    tests:
+        added: 147
+        deleted: 0
+        net: 147
+    computed_at: "2026-09-12T05:22:37Z"
+    computed_at_stage: ship
+summary: 'shll update/install: still-waiting heartbeat on stderr for silent brew/tool children (30s, doubling back-off) — a slow brew download no longer reads as a hang; no deadline on brew'
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-12T05:22:37Z

@@ -27,7 +27,9 @@ and the platform supports it; otherwise it is skipped with a note, never a
 failure — on a targeted ` + "`shll install rk-desktop`" + ` the refusal is
 printed explicitly). Tools that are already installed are skipped silently —
 the command is idempotent and safe to re-run. Brew's progress output streams
-directly to your terminal.
+directly to your terminal. If a step goes quiet for 30s (typically a slow or
+stalled download inside brew), shll prints a still-waiting line to stderr and
+keeps waiting, backing off between repeats; it never imposes a deadline on brew.
 
 With no arguments, shll install processes the whole roster as above. Pass one or
 more tool names to install only that subset (valid targets: run-kit, rk-desktop,

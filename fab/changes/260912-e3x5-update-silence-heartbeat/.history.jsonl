@@ -1,0 +1,9 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-12T05:15:42Z"}
+{"args":"shll update: still-waiting heartbeat for silent brew/tool children","cmd":"fab-new","event":"command","ts":"2026-09-12T05:15:42Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-09-12T05:21:26Z"}
+{"action":"enter","driver":"claude-code","event":"stage-transition","stage":"apply","ts":"2026-09-12T05:21:26Z"}
+{"action":"enter","driver":"claude-code","event":"stage-transition","stage":"review","ts":"2026-09-12T05:21:26Z"}
+{"action":"enter","driver":"claude-code","event":"stage-transition","stage":"hydrate","ts":"2026-09-12T05:21:26Z"}
+{"event":"review","result":"passed","ts":"2026-09-12T05:21:26Z"}
+{"action":"enter","driver":"claude-code","event":"stage-transition","stage":"ship","ts":"2026-09-12T05:21:26Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-12T05:22:37Z"}
