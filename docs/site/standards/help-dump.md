@@ -64,7 +64,7 @@ The tree MUST be discovered programmatically — walking the live command tree (
 
 ## The `tu` exception
 
-`tu` is Node/TS and flag-based with no subcommands. Its `help-dump` emits a flat tree — `root.commands: []` with the full `tu --help` output in `root.text`. Every other tool is Cobra/Go and emits the full recursive tree.
+`tu` is a flag-based, positional-grammar CLI with no subcommands. Its `help-dump` emits a flat tree — `root.commands: []` with the full `tu --help` output in `root.text`. Every other tool is built on Cobra and emits the full recursive tree.
 
 ## Schema evolution
 
