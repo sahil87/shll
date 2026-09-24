@@ -1,0 +1,110 @@
+name: Installer
+
+# Exercises scripts/install.sh on real Linux and macOS runners. Kept out of
+# ci.yml's ci-gate on purpose: the end-to-end job depends on the network
+# (Homebrew's installer, the sahil87 tap), so it runs only when the installer
+# changes — not on every PR.
+on:
+  pull_request:
+    paths:
+      - scripts/install.sh
+      - scripts/test-install-rc.sh
+      - .github/workflows/installer.yml
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/install.sh
+      - scripts/test-install-rc.sh
+      - .github/workflows/installer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Unit-level: persist_brew_shellenv's rc-file edits under each platform's
+  # own /bin/sh and userland (dash + GNU on Ubuntu, bash 3.2 + BSD on macOS).
+  rc-file:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install zsh (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        run: shellcheck -s sh -S warning scripts/install.sh scripts/test-install-rc.sh
+
+      - name: rc-file tests (sh)
+        run: sh scripts/test-install-rc.sh
+
+      - name: rc-file tests (dash)
+        if: runner.os == 'Linux'
+        run: TEST_SH=dash sh scripts/test-install-rc.sh
+
+  # End-to-end: the fresh-machine path. Both runner images ship Homebrew but
+  # keep the install off a bare PATH, so hiding it makes the script take its
+  # bootstrap branch (Homebrew's installer re-runs over the existing prefix;
+  # runners have passwordless sudo). The pass condition is the bug report
+  # itself: a brand-new interactive zsh with a bare PATH resolves shll and
+  # rk, and sourcing the rc file raises no "command not found".
+  bootstrap-e2e:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install zsh + tmux (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh tmux
+
+      - name: Install tmux (macOS)
+        if: runner.os == 'macOS'
+        run: brew install tmux
+
+      - name: Start from zsh startup files with no brew and no shll wiring
+        run: |
+          rm -f ~/.zshenv ~/.zprofile ~/.zshrc
+          printf '# fresh user rc\nalias ll="ls -l"\n' > ~/.zshrc
+
+      - name: Run the installer with brew hidden from PATH
+        run: |
+          env -i HOME="$HOME" USER="$USER" TERM=dumb SHELL=/bin/zsh \
+            PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+            sh scripts/install.sh run-kit --no-agent-setup
+
+      - name: Startup files after install
+        run: |
+          for f in ~/.zshenv ~/.zprofile ~/.zshrc; do
+            echo "== $f"; cat "$f" 2>/dev/null || echo "(absent)"
+          done
+
+      # macOS terminals open login shells, which read .zprofile (where the
+      # installer puts brew's line on macOS); Linux terminals open non-login
+      # ones, which read .zshenv.
+      - name: A new terminal resolves shll and rk
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then flags=-il; else flags=-i; fi
+          out=$(env -i HOME="$HOME" USER="$USER" TERM=dumb SHELL=/bin/zsh \
+            PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+            zsh $flags -c 'command -v shll rk && shll version' 2>&1 </dev/null)
+          echo "$out"
+          if echo "$out" | grep -q 'command not found'; then
+            echo "::error::a new shell hit 'command not found'"; exit 1
+          fi
+          echo "$out" | grep -q '/bin/shll$' || { echo "::error::shll not on PATH in a new shell"; exit 1; }
+          echo "$out" | grep -q '/bin/rk$'   || { echo "::error::rk not on PATH in a new shell"; exit 1; }

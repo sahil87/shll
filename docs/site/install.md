@@ -23,11 +23,14 @@ curl -fsSL https://hexokit.com/install | sh -s -- hop wt
 
 The script preflights the machine before touching Homebrew — it probes git (on macOS via `xcode-select -p`, the real Command Line Tools check; the `/usr/bin/git` shim false-positives when the CLT is absent), curl, and tmux, then reports every miss at once with its per-platform fix command. Missing curl (or missing git on Linux without Homebrew) is fatal; missing tmux is a warning with its install hint, never a block.
 
-When Homebrew is absent the script **bootstraps it headlessly** — the official installer with `NONINTERACTIVE=1` (on macOS this also installs the Command Line Tools via `softwareupdate`; on Linux the preflight has already guaranteed git). A fresh Homebrew isn't on `PATH` in the current shell, so the script evals `brew shellenv` itself before handing off, and prints the rc line for your future shells — keep it (`shll setup shell` below wires shll's own shell integration, not brew's):
+When Homebrew is absent the script **bootstraps it headlessly** — the official installer with `NONINTERACTIVE=1` (on macOS this also installs the Command Line Tools via `softwareupdate`; on Linux the preflight has already guaranteed git). A fresh Homebrew isn't on `PATH` in the current shell, so the script evals `brew shellenv` itself before handing off, and persists it for your future shells. It writes the line into a startup file that runs before the toolkit's own shell blocks: `${ZDOTDIR:-$HOME}/.zshenv` for zsh on Linux, `${ZDOTDIR:-$HOME}/.zprofile` for zsh on macOS (Homebrew's documented spot), and `~/.bashrc` (Linux) or `~/.bash_profile` (macOS) for bash. When the file already holds a shll or rk tmux-guard block, the line goes above it. Order matters twice over: the shll block calls `shll`, which needs brew on `PATH`, and `brew shellenv` always prepends brew's bin, so running it after rk's tmux guard would put brew's `tmux` back in front of the guard shim:
 
 ```sh
+# Homebrew (added by the shll installer)
 eval "$(/opt/homebrew/bin/brew shellenv)"   # Apple Silicon; /usr/local/bin/brew on Intel, /home/linuxbrew/.linuxbrew/bin/brew on Linux
 ```
+
+A file that already mentions `brew shellenv` is left alone. For any other shell, or an rc file it can't write, the script prints the line for you to add instead.
 
 An existing Homebrew is used as-is (≥ 6.0.4 — on 6.0.0–6.0.3, run `brew update` first), and the script is idempotent — safe to re-run: a re-run fills any gaps and brings the installed tools current.
 
