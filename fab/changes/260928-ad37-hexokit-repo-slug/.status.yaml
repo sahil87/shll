@@ -1,0 +1,58 @@
+id: ad37
+name: 260928-ad37-hexokit-repo-slug
+created: 2026-09-28T17:53:20Z
+created_by: sahil-noon
+change_type: refactor
+issues: []
+progress:
+    intake: done
+    apply: done
+    review: done
+    hydrate: done
+    ship: done
+    review-pr: done
+plan:
+    generated: true
+    task_count: 3
+    acceptance_count: 8
+    acceptance_completed: 8
+confidence:
+    certain: 5
+    confident: 1
+    tentative: 0
+    unresolved: 0
+    score: 4.9
+    fuzzy: true
+    dimensions:
+        signal: 84.2
+        reversibility: 88.3
+        competence: 86.7
+        disambiguation: 85.8
+stage_metrics:
+    intake: {started_at: "2026-09-28T17:53:20Z", driver: fab-new, iterations: 1, completed_at: "2026-09-28T17:54:43Z"}
+    apply: {started_at: "2026-09-28T17:54:43Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T17:55:16Z"}
+    review: {started_at: "2026-09-28T17:55:16Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T17:56:50Z"}
+    hydrate: {started_at: "2026-09-28T17:56:50Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T17:58:22Z"}
+    ship: {started_at: "2026-09-28T17:58:22Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T17:59:49Z"}
+    review-pr: {started_at: "2026-09-28T17:59:49Z", driver: git-pr, iterations: 1, completed_at: "2026-09-28T18:04:00Z"}
+prs:
+    - https://github.com/sahil87/shll/pull/104
+base_branch: main
+true_impact:
+    added: 307
+    deleted: 60
+    net: 247
+    excluding:
+        added: 36
+        deleted: 38
+        net: -2
+    tests:
+        added: 27
+        deleted: 28
+        net: -1
+    computed_at: "2026-09-28T17:59:49Z"
+    computed_at_stage: ship
+summary: shll roster Repo for hexokit and rk-desktop → hexokit (GitHub repo renamed sahil87/run-kit → sahil87/hexokit); repo links, changelog fetch/compare URLs, tests, and docs follow
+# base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
+# true_impact: lazily created on first stage-finish that computes it (no placeholder here).
+last_updated: 2026-09-28T18:04:00Z

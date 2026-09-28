@@ -413,8 +413,8 @@ func TestChangelog_NamedNotInstalledErrorsNoRangeOnly(t *testing.T) {
 }
 
 func TestChangelog_LegacyAliasResolvesToHexokit(t *testing.T) {
-	// `shll changelog rk` resolves the alias to run-kit (canonicalized in
-	// parseChangelogSpecs), so the not-installed error names the canonical run-kit.
+	// `shll changelog rk` resolves the alias to hexokit (canonicalized in
+	// parseChangelogSpecs), so the not-installed error names the canonical hexokit.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		return proc.Result{Err: errors.New("not installed")}
 	}}
@@ -433,7 +433,7 @@ func TestChangelog_LegacyAliasResolvesToHexokit(t *testing.T) {
 func TestChangelog_ExplicitRangeWorksUninstalled(t *testing.T) {
 	// rk NOT installed, but an explicit range never consults brew and works.
 	changelogServer(t, map[string]string{
-		"run-kit": relJSON([3]string{"v0.2.0", "rk2", "b"}),
+		"hexokit": relJSON([3]string{"v0.2.0", "rk2", "b"}),
 	})
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		return proc.Result{Err: errors.New("not installed")}
@@ -445,7 +445,7 @@ func TestChangelog_ExplicitRangeWorksUninstalled(t *testing.T) {
 		t.Fatalf("runChangelog err = %v, want nil (explicit range ignores install state)", err)
 	}
 	if !strings.Contains(stdout.String(), "rk2") {
-		t.Fatalf("out missing rk release (repo slug run-kit must be used):\n%s", stdout.String())
+		t.Fatalf("out missing rk release (repo slug hexokit must be used):\n%s", stdout.String())
 	}
 }
 

@@ -133,17 +133,17 @@ func TestList_RepoLinks(t *testing.T) {
 			t.Errorf("output missing repo URL %q for %s. output:\n%s", want, tool.Name, out)
 		}
 	}
-	// Regression guard for the repo-slug 404 footgun: hexokit's Name and Repo diverge
-	// (the repo is still run-kit), so the row MUST resolve to .../run-kit — never
-	// .../hexokit or .../rk.
-	if !strings.Contains(out, githubOrgBase+"run-kit") {
-		t.Errorf("hexokit row must resolve to %s. output:\n%s", githubOrgBase+"run-kit", out)
+	// Regression guard for the repo-slug 404 footgun: rk-desktop's Name and Repo
+	// diverge (it ships in the hexokit repo), so hexokit and rk-desktop MUST both
+	// resolve to .../hexokit — never the pre-rename .../run-kit slug, nor a dead
+	// .../rk* link (the "rk" prefix covers both .../rk and .../rk-desktop).
+	if !strings.Contains(out, githubOrgBase+"hexokit") {
+		t.Errorf("hexokit row must resolve to %s. output:\n%s", githubOrgBase+"hexokit", out)
 	}
-	if strings.Contains(out, githubOrgBase+"hexokit") {
-		t.Errorf("hexokit row must not link the not-yet-renamed %s repo. output:\n%s", githubOrgBase+"hexokit", out)
-	}
-	if strings.Contains(out, githubOrgBase+"rk") {
-		t.Errorf("output must NOT contain the dead %s link. output:\n%s", githubOrgBase+"rk", out)
+	for _, dead := range []string{"run-kit", "rk"} {
+		if strings.Contains(out, githubOrgBase+dead) {
+			t.Errorf("output must NOT contain the dead %s link. output:\n%s", githubOrgBase+dead, out)
+		}
 	}
 }
 

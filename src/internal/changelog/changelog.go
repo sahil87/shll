@@ -109,7 +109,7 @@ type Release struct {
 }
 
 // RangeReq names one tool's fetch: the roster tool name (for result labelling),
-// its GitHub repo slug (which is NOT always the name — rk's repo is run-kit),
+// its GitHub repo slug (which is NOT always the name — rk-desktop's repo is hexokit),
 // and the (old, new] version range to filter to.
 type RangeReq struct {
 	Tool string

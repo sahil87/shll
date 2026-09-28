@@ -1597,16 +1597,16 @@ func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
 	if !strings.Contains(out, "wt 1.0.0 -> 1.1.0 (1 release)") || !strings.Contains(out, "v1.1.0  wt110") {
 		t.Fatalf("out missing available wt entry:\n%s", out)
 	}
-	// run-kit: compare-URL fallback (run-kit slug) — no bodies exist to inline.
-	if !strings.Contains(out, "hexokit 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("run-kit", "0.1.0", "0.2.0")) {
+	// hexokit: compare-URL fallback (hexokit slug) — no bodies exist to inline.
+	if !strings.Contains(out, "hexokit 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("hexokit", "0.1.0", "0.2.0")) {
 		t.Fatalf("out missing unavailable hexokit fallback:\n%s", out)
 	}
-	// run-kit precedes wt (roster order).
+	// hexokit precedes wt (roster order).
 	if strings.Index(out, "hexokit 0.1.0") > strings.Index(out, "wt 1.0.0") {
 		t.Fatalf("digest must render hexokit before wt (roster order):\n%s", out)
 	}
 	// Tool blocks are blank-line separated (mirroring runChangelog's per-tool
-	// separation): run-kit's transition line is followed by a blank line before
+	// separation): hexokit's transition line is followed by a blank line before
 	// wt's — tools are never separated more weakly than the releases within one
 	// tool.
 	if !strings.Contains(out, "\n\n  wt 1.0.0") {

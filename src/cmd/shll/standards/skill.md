@@ -16,7 +16,7 @@ A `<tool> skill` bundle is offline (embedded), present on every machine that has
 
 ## Precedent: `run-kit context`
 
-The toolkit's prior art is [`run-kit context`](https://github.com/sahil87/run-kit) (a.k.a. `rk context`) — roughly 102 lines of agent-optimized markdown that a harness loads to learn what run-kit can do. It proves the shape works. One nuance the `skill` genre draws a line on: `run-kit context` mixes **static** capability prose with a small **dynamic** Environment header (current session, pane, server URL) computed at invocation. The `skill` bundle is **static-only** — embedded, byte-identical across invocations, drift-guarded. Dynamic, environment-derived state stays in separate commands like `run-kit context`; a `skill` bundle never varies with where or when it runs.
+The toolkit's prior art is [`run-kit context`](https://github.com/sahil87/hexokit) (a.k.a. `rk context`) — roughly 102 lines of agent-optimized markdown that a harness loads to learn what run-kit can do. It proves the shape works. One nuance the `skill` genre draws a line on: `run-kit context` mixes **static** capability prose with a small **dynamic** Environment header (current session, pane, server URL) computed at invocation. The `skill` bundle is **static-only** — embedded, byte-identical across invocations, drift-guarded. Dynamic, environment-derived state stays in separate commands like `run-kit context`; a `skill` bundle never varies with where or when it runs.
 
 ## Deliberately not absorbed (agentskills.io)
 

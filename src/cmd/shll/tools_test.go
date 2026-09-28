@@ -50,8 +50,8 @@ func TestRosterBrewManagedShape(t *testing.T) {
 // TestRkDesktopEntry pins the roster's first delegated (non-brew) entry: no
 // Formula (no brew helper may touch it), install/update delegating to
 // `rk desktop install`/`rk desktop update`, the installed-probe parsing the
-// `Installed:` line of `rk desktop status`, Repo pointing at run-kit (it ships
-// with run-kit — no repo of its own), no shell-init, and a SkillHint (required
+// `Installed:` line of `rk desktop status`, Repo pointing at hexokit (it ships
+// with hexokit — no repo of its own), no shell-init, and a SkillHint (required
 // of every entry by TestRosterSkillHints).
 func TestRkDesktopEntry(t *testing.T) {
 	tool, ok := rosterTool("rk-desktop")
@@ -76,8 +76,8 @@ func TestRkDesktopEntry(t *testing.T) {
 	if tool.Probe.LinePrefix != "Installed:" || tool.Probe.AbsentValue != "not installed" {
 		t.Errorf("rk-desktop Probe = %+v, want LinePrefix %q / AbsentValue %q", tool.Probe, "Installed:", "not installed")
 	}
-	if tool.Repo != "run-kit" {
-		t.Errorf("rk-desktop Repo = %q, want %q (it ships in the run-kit repo)", tool.Repo, "run-kit")
+	if tool.Repo != "hexokit" {
+		t.Errorf("rk-desktop Repo = %q, want %q (it ships in the hexokit repo)", tool.Repo, "hexokit")
 	}
 	if len(tool.ShellInit) != 0 {
 		t.Errorf("rk-desktop must not carry ShellInit (no shell integration)")
@@ -322,9 +322,8 @@ func TestRosterHexokitEntry(t *testing.T) {
 	if got := strings.Join(tool.Update, " "); got != "hexokit update" {
 		t.Errorf("hexokit Update = %q, want %q", got, "hexokit update")
 	}
-	// The GitHub repo is renamed separately — Name and Repo diverge until then.
-	if tool.Repo != "run-kit" {
-		t.Errorf("hexokit Repo = %q, want %q", tool.Repo, "run-kit")
+	if tool.Repo != "hexokit" {
+		t.Errorf("hexokit Repo = %q, want %q", tool.Repo, "hexokit")
 	}
 	if got := strings.Join(tool.LegacyNames, ","); got != "rk,run-kit" {
 		t.Errorf("hexokit LegacyNames = %q, want %q", got, "rk,run-kit")

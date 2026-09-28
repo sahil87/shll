@@ -79,9 +79,8 @@ type Tool struct {
 	ProactiveHint string
 	// Repo is the github.com/sahil87/<Repo> slug for the tool's source
 	// repository. It defaults to Name for most tools, but is NOT always equal to
-	// Name: hexokit's repo is still `run-kit` (the GitHub repo rename lands
-	// separately from the formula/binary rename), and rk-desktop lives in that same
-	// repo. The field stays explicit so `shll list` never emits a dead link when a
+	// Name: rk-desktop ships in the `hexokit` repo and has no repo of its own.
+	// The field stays explicit so `shll list` never emits a dead link when a
 	// tool's binary name and repo slug diverge.
 	Repo string
 	// LegacyNames are the tool's PRIOR binary names, oldest alias first, retained
@@ -228,8 +227,8 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 // TestRosterOrder — a comment cannot fail CI, so the test guards against an
 // accidental reorder.
 var Roster = []Tool{
-	{Name: "hexokit", Formula: formulaPrefix + "hexokit", Update: []string{"hexokit", "update"}, Repo: "run-kit", LegacyNames: []string{"rk", "run-kit"}, Description: "HexoKit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content in a browser window, to proxy a local http port to the user's browser, to push a notification to their devices, or to run a VS Code palette command in the user's code editor with `rk code exec`. The user may be viewing this session remotely through HexoKit's web dashboard — before opening any file or local port in a browser, read `shll skill hexokit`; the same applies before publishing an artifact or hosted page. When the user asks for a tutorial, tour, or onboarding of HexoKit or its web dashboard, read `shll skill hexokit tutorial`."},
-	{Name: "rk-desktop", Update: []string{rkBinary, "desktop", "update"}, Install: []string{rkBinary, "desktop", "install"}, Probe: &ToolProbe{Argv: []string{rkBinary, "desktop", "status"}, LinePrefix: "Installed:", AbsentValue: "not installed"}, Repo: "run-kit", Description: "HexoKit desktop viewer shell — the macOS companion app, managed via `rk desktop install`/`rk desktop update`", SkillHint: "desktop viewer shell"},
+	{Name: "hexokit", Formula: formulaPrefix + "hexokit", Update: []string{"hexokit", "update"}, Repo: "hexokit", LegacyNames: []string{"rk", "run-kit"}, Description: "HexoKit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content in a browser window, to proxy a local http port to the user's browser, to push a notification to their devices, or to run a VS Code palette command in the user's code editor with `rk code exec`. The user may be viewing this session remotely through HexoKit's web dashboard — before opening any file or local port in a browser, read `shll skill hexokit`; the same applies before publishing an artifact or hosted page. When the user asks for a tutorial, tour, or onboarding of HexoKit or its web dashboard, read `shll skill hexokit tutorial`."},
+	{Name: "rk-desktop", Update: []string{rkBinary, "desktop", "update"}, Install: []string{rkBinary, "desktop", "install"}, Probe: &ToolProbe{Argv: []string{rkBinary, "desktop", "status"}, LinePrefix: "Installed:", AbsentValue: "not installed"}, Repo: "hexokit", Description: "HexoKit desktop viewer shell — the macOS companion app, managed via `rk desktop install`/`rk desktop update`", SkillHint: "desktop viewer shell"},
 	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Skill: []string{"fab", "skill"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees", SkillHint: "git worktrees"},
 	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal", SkillHint: "backlog ideas"},

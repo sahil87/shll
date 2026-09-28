@@ -114,7 +114,7 @@ func probeInstalled(ctx context.Context) []bool {
 
 // repoURL returns the full source-repo URL for a tool, built from the named
 // githubOrgBase constant and the tool's explicit Repo slug (which is not always
-// equal to Name — hexokit's repo is run-kit). Single place the URL is composed, so
+// equal to Name — rk-desktop's repo is hexokit). Single place the URL is composed, so
 // the table column and the JSON repo field never drift.
 func repoURL(t Tool) string {
 	return githubOrgBase + t.Repo

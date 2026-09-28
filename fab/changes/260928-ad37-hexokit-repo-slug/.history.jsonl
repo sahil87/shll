@@ -1,0 +1,11 @@
+{"action":"enter","driver":"fab-new","event":"stage-transition","stage":"intake","ts":"2026-09-28T17:53:20Z"}
+{"args":"HexoKit R2(b): shll roster Repo sahil87/run-kit → sahil87/hexokit + repo URL references","cmd":"fab-new","event":"command","ts":"2026-09-28T17:53:20Z"}
+{"delta":"+4.9","event":"confidence","score":4.9,"trigger":"calc-score","ts":"2026-09-28T17:53:57Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"apply","ts":"2026-09-28T17:54:43Z"}
+{"cmd":"fab-fff","event":"command","ts":"2026-09-28T17:54:43Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"review","ts":"2026-09-28T17:55:16Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"hydrate","ts":"2026-09-28T17:56:50Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T17:56:50Z"}
+{"action":"enter","driver":"fab-fff","event":"stage-transition","stage":"ship","ts":"2026-09-28T17:58:22Z"}
+{"action":"enter","driver":"git-pr","event":"stage-transition","stage":"review-pr","ts":"2026-09-28T17:59:49Z"}
+{"event":"review","result":"passed","ts":"2026-09-28T18:04:00Z"}
