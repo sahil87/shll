@@ -238,8 +238,8 @@ func TestURLHelpers(t *testing.T) {
 	if got := CompareURL("hop", "v0.1.16", "v0.1.18"); got != "https://github.com/sahil87/hop/compare/v0.1.16...v0.1.18" {
 		t.Errorf("CompareURL (v-prefixed) = %q", got)
 	}
-	// rk's repo slug is run-kit — the helper takes the repo, not the tool name.
-	if got := ReleasesURL("run-kit"); got != "https://github.com/sahil87/run-kit/releases" {
+	// The helper takes the repo slug, not the tool name (rk-desktop's repo is hexokit).
+	if got := ReleasesURL("hexokit"); got != "https://github.com/sahil87/hexokit/releases" {
 		t.Errorf("ReleasesURL = %q", got)
 	}
 }

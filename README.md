@@ -187,7 +187,7 @@ ok  shll     the manager for the HexoKit toolkit                                
 ok  wt       Git worktree management — create, list, open, delete worktrees                                                                      https://github.com/sahil87/wt
 ok  idea     Backlog idea management from the terminal                                                                                           https://github.com/sahil87/idea
 ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)                                                              https://github.com/sahil87/tu
-ok  hexokit  HexoKit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)  https://github.com/sahil87/run-kit
+ok  hexokit  HexoKit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)  https://github.com/sahil87/hexokit
 ok  hop      Fast directory/project jumping across worktrees                                                                                     https://github.com/sahil87/hop
 ok  fab-kit  Spec-driven workspace & workflow toolkit (the `fab` CLI)                                                                            https://github.com/sahil87/fab-kit
 ```
@@ -297,7 +297,7 @@ Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt 
 - **Command reference at [hexokit.com/shll/commands](https://hexokit.com/shll/commands/)** — a browsable, always-current command tree. [hexokit.com](https://hexokit.com) pulls shll's CLI help tree daily as a machine-readable `help/shll.json` and renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:
   [fab-kit](https://github.com/sahil87/fab-kit) ·
-  [hexokit](https://github.com/sahil87/run-kit) ·
+  [hexokit](https://github.com/sahil87/hexokit) ·
   [tu](https://github.com/sahil87/tu) ·
   [hop](https://github.com/sahil87/hop) ·
   [wt](https://github.com/sahil87/wt) ·
