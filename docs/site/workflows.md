@@ -7,7 +7,7 @@ Task-oriented walkthroughs for `shll`, the meta-CLI for the [HexoKit toolkit](ht
 From a fresh machine to a fully wired toolkit:
 
 ```sh
-curl -fsSL https://hexokit.com/install | sh                              # bootstrap: trust + install shll, then HexoKit (run-kit)
+curl -fsSL https://hexokit.com/install | sh                              # bootstrap: trust + install shll, then HexoKit (hexokit)
 shll install                                                             # the rest of the toolkit
 shll setup shell                                                         # pure rc wiring — no trust flag
 exec $SHELL                                                              # reload so the shell integration takes effect
@@ -18,7 +18,7 @@ The one-liner runs a preflight and a Homebrew bootstrap before expanding to the 
 1. **Preflight.** The script probes git (on macOS via `xcode-select -p` — the `/usr/bin/git` CLT shim false-positives), curl, and tmux, reporting every miss at once with its per-platform fix command. Missing curl (or git on a Linux machine without Homebrew) is fatal; missing tmux only warns, with its install hint.
 2. **Homebrew bootstrap (only when brew is absent).** The official installer runs headlessly with `NONINTERACTIVE=1` — on macOS this installs the Command Line Tools via `softwareupdate`; on Linux the preflight has already guaranteed git. The script then uses the absolute brew path, evals `brew shellenv` in-process, and prints the rc line to keep for future shells. An existing Homebrew (≥ 6.0.4; on 6.0.0–6.0.3, `brew update` first) is used as-is and no bootstrap runs.
 3. **`brew trust --formula sahil87/tap/shll && brew install sahil87/tap/shll`** puts the `shll` binary on `PATH`. The `brew trust` is required on Homebrew 6.0+ (which makes tap-trust a hard install requirement) — shll's formula runs a sandboxed install that needs a real trust record. shll can't trust its own formula before it exists, so this one-time bootstrap uses `brew trust` directly.
-4. **`shll install`** walks the roster (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) and, for each brew-managed tool you don't already have, runs `brew trust --formula sahil87/tap/<formula>` then `brew install` — so it owns trust for the six brew tools. rk-desktop is not a brew formula: it delegates to `rk desktop install` (and skips with a note when `rk` is absent or the platform is unsupported — never a failure). Idempotent — re-running installs only what's still missing. Pass `--no-trust` to skip the trust step if you manage trust yourself; see the [tap-trust troubleshooting](install.md#tap-trust-troubleshooting). (Formula names are always tap-qualified `sahil87/tap/<formula>` — homebrew/core carries an **unrelated** `run-kit`, so a bare `brew install run-kit` installs the wrong software.)
+4. **`shll install`** walks the roster (`hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) and, for each brew-managed tool you don't already have, runs `brew trust --formula sahil87/tap/<formula>` then `brew install` — so it owns trust for the six brew tools. rk-desktop is not a brew formula: it delegates to `rk desktop install` (and skips with a note when `rk` is absent or the platform is unsupported — never a failure). Idempotent — re-running installs only what's still missing. Pass `--no-trust` to skip the trust step if you manage trust yourself; see the [tap-trust troubleshooting](install.md#tap-trust-troubleshooting). (Formula names are always tap-qualified `sahil87/tap/<formula>` — homebrew/core carries an **unrelated** `run-kit`, so a bare `brew install run-kit` installs the wrong software.)
 5. **`shll setup shell`** appends a single sentinel-wrapped eval block to your rc file. It is pure rc-wiring — trust is `shll install`'s job, not the shell half's (there is no `--trust-tap` flag).
 6. **`exec $SHELL`** reloads the shell so the eval line takes effect; `hop`, `wt`, and the rest are now live.
 
@@ -69,7 +69,7 @@ So `eval "$(shll shell-init zsh)"` is safe even when `shll` exits non-zero or a 
 ```sh
 $ shll version
 shll        v0.0.5
-run-kit     v1.5.3
+hexokit     v1.5.3
 rk-desktop  not installed
 fab-kit     v1.9.4
 wt          v0.0.5

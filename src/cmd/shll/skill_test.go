@@ -63,7 +63,7 @@ func TestSkill_Glossary_InstalledOnlyShllFirst(t *testing.T) {
 		t.Errorf("installed rows must be wt then hop (roster order), got %q, %q", lines[1], lines[2])
 	}
 	// Uninstalled tools are omitted.
-	for _, absent := range []string{"idea", "tu", "run-kit", "fab-kit"} {
+	for _, absent := range []string{"idea", "tu", "hexokit", "fab-kit"} {
 		if strings.Contains(out, "\n"+absent+" ") || strings.HasPrefix(out, absent+" ") {
 			t.Errorf("uninstalled tool %q must be omitted from the glossary, got:\n%s", absent, out)
 		}
@@ -146,15 +146,15 @@ func TestSkill_Passthrough_ByteIdentical(t *testing.T) {
 	}
 }
 
-func TestSkill_Passthrough_RkAliasResolvesToRunKit(t *testing.T) {
-	bundle := "# run-kit skill\n"
+func TestSkill_Passthrough_RkAliasResolvesToHexokit(t *testing.T) {
+	bundle := "# hexokit skill\n"
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == skillSubcommand {
+		if req.Name == "hexokit" && len(req.Args) == 1 && req.Args[0] == skillSubcommand {
 			return proc.Result{Stdout: []byte(bundle), ExitCode: 0}
 		}
 		// The alias must NOT invoke a literal `rk skill`.
 		if req.Name == "rk" {
-			t.Errorf("rk alias must resolve to run-kit, not invoke `rk`: %+v", req)
+			t.Errorf("rk alias must resolve to hexokit, not invoke `rk`: %+v", req)
 		}
 		return proc.Result{}
 	}}
@@ -165,7 +165,7 @@ func TestSkill_Passthrough_RkAliasResolvesToRunKit(t *testing.T) {
 		t.Fatalf("runSkill(rk) err = %v", err)
 	}
 	if stdout.String() != bundle {
-		t.Errorf("stdout = %q, want run-kit's bundle %q", stdout.String(), bundle)
+		t.Errorf("stdout = %q, want hexokit's bundle %q", stdout.String(), bundle)
 	}
 }
 
@@ -413,7 +413,7 @@ func TestSkill_ShllSelf_ByteIdenticalToEmbed(t *testing.T) {
 func TestSkillTopic_Passthrough_ByteIdentical(t *testing.T) {
 	page := "# rk skill: display\n\nHow to drive the dashboard …\n"
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
+		if req.Name == "hexokit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
 			return proc.Result{Stdout: []byte(page), ExitCode: 0}
 		}
 		return proc.Result{}
@@ -421,8 +421,8 @@ func TestSkillTopic_Passthrough_ByteIdentical(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "display"}); err != nil {
-		t.Fatalf("runSkill(run-kit display) err = %v", err)
+	if err := runSkill(context.Background(), &stdout, &stderr, []string{"hexokit", "display"}); err != nil {
+		t.Fatalf("runSkill(hexokit display) err = %v", err)
 	}
 	if stdout.String() != page {
 		t.Errorf("stdout = %q, want byte-identical %q", stdout.String(), page)
@@ -433,7 +433,7 @@ func TestSkillTopic_Passthrough_ByteIdentical(t *testing.T) {
 	// The invocation must be `run-kit skill display`, via the capture-all transport.
 	var found bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == "run-kit" && len(c.Args) == 2 && c.Args[0] == skillSubcommand && c.Args[1] == "display" {
+		if c.Name == "hexokit" && len(c.Args) == 2 && c.Args[0] == skillSubcommand && c.Args[1] == "display" {
 			found = true
 			if c.Transport != proc.TransportCaptureAll {
 				t.Errorf("topic passthrough transport = %v, want TransportCaptureAll", c.Transport)
@@ -441,19 +441,19 @@ func TestSkillTopic_Passthrough_ByteIdentical(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("expected a `run-kit skill display` invocation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `hexokit skill display` invocation, calls: %+v", f.recordedCalls())
 	}
 }
 
-func TestSkillTopic_RkAliasResolvesToRunKit(t *testing.T) {
-	page := "# run-kit skill: display\n"
+func TestSkillTopic_RkAliasResolvesToHexokit(t *testing.T) {
+	page := "# hexokit skill: display\n"
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
+		if req.Name == "hexokit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
 			return proc.Result{Stdout: []byte(page), ExitCode: 0}
 		}
 		// The alias must NOT invoke a literal `rk skill display`.
 		if req.Name == "rk" {
-			t.Errorf("rk alias must resolve to run-kit, not invoke `rk`: %+v", req)
+			t.Errorf("rk alias must resolve to hexokit, not invoke `rk`: %+v", req)
 		}
 		return proc.Result{}
 	}}
@@ -464,7 +464,7 @@ func TestSkillTopic_RkAliasResolvesToRunKit(t *testing.T) {
 		t.Fatalf("runSkill(rk display) err = %v", err)
 	}
 	if stdout.String() != page {
-		t.Errorf("stdout = %q, want run-kit's topic page %q", stdout.String(), page)
+		t.Errorf("stdout = %q, want hexokit's topic page %q", stdout.String(), page)
 	}
 }
 
@@ -475,7 +475,7 @@ func TestSkillTopic_UnknownTopic_PropagatesChildStderrAndExitCode(t *testing.T) 
 	childErr := "unknown topic \"nope\" (valid: display, windows)\n"
 	const childCode = 2
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "nope" {
+		if req.Name == "hexokit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "nope" {
 			return proc.Result{Stderr: []byte(childErr), ExitCode: childCode}
 		}
 		return proc.Result{}
@@ -483,7 +483,7 @@ func TestSkillTopic_UnknownTopic_PropagatesChildStderrAndExitCode(t *testing.T) 
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "nope"})
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"hexokit", "nope"})
 	var ec *errExitCode
 	if !errors.As(err, &ec) {
 		t.Fatalf("unknown-topic err = %v, want *errExitCode carrying the child's code", err)
@@ -512,7 +512,7 @@ func TestSkillTopic_TimedOutOrKilled_CuratedNoticeExit1(t *testing.T) {
 	// mirror -1 (that would wrap to process exit 255 with zero stderr); it must emit a
 	// curated one-line operational notice and exit 1, never leaking the negative code.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
+		if req.Name == "hexokit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "display" {
 			return proc.Result{ExitCode: -1, Err: nil}
 		}
 		return proc.Result{}
@@ -520,7 +520,7 @@ func TestSkillTopic_TimedOutOrKilled_CuratedNoticeExit1(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "display"})
+	err := runSkill(context.Background(), &stdout, &stderr, []string{"hexokit", "display"})
 	// Must be errSilent (exit 1), NOT an errExitCode carrying a negative code.
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("timed-out/killed child err = %v, want errSilent (exit 1)", err)
@@ -534,7 +534,7 @@ func TestSkillTopic_TimedOutOrKilled_CuratedNoticeExit1(t *testing.T) {
 	}
 	diag := stderr.String()
 	// The curated notice names the tool and the topic and does not leak "-1".
-	if !strings.Contains(diag, "run-kit") || !strings.Contains(diag, "display") {
+	if !strings.Contains(diag, "hexokit") || !strings.Contains(diag, "display") {
 		t.Errorf("stderr should be the curated timeout notice naming tool+topic, got %q", diag)
 	}
 	if !strings.Contains(diag, "timed out") {
@@ -722,5 +722,29 @@ func TestSkillBundle_WithinLineBudget(t *testing.T) {
 	}
 	if n > 150 {
 		t.Errorf("skill bundle is %d lines, over the 150-line hard budget", n)
+	}
+}
+
+func TestSkill_Passthrough_RunKitAliasResolvesToHexokit(t *testing.T) {
+	// The prior canonical name `run-kit` is a legacy alias of hexokit: `shll skill
+	// run-kit tutorial` invokes `hexokit skill tutorial`, never a literal `run-kit`.
+	page := "# hexokit skill: tutorial\n"
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if req.Name == "hexokit" && len(req.Args) == 2 && req.Args[0] == skillSubcommand && req.Args[1] == "tutorial" {
+			return proc.Result{Stdout: []byte(page), ExitCode: 0}
+		}
+		if req.Name == "run-kit" {
+			t.Errorf("run-kit alias must resolve to hexokit, not invoke `run-kit`: %+v", req)
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	var stdout, stderr bytes.Buffer
+	if err := runSkill(context.Background(), &stdout, &stderr, []string{"run-kit", "tutorial"}); err != nil {
+		t.Fatalf("runSkill(run-kit tutorial) err = %v", err)
+	}
+	if stdout.String() != page {
+		t.Errorf("stdout = %q, want hexokit's topic page %q", stdout.String(), page)
 	}
 }

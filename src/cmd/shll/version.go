@@ -82,22 +82,27 @@ func runVersion(ctx context.Context, stdout io.Writer) error {
 // unsupported-platform refusal), a missing line, or the AbsentValue — returns
 // an error, which every caller maps to its not-installed representation.
 //
-// LEGACY-NAME FALLBACK (rk→run-kit rename): when the primary probe fails with
-// proc.ErrNotFound ONLY — i.e. `<tool.Name>` is not on PATH — AND the tool declares
-// a LegacyName, it retries once with the legacy binary name so a pre-rename install
-// (whose binary is still `rk`, not `run-kit`) is reported installed by
-// list/version/doctor. The fallback fires ONLY on ErrNotFound: a present-but-broken
-// `run-kit` (non-zero exit, timeout/deadline) must NOT silently defer to `rk` — its
-// own error is returned. This serves DISPLAY surfaces only; the display name stays
-// tool.Name regardless of which probe name succeeded. A retained LegacyName
-// surface — the run-kit formula still installs `rk` as an interchangeable alias.
+// LEGACY-NAME FALLBACK (rk→run-kit→hexokit renames): when the primary probe fails
+// with proc.ErrNotFound ONLY — i.e. `<tool.Name>` is not on PATH — AND the tool
+// declares LegacyNames, it retries each legacy binary name in order so an install
+// whose binary is on PATH only under an old name (`rk`, `run-kit`) is reported
+// installed by list/version/doctor. The chain advances ONLY on ErrNotFound: a
+// present-but-broken binary (non-zero exit, timeout/deadline) must NOT silently
+// defer to the next name — its own error is returned. When every name is missing,
+// the last ErrNotFound is returned. This serves DISPLAY surfaces only; the display
+// name stays tool.Name regardless of which probe name succeeded. A retained
+// LegacyNames surface — the hexokit formula still installs `rk` as an
+// interchangeable alias.
 func probeToolVersion(ctx context.Context, tool Tool) ([]byte, error) {
 	if tool.Probe != nil {
 		return probeDelegatedVersion(ctx, tool)
 	}
 	out, err := probeVersionByName(ctx, tool.Name)
-	if errors.Is(err, proc.ErrNotFound) && tool.LegacyName != "" {
-		return probeVersionByName(ctx, tool.LegacyName)
+	for _, legacy := range tool.LegacyNames {
+		if !errors.Is(err, proc.ErrNotFound) {
+			break
+		}
+		out, err = probeVersionByName(ctx, legacy)
 	}
 	return out, err
 }

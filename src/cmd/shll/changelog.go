@@ -204,7 +204,7 @@ func parseChangelogSpecs(args []string) ([]changelogSpec, error) {
 	// the shared validator (which reports all unknowns at once). A legacy alias
 	// token (e.g. `rk`) is CANONICALIZED to its Roster name here so the roster-order
 	// emit below finds it and the release fetch uses the canonical Repo — `shll
-	// changelog rk` / `rk@old..new` work identically to `run-kit`. The alias is
+	// changelog rk` / `run-kit@old..new` work identically to `hexokit`. The alias is
 	// resolved via the same legacyAliases map resolveTargets consults, so changelog
 	// never carries bespoke alias logic (intake: in scope because name-matching
 	// reuses the shared helper).
@@ -374,7 +374,7 @@ func resolveOneSpec(ctx context.Context, s changelogSpec, bare bool) resolvedCha
 }
 
 // repoForSpec returns the GitHub repo slug for a spec (shll-self → shll; roster
-// tool → its explicit Repo, which is not always the name — rk's is run-kit).
+// tool → its explicit Repo, which is not always the name — hexokit's is run-kit).
 func repoForSpec(s changelogSpec) string {
 	if s.self {
 		return shllSelf.Repo

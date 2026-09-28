@@ -13,7 +13,7 @@ This standard implements principle №6 of the [toolkit CLI principles](principl
 The config root is a **constant**, derived from `$HOME` and nothing else:
 
 - **MUST resolve the config directory as `$HOME/.config/<tool-name>/`**, built with `filepath.Join` from `$HOME` — the only environment input, unavoidable.
-- **`<tool-name>` is the full tool name** (`run-kit`, not `rk`) — the same one-string identity the [update standard](update.md) requires across repo, formula, and binary.
+- **`<tool-name>` is the full tool name** (`hexokit`, not `rk`) — the same one-string identity the [update standard](update.md) requires across repo, formula, and binary.
 - **MUST NOT honor `$XDG_CONFIG_HOME`** and **MUST NOT use `os.UserConfigDir`** (which resolves to `~/Library/Application Support` on macOS). The path is identical on every platform and in every process context *by construction*.
 - **An unset `$HOME` is an actionable error**, never a silent fallback (hop: `hop: $HOME is not set; cannot locate config`).
 - **SHOULD pin the path with a test** asserting environment variables cannot move it (hop has one).
@@ -30,8 +30,8 @@ The config root is a **constant**, derived from `$HOME` and nothing else:
 
 The cascade's env layer is safe only because it is narrow:
 
-- **Env forms MUST exist only for deployment bootstrap keys** — values needed at or before process start, per-deployment (e.g. run-kit's `RK_PORT`, `RK_HOST`).
-- **Env MUST NOT be an override channel for preference keys.** The failure this bans is real: a preference gate (run-kit's `RK_AUTO_NAME`) landed as an env var because that surface was reachable faster than the settings store — and env-var preferences are invisible to any UI, unlisted in any file, and differ silently between process contexts.
+- **Env forms MUST exist only for deployment bootstrap keys** — values needed at or before process start, per-deployment (e.g. hexokit's `RK_PORT`, `RK_HOST`).
+- **Env MUST NOT be an override channel for preference keys.** The failure this bans is real: a preference gate (hexokit's `RK_AUTO_NAME`) landed as an env var because that surface was reachable faster than the settings store — and env-var preferences are invisible to any UI, unlisted in any file, and differ silently between process contexts.
 
 **Failure mode.** Every preference that ships as an env var re-opens the fork this standard closes: the daemon and the CLI disagree about a user preference, and no config file records what was set.
 
@@ -51,7 +51,7 @@ The asymmetry is deliberate: an env mismatch on a droppable cache cannot fork be
 
 - **`hop` is the reference implementation**: `src/internal/config/resolve.go` — fixed `$HOME/.config/hop/hop.yaml`, `filepath.Join` from `$HOME`, no `$HOP_CONFIG`, no `$XDG_CONFIG_HOME`, and a test asserting env vars cannot move the path.
 - **`idea` conforms**: `systemConfigDir` → `~/.config/idea`, "$XDG_CONFIG_HOME is intentionally ignored" — so `--help` is accurate everywhere.
-- **`run-kit` (becoming `hexokit`) is adopting**: its config-consolidation plan moves `~/.rk/settings.yaml` to `$HOME/.config/hexokit/config.yaml` under this standard.
+- **`hexokit` (formerly `run-kit`) is adopting**: its config-consolidation plan moves `~/.rk/settings.yaml` to `$HOME/.config/hexokit/config.yaml` under this standard.
 - **`wt`, `tu`**: no config file today — bound when they grow one.
 - **`fab-kit`**: the documented exception above.
 

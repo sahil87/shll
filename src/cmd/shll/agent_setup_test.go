@@ -22,12 +22,12 @@ func agentHomeEnv(t *testing.T) (func(string) string, string) {
 	return envFunc(map[string]string{"HOME": home}), home
 }
 
-// runKitAbsentFake fails any run-kit / rk invocation with ErrNotFound (delegation
+// hexokitAbsentFake fails any run-kit / rk invocation with ErrNotFound (delegation
 // skipped silently); everything else succeeds. Isolates the skill placement from the
 // run-kit delegation.
-func runKitAbsentFake() *fakeRunner {
+func hexokitAbsentFake() *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" || req.Name == "rk" {
+		if req.Name == "hexokit" || req.Name == "rk" {
 			return proc.Result{ExitCode: -1, Err: proc.ErrNotFound}
 		}
 		return proc.Result{}
@@ -65,7 +65,7 @@ func forceClaudeGate(t *testing.T, present bool) {
 
 func TestAgentSetup_InstallPlacesBothSkills(t *testing.T) {
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
@@ -89,7 +89,7 @@ func TestAgentSetup_InstallPlacesBothSkills(t *testing.T) {
 
 func TestAgentSetup_Idempotent(t *testing.T) {
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	var o1, e1 bytes.Buffer
@@ -122,7 +122,7 @@ func TestAgentSetup_Idempotent(t *testing.T) {
 func TestAgentSetup_OverwritesDivergedContent(t *testing.T) {
 	// A stale SKILL.md (wrong bytes) is overwritten and reported as "updated".
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 	claudePath := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
 	if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
@@ -152,7 +152,7 @@ func TestAgentSetup_InstallGateClosedWritesAgentsOnly(t *testing.T) {
 	// written, and no ~/.claude/ directory is created AT ALL (dir absence, not
 	// just file absence) — a machine without Claude Code gets no litter.
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, false)
 
 	var stdout, stderr bytes.Buffer
@@ -185,7 +185,7 @@ func TestAgentSetup_GateNeverDeletes(t *testing.T) {
 	// untouched — the gate suppresses ALL writes to the gated surface while
 	// closed (including refresh rewrites); only --uninstall deletes.
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, false)
 	claudePath := filepath.Join(home, ".claude", "skills", skillDirName, skillFileName)
 	if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
@@ -213,7 +213,7 @@ func TestAgentSetup_GateNeverDeletes(t *testing.T) {
 
 func TestAgentSetup_Print(t *testing.T) {
 	env, home := agentHomeEnv(t)
-	f := runKitAbsentFake()
+	f := hexokitAbsentFake()
 	installFakeRunner(t, f)
 	forceClaudeGate(t, true)
 
@@ -240,8 +240,8 @@ func TestAgentSetup_Print(t *testing.T) {
 	}
 	// And no run-kit delegation is triggered.
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName {
-			t.Errorf("--print must NOT delegate to run-kit, but recorded %+v", c)
+		if c.Name == hexokitToolName {
+			t.Errorf("--print must NOT delegate to hexokit, but recorded %+v", c)
 		}
 	}
 }
@@ -251,7 +251,7 @@ func TestAgentSetup_PrintReflectsGate(t *testing.T) {
 	// (~/.agents/skills/…), not the gated ~/.claude/skills/… path — dry-run
 	// truthfulness — and still writes nothing.
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, false)
 
 	var stdout, stderr bytes.Buffer
@@ -280,7 +280,7 @@ func TestAgentSetup_PrintReflectsGate(t *testing.T) {
 
 func TestAgentSetup_Uninstall(t *testing.T) {
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	// Place first, then uninstall.
@@ -305,7 +305,7 @@ func TestAgentSetup_UninstallIgnoresGate(t *testing.T) {
 	// Place with the gate open, then close the gate (claude has since
 	// disappeared): --uninstall must STILL remove both skill directories.
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	var o1, e1 bytes.Buffer
@@ -350,7 +350,7 @@ func TestAgentSetup_PlacementStateIgnoresGate(t *testing.T) {
 
 func TestAgentSetup_PrintAndUninstallExit2(t *testing.T) {
 	env, _ := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 
 	var stdout, stderr bytes.Buffer
 	err := runAgentSetup(context.Background(), env, &stdout, &stderr, true, true, false)
@@ -365,7 +365,7 @@ func TestAgentSetup_PrintAndUninstallExit2(t *testing.T) {
 
 // --- run-kit delegation (T004 / R9) ------------------------------------------
 
-func TestAgentSetup_DelegatesToRunKitWhenPresent(t *testing.T) {
+func TestAgentSetup_DelegatesToHexokitWhenPresent(t *testing.T) {
 	env, _ := agentHomeEnv(t)
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result { return proc.Result{ExitCode: 0} }}
 	installFakeRunner(t, f)
@@ -376,40 +376,40 @@ func TestAgentSetup_DelegatesToRunKitWhenPresent(t *testing.T) {
 	}
 	var delegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 2 && c.Args[0] == "agent" && c.Args[1] == "setup" {
+		if c.Name == hexokitToolName && len(c.Args) == 2 && c.Args[0] == "agent" && c.Args[1] == "setup" {
 			delegated = true
 		}
 	}
 	if !delegated {
-		t.Errorf("expected a `run-kit agent setup` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `hexokit agent setup` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
-func TestAgentSetup_RunKitAbsentSkipsSilently(t *testing.T) {
+func TestAgentSetup_HexokitAbsentSkipsSilently(t *testing.T) {
 	env, home := agentHomeEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
-		t.Fatalf("run-kit-absent run err = %v, want nil (delegation skipped silently)", err)
+		t.Fatalf("hexokit-absent run err = %v, want nil (delegation skipped silently)", err)
 	}
 	// The skills were still placed.
 	for _, p := range skillPaths(home) {
 		if _, err := os.Stat(p); err != nil {
-			t.Errorf("placement must succeed even when run-kit is absent: %s missing (%v)", p, err)
+			t.Errorf("placement must succeed even when hexokit is absent: %s missing (%v)", p, err)
 		}
 	}
 	// The absent-run-kit case must not surface a delegation error.
-	if strings.Contains(stderr.String(), "run-kit agent setup:") {
-		t.Errorf("run-kit absent must be a silent skip, but stderr carried a delegation error: %q", stderr.String())
+	if strings.Contains(stderr.String(), "hexokit agent setup:") {
+		t.Errorf("hexokit absent must be a silent skip, but stderr carried a delegation error: %q", stderr.String())
 	}
 }
 
-func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
+func TestAgentSetup_HexokitNonZeroExitWarnsAndContinues(t *testing.T) {
 	env, home := agentHomeEnv(t)
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == runKitToolName {
+		if req.Name == hexokitToolName {
 			return proc.Result{ExitCode: 3} // child ran and failed; RunForeground → (3, nil)
 		}
 		return proc.Result{}
@@ -419,7 +419,7 @@ func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	if err := runAgentSetup(context.Background(), env, &stdout, &stderr, false, false, false); err != nil {
-		t.Fatalf("a failed run-kit delegation must not fail the placement, err = %v", err)
+		t.Fatalf("a failed hexokit delegation must not fail the placement, err = %v", err)
 	}
 	// Placement is the core work — both skills still land.
 	for _, p := range skillPaths(home) {
@@ -428,7 +428,7 @@ func TestAgentSetup_RunKitNonZeroExitWarnsAndContinues(t *testing.T) {
 		}
 	}
 	// The non-zero exit is surfaced as a warn-and-continue, not swallowed.
-	if want := "run-kit agent setup exited 3 (continuing)"; !strings.Contains(stderr.String(), want) {
+	if want := "hexokit agent setup exited 3 (continuing)"; !strings.Contains(stderr.String(), want) {
 		t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
 	}
 }
@@ -444,12 +444,12 @@ func TestAgentSetup_UninstallDelegatesUninstall(t *testing.T) {
 	}
 	var delegatedUninstall bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--uninstall" {
+		if c.Name == hexokitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--uninstall" {
 			delegatedUninstall = true
 		}
 	}
 	if !delegatedUninstall {
-		t.Errorf("expected a `run-kit agent setup --uninstall` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `hexokit agent setup --uninstall` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -522,15 +522,15 @@ func TestAgentSetup_BodyTeachesTwoStepAndStandards(t *testing.T) {
 	if !strings.Contains(agentSkillContent, "rk code exec") {
 		t.Errorf("SKILL.md body must name the `rk code exec` editor-command capability")
 	}
-	if !strings.Contains(agentSkillContent, "shll skill run-kit code") {
-		t.Errorf("SKILL.md body must point at the `shll skill run-kit code` topic page")
+	if !strings.Contains(agentSkillContent, "shll skill hexokit code") {
+		t.Errorf("SKILL.md body must point at the `shll skill hexokit code` topic page")
 	}
 	// The tutorial/onboarding routing line points at the tutorial topic page.
 	if !strings.Contains(agentSkillContent, "tutorial, tour, or onboarding") {
 		t.Errorf("SKILL.md body must carry the tutorial/tour/onboarding routing trigger words")
 	}
-	if !strings.Contains(agentSkillContent, "shll skill run-kit tutorial") {
-		t.Errorf("SKILL.md body must point at the `shll skill run-kit tutorial` topic page")
+	if !strings.Contains(agentSkillContent, "shll skill hexokit tutorial") {
+		t.Errorf("SKILL.md body must point at the `shll skill hexokit tutorial` topic page")
 	}
 	// It must NOT reintroduce stanza/sentinel wording.
 	if strings.Contains(agentSkillContent, "stanza") || strings.Contains(agentSkillContent, "sentinel") {
@@ -575,10 +575,7 @@ func TestRosterSkillHints(t *testing.T) {
 			t.Errorf("roster tool %q must declare a SkillHint", tool.Name)
 			continue
 		}
-		name := tool.Name
-		if tool.LegacyName != "" {
-			name += "/" + tool.LegacyName
-		}
+		name := strings.Join(append([]string{tool.Name}, tool.LegacyNames...), "/")
 		clause := tool.SkillHint + " (" + name + ")"
 		if !strings.Contains(desc, clause) {
 			t.Errorf("description missing clause %q, got: %s", clause, desc)
@@ -602,14 +599,14 @@ func TestRosterSkillHints(t *testing.T) {
 // requests that name proxying/dev servers), (b) the skill-shadowing
 // counter-instruction ("before opening any file or local port in a browser, read" —
 // fires when a competing skill's local `open`/`xdg-open` delivery step is about to run,
-// routing the agent to `shll skill run-kit` for the proxied-iframe recipe instead), and
+// routing the agent to `shll skill hexokit` for the proxied-iframe recipe instead), and
 // (c) the hosted-artifact counter-instruction ("publishing an artifact" — fires when an
 // Artifact-style hosted-publishing delivery step, which opens no file and touches no
 // local port, is about to route visuals off the run-kit dashboard), (d) the
 // editor-command trigger vocabulary ("rk code exec" — matches requests to act inside the
 // user's code editor, e.g. refresh a PR list or open a diff, via the run-kit code bridge),
 // and (e) the tutorial/onboarding routing ("tutorial, tour, or onboarding" → read
-// `shll skill run-kit tutorial` — matches requests like "Onboard me to run-kit" that
+// `shll skill hexokit tutorial` — matches requests like "Onboard me to run-kit" that
 // would otherwise pattern-match a harness's generic onboarding flow).
 func TestRosterProactiveHint(t *testing.T) {
 	// Exactly run-kit carries a ProactiveHint; every other tool leaves it empty
@@ -620,19 +617,19 @@ func TestRosterProactiveHint(t *testing.T) {
 			withHint = append(withHint, tool.Name)
 		}
 	}
-	if len(withHint) != 1 || withHint[0] != "run-kit" {
-		t.Fatalf("exactly run-kit must declare a ProactiveHint, got %v", withHint)
+	if len(withHint) != 1 || withHint[0] != "hexokit" {
+		t.Fatalf("exactly hexokit must declare a ProactiveHint, got %v", withHint)
 	}
 
-	rk, ok := rosterTool("run-kit")
+	rk, ok := rosterTool("hexokit")
 	if !ok {
-		t.Fatal("run-kit must be in the roster")
+		t.Fatal("hexokit must be in the roster")
 	}
 	desc := agentSkillDescription()
 
 	// The run-kit ProactiveHint sentence(s) appear verbatim in the rendered description …
 	if !strings.Contains(desc, rk.ProactiveHint) {
-		t.Errorf("description must contain run-kit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
+		t.Errorf("description must contain hexokit's ProactiveHint verbatim.\nhint: %q\ndesc: %s", rk.ProactiveHint, desc)
 	}
 	// … carrying all five load-bearing functions — the proxy trigger vocabulary, the
 	// skill-shadowing counter-instruction, the hosted-artifact counter-instruction, the
@@ -645,7 +642,7 @@ func TestRosterProactiveHint(t *testing.T) {
 		"publishing an artifact",                                   // (c) hosted-artifact counter-instruction
 		"rk code exec",                                             // (d) editor-command trigger vocabulary
 		"tutorial, tour, or onboarding",                            // (e) tutorial/onboarding routing triggers
-		"shll skill run-kit tutorial",                              // (e) …and its topic-page destination
+		"shll skill hexokit tutorial",                              // (e) …and its topic-page destination
 	} {
 		if !strings.Contains(desc, fragment) {
 			t.Errorf("description must contain the load-bearing fragment %q, got: %s", fragment, desc)
@@ -656,10 +653,7 @@ func TestRosterProactiveHint(t *testing.T) {
 	// of the "Use when driving" preamble): the hint must fall after every clause, so a
 	// hint mistakenly emitted between the preamble and the clause list must still fail.
 	last := Roster[len(Roster)-1]
-	lastName := last.Name
-	if last.LegacyName != "" {
-		lastName += "/" + last.LegacyName
-	}
+	lastName := strings.Join(append([]string{last.Name}, last.LegacyNames...), "/")
 	lastClause := last.SkillHint + " (" + lastName + ")"
 	lastClauseIdx := strings.Index(desc, lastClause)
 	hintIdx := strings.Index(desc, rk.ProactiveHint)
@@ -679,7 +673,7 @@ func TestRosterProactiveHint(t *testing.T) {
 func TestAgentSetup_FlagsWiredThroughCobra(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 
 	cmd := newAgentSetupCmd()
 	var out, errb bytes.Buffer
@@ -713,12 +707,12 @@ func TestAgentSetup_YesForwardsToDelegation(t *testing.T) {
 	}
 	var yesDelegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--"+yesFlag {
+		if c.Name == hexokitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--"+yesFlag {
 			yesDelegated = true
 		}
 	}
 	if !yesDelegated {
-		t.Errorf("expected a `run-kit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `hexokit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -733,12 +727,12 @@ func TestAgentSetup_YesRidesUninstallDelegation(t *testing.T) {
 	}
 	var yesDelegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 4 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--uninstall" && c.Args[3] == "--"+yesFlag {
+		if c.Name == hexokitToolName && len(c.Args) == 4 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--uninstall" && c.Args[3] == "--"+yesFlag {
 			yesDelegated = true
 		}
 	}
 	if !yesDelegated {
-		t.Errorf("expected a `run-kit agent setup --uninstall --yes` delegation, calls: %+v", f.recordedCalls())
+		t.Errorf("expected a `hexokit agent setup --uninstall --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -796,11 +790,26 @@ func TestAgentSetup_YesFlagWiredThroughCobra(t *testing.T) {
 	}
 	var yesDelegated bool
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--"+yesFlag {
+		if c.Name == hexokitToolName && len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--"+yesFlag {
 			yesDelegated = true
 		}
 	}
 	if !yesDelegated {
-		t.Errorf("cobra --yes must reach the delegation argv (`run-kit agent setup --yes`), calls: %+v", f.recordedCalls())
+		t.Errorf("cobra --yes must reach the delegation argv (`hexokit agent setup --yes`), calls: %+v", f.recordedCalls())
+	}
+}
+
+func TestAgentSkillDescription_HexokitTokens(t *testing.T) {
+	// Pinned literally (TestRosterSkillHints is dynamic): the renamed tool renders
+	// its current name plus both prior names as trigger vocabulary, and routes
+	// agents to `shll skill hexokit`.
+	desc := agentSkillDescription()
+	for _, fragment := range []string{"tmux sessions (hexokit/rk/run-kit)", "read `shll skill hexokit`;"} {
+		if !strings.Contains(desc, fragment) {
+			t.Errorf("description must contain %q, got: %s", fragment, desc)
+		}
+	}
+	if strings.Contains(desc, "shll skill run-kit") {
+		t.Errorf("description must not route agents to the legacy `shll skill run-kit`, got: %s", desc)
 	}
 }

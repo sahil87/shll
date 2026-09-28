@@ -58,7 +58,7 @@ Explicitly **out** of the bundle: exhaustive flag tables (defer to `-h`), full c
 
 ## Topic pages (large-scope tools)
 
-The ≤150-line budget prices the use-time pull — each `shll skill <tool>` serves exactly one core bundle (see [Landed design](#landed-design-shll-setup-agent)) — so it deliberately does not scale with tool size. A tool whose usage knowledge genuinely exceeds one page — run-kit and fab-kit are the expected cases — does not get a bigger budget; it splits depth into **topic pages**:
+The ≤150-line budget prices the use-time pull — each `shll skill <tool>` serves exactly one core bundle (see [Landed design](#landed-design-shll-setup-agent)) — so it deliberately does not scale with tool size. A tool whose usage knowledge genuinely exceeds one page — hexokit and fab-kit are the expected cases — does not get a bigger budget; it splits depth into **topic pages**:
 
 - **`<tool> skill <topic>`** prints one topic page (e.g. `rk skill windows`, `fab skill dispatch`) under the same invocation contract: raw markdown to stdout, stderr empty on success, exit 0.
 - Each topic page is canonical at **`docs/site/skill/<topic>.md`** and independently bounded at ≤150 lines, with the same rules with teeth — static-only, byte-identical to its canonical file, embedded via the sync + drift-guard pattern. (The core stays `docs/site/skill.md`; the file and the `skill/` directory coexist, and each topic renders at `/<tool>/skill/<topic>` on hexokit.com as part of the pulled tree.)
@@ -79,11 +79,11 @@ Phased, per-repo — like help-dump's rollout was. This standard is the contract
 
 ## Landed design: `shll setup agent`
 
-`shll setup agent` wires a machine's agent harnesses to the toolkit, graduating that responsibility up from `run-kit agent setup`. It ships today (renamed from the hidden-deprecated `shll agent-setup`), and it is recorded here because it is why bundles must stay small and static. It landed as **skills placement plus a runtime two-step**, not as context aggregation:
+`shll setup agent` wires a machine's agent harnesses to the toolkit, graduating that responsibility up from `hexokit agent setup`. It ships today (renamed from the hidden-deprecated `shll agent-setup`), and it is recorded here because it is why bundles must stay small and static. It landed as **skills placement plus a runtime two-step**, not as context aggregation:
 
 - **Skills placement, not context aggregation.** `shll setup agent` places one thin bootstrap Agent Skill (`shll-toolkit`) into the harnesses' global skills directories — `~/.agents/skills/` always, and `~/.claude/skills/` when the `claude` CLI is on PATH (the two-tier rule in [Placement directories](#placement-directories)). The skill's description is roster-driven — it front-loads the tool names as trigger words so the skill activates when an agent is about to reach for a toolkit tool — and its body teaches the runtime two-step below. Aggregating every tool's bundle into the agent's context, and placing per-tool bundles as their own skill files, were both **rejected**: placed copies go stale between updates, and per-tool skills multiply listing lines.
 - **The runtime two-step.** Bare `shll skill` prints an installed-only glossary — one line per tool. `shll skill <tool>` then streams that tool's core bundle on demand, byte-identical from the installed binary, so bundle content stays version-locked by construction and is fetched only when an agent actually needs it.
-- **Hook-wiring delegation.** `shll setup agent` **delegates run-kit's dashboard-hook wiring to `run-kit agent setup`**, which is hook-only — its context-injection responsibility was removed as designed, leaving it to do only hook wiring.
+- **Hook-wiring delegation.** `shll setup agent` **delegates HexoKit's dashboard-hook wiring to `hexokit agent setup`**, which is hook-only — its context-injection responsibility was removed as designed, leaving it to do only hook wiring.
 
 ### The placed skill conforms to the Agent Skills spec
 
@@ -99,7 +99,7 @@ Scope: only the **placed** skill is bound by agentskills.io. Bundles (`<tool> sk
 
 The placed skill's `description` frontmatter is the only text in an agent's context *before* the skill is invoked — activation quality lives or dies there. The roster-driven description MUST be written as:
 
-- **Tool names front-loaded** — every roster tool's name (and legacy alias, e.g. `run-kit/rk`) appears as trigger vocabulary.
+- **Tool names front-loaded** — every roster tool's name (and legacy aliases, e.g. `hexokit/rk/run-kit`) appears as trigger vocabulary.
 - **Task-shaped trigger phrases, not just nouns** — each tool contributes a task-domain phrase ("git worktrees", "tmux sessions"): agents match task-shaped requests ("create a worktree"), not tool names alone.
 - **What + when structure** — the description states what the skill does AND when to use it.
 - **≤1024 characters** — the agentskills.io cap above, restated here because it is the binding budget on trigger vocabulary: compression prioritizes trigger coverage over prose completeness.

@@ -51,7 +51,7 @@ func TestSetup_ParentRunsBothHalves(t *testing.T) {
 	if err := os.WriteFile(rc, []byte(""), 0o644); err != nil {
 		t.Fatalf("write rc: %v", err)
 	}
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
@@ -74,7 +74,7 @@ func TestSetup_WorstWinsExit(t *testing.T) {
 	// Shell half fails (rc file does not exist → exit-2 usage diagnostic); the
 	// agent half must STILL run to completion, and the run exits 2 (worst-wins).
 	home := setupEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	forceClaudeGate(t, true)
 
 	var stdout, stderr bytes.Buffer
@@ -104,8 +104,8 @@ func TestSetup_YesForwardsToAgentHalf(t *testing.T) {
 	if _, stderr, err := runSetupCmd(t, []string{"--yes"}); err != nil {
 		t.Fatalf("setup --yes err = %v; stderr=%q", err, stderr)
 	}
-	if !invocationsContain(f.recordedCalls(), runKitToolName, "agent", "setup", "--"+yesFlag) {
-		t.Errorf("expected a `run-kit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
+	if !invocationsContain(f.recordedCalls(), hexokitToolName, "agent", "setup", "--"+yesFlag) {
+		t.Errorf("expected a `hexokit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 }
 
@@ -144,7 +144,7 @@ func TestSetup_ShellSubcommandDispatch(t *testing.T) {
 
 func TestSetup_AgentSubcommandDispatch(t *testing.T) {
 	home := setupEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 	stdout, _, err := runSetupCmd(t, []string{"agent", "--print"})
 	if err != nil {
 		t.Fatalf("setup agent --print err = %v", err)
@@ -168,7 +168,7 @@ func TestSetup_AgentSubcommandDispatch(t *testing.T) {
 // cross-release `shll update` refresh; the iags precedent).
 func TestCompat_OldSpellingsDispatchHiddenAndSilent(t *testing.T) {
 	setupEnv(t)
-	installFakeRunner(t, runKitAbsentFake())
+	installFakeRunner(t, hexokitAbsentFake())
 
 	t.Run("shell-setup", func(t *testing.T) {
 		rc := makeRC(t, "")

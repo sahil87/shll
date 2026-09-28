@@ -1,6 +1,6 @@
 ---
 type: memory
-description: "`shll check-updates` — read-only update-check surface for shll-self + every roster tool: the `--source released|github` enum flag (default `released` = hexokit.com versions manifest + notify policy, shll.ai as fallback host; `github` = release tags), the `--json` machine contract (schema 1, unresolvable rows omitted, `notify`/`notable` on released rows only), the `notable` threshold semantics, version-style human table, and 0/1/2 exit codes with per-tool github-backend degradation."
+description: "`shll check-updates` — read-only update-check surface for shll-self + every roster tool: the `--source released|github` enum flag (default `released` = hexokit.com versions manifest + notify policy, shll.ai fallback; `github` = release tags), legacy-name manifest-key fallback, the `--json` machine contract (schema 1, unresolvable rows omitted, `notify`/`notable` released-only), `notable` threshold semantics, human table, 0/1/2 exit codes with per-tool github-backend degradation."
 ---
 # cli/check-updates
 
@@ -10,7 +10,7 @@ Source: `src/cmd/shll/check_updates.go`; the latest-version resolver seam in [in
 
 ## Constitution VII justification
 
-`check-updates` is a new top-level subcommand: a machine primitive for an external consumer (run-kit's update-check daemon, which runs `shll check-updates --json` — the released backend is the default) plus an internal consumer (`shll changelog`, which shares the resolver seam). It makes shll the single policy authority so consumers never compile in `versions.json` parsing, version comparison, or notify-threshold policy — future schema evolution is absorbed once, in [internal/versions](/internal/versions.md).
+`check-updates` is a new top-level subcommand: a machine primitive for an external consumer (HexoKit's update-check daemon — `internal/updatecheck` in the run-kit repo — which runs `shll check-updates --json` — the released backend is the default) plus an internal consumer (`shll changelog`, which shares the resolver seam). It makes shll the single policy authority so consumers never compile in `versions.json` parsing, version comparison, or notify-threshold policy — future schema evolution is absorbed once, in [internal/versions](/internal/versions.md).
 
 - **Cannot be a flag on `update`** — `update`'s contract is to *perform writes* (even `update --dry-run` previews brew commands rather than resolving latest versions), whereas `check-updates` resolves latest versions and writes nothing.
 - **Cannot live in a per-tool CLI** — whole-roster version resolution against the toolkit manifest is inherently the meta-tool's job (Constitution IV).
@@ -34,13 +34,17 @@ The flag name, usage string, source names (`sourceReleased`/`sourceGithub`, reus
 
 `checkUpdateTargets()` builds the sweep: **shll itself first** (the unified [shll-first ordering principle](/cli/commands.md#unified-shll-first-ordering--the-principle)), then every `Roster` tool in roster order. shll is **not** added to `Roster` (Constitution III — `len(Roster)` stays 7, guarded by `TestShllSelf_NotInRoster`); the sweep prepends it as a `checkTarget`.
 
-shll-self's installed anchor is its **brew-formula** version (`installedVersion(ctx, shllFormula)`), **not** the running binary's ldflags version — mirroring [`shll changelog`'s bare-sweep precedent](/cli/changelog.md#the-bare-sweep-no-args). Each `checkTarget` carries the tap-relative `formulaLeaf` (`strings.TrimPrefix(Formula, formulaPrefix)` → `run-kit`, `shll`) emitted as the JSON `formula` field, the fully-qualified `brewFormula` (the brew probe key), the `repo` slug (the github-backend fetch key), and the roster `tool` itself (zero for shll-self). A **delegated (non-brew) roster tool carries no `brewFormula`** (t26g): its `formulaLeaf` falls back to its `Name` (never a bare `brew install <name>` hint — it is not a formula) and its installed anchor resolves through its `Probe` spec (`probeToolInstalledVersion` → `rk desktop status`), never a brew read — see [cli/version §the shared install probe](/cli/version.md#the-shared-install-probe).
+shll-self's installed anchor is its **brew-formula** version (`installedVersion(ctx, shllFormula)`), **not** the running binary's ldflags version — mirroring [`shll changelog`'s bare-sweep precedent](/cli/changelog.md#the-bare-sweep-no-args). Each `checkTarget` carries the tap-relative `formulaLeaf` (`strings.TrimPrefix(Formula, formulaPrefix)` → `hexokit`, `shll`) emitted as the JSON `formula` field, the fully-qualified `brewFormula` (the brew probe key), the `repo` slug (the github-backend fetch key), and the roster `tool` itself (zero for shll-self). A **delegated (non-brew) roster tool carries no `brewFormula`** (t26g): its `formulaLeaf` falls back to its `Name` (never a bare `brew install <name>` hint — it is not a formula) and its installed anchor resolves through its `Probe` spec (`probeToolInstalledVersion` → `rk desktop status`), never a brew read — see [cli/version §the shared install probe](/cli/version.md#the-shared-install-probe).
 
 ## Backends
 
 ### `released` — the manifest is the roster + policy authority
 
-One manifest fetch per invocation — `https://hexokit.com/versions.json` first, `https://shll.ai/versions.json` only if that attempt is unavailable — via [`versions.FetchManifest`](/internal/versions.md)'s ordered URL list (no caching — Constitution II). `latest` and `notify` come from the manifest, looked up by tool **name**. Because it is the single latest+policy source, a manifest fetch failure on every URL (transport error, timeout, non-200, decode failure, or an unsupported `schema`) **fails the whole check**: a stderr diagnostic + `errSilent` (exit 1). Pinned by `TestCheckUpdates_ManifestFetchFailureExit1`, `TestCheckUpdates_UnsupportedSchemaFailsCheck`. Selected by `--source released` (the default).
+One manifest fetch per invocation — `https://hexokit.com/versions.json` first, `https://shll.ai/versions.json` only if that attempt is unavailable — via [`versions.FetchManifest`](/internal/versions.md)'s ordered URL list (no caching — Constitution II). `latest` and `notify` come from the manifest, looked up by tool **name** with a legacy-name fallback (below). Because it is the single latest+policy source, a manifest fetch failure on every URL (transport error, timeout, non-200, decode failure, or an unsupported `schema`) **fails the whole check**: a stderr diagnostic + `errSilent` (exit 1). Pinned by `TestCheckUpdates_ManifestFetchFailureExit1`, `TestCheckUpdates_UnsupportedSchemaFailsCheck`. Selected by `--source released` (the default).
+
+#### Manifest lookup falls back to legacy names
+
+`manifestEntry(m, tgt)` looks the manifest row up by the target's roster `Name` first, then by each of the tool's `LegacyNames` in order, returning the first key present. The current name wins when both it and a legacy key are present. For hexokit the chain is `hexokit` → `rk` → `run-kit`; the hexokit.com manifest (built by the hexokit-site repo) keys the row `run-kit`, so hexokit's latest resolves through the fallback. shll-self is a zero `Tool` with no `LegacyNames`, so its lookup is by name only. A target that matches no key reports `not in manifest`. The JSON row's `name`/`formula` always come from the roster (`hexokit`), never from the matched manifest key. Pinned by `TestManifestEntry_LegacyKeyFallback` (legacy key only → resolves; both keys → `hexokit` wins; neither → not in manifest) and `TestCheckUpdates_JSONResolvesHexokitFromLegacyManifestKey`.
 
 ### `github` — delegated, concurrent, per-tool degradation
 
@@ -67,7 +71,7 @@ The envelope is `checkUpdatesReport{Schema, Source, Tools}` → `{"schema": 1, "
   "schema": 1,
   "source": "released",
   "tools": [
-    { "name": "run-kit", "formula": "run-kit",
+    { "name": "hexokit", "formula": "hexokit",
       "installed": "3.8.1", "latest": "3.8.2",
       "notify": "minor", "update_available": true, "notable": false }
   ]
@@ -79,7 +83,7 @@ The envelope is `checkUpdatesReport{Schema, Source, Tools}` → `{"schema": 1, "
 - **`notify` / `notable` are released-backend-only.** On released rows both are present — including an explicit `"notable": false`. `github` rows omit both keys (no policy source exists there — honest omission over invented defaults). This is why `Notable` is a `*bool` with `omitempty` (nil on github rows, `&value` on released rows) and `Notify` is `string,omitempty` — a plain `bool` + `omitempty` would wrongly drop a legitimate `false`.
 - **`update_available`** is `installed < latest` (`changelog.CompareVer`); **`notable`** is [`versions.Notable`](/internal/versions.md).
 - **Encoding** follows the `list`/`doctor` precedent: `json.Encoder`, `SetEscapeHTML(false)`, 2-space indent, trailing newline. An empty resolved set emits `"tools": []`, never `null` (`make([]checkUpdateItem, 0, …)` guarantees non-nil — `TestCheckUpdates_EmptyResolvedSetEmitsEmptyArray`).
-- **Evolution rule** (external): consumers tolerate unknown fields; additions are additive-only, so run-kit can vendor the output as a test fixture.
+- **Evolution rule** (external): consumers tolerate unknown fields; additions are additive-only, so HexoKit's update-check consumer can vendor the output as a test fixture.
 
 Pinned by `TestCheckUpdates_JSONContractReleased` (field values incl. the literal `"notable": false`, unresolved-row omission) and `TestCheckUpdates_GithubJSONOmitsNotifyNotable` (`source:"github"`, no `notify`/`notable` keys).
 
@@ -97,7 +101,7 @@ Pinned by `TestCheckUpdates_JSONContractReleased` (field values incl. the litera
 |-----------|--------------|-------------|
 | Not installed (`installed == ""`) | `not installed` (`notInstalledLabel`, reused from `version.go`) | *(empty)* |
 | `github` backend, per-tool fetch failed | installed version | `unavailable` |
-| `released` backend, name absent from manifest | installed version | `not in manifest` |
+| `released` backend, name and every legacy name absent from manifest | installed version | `not in manifest` |
 | Up to date (`installed ≥ latest`) | installed version | `up to date` |
 | Update available | `installed → latest` (arrow degrades to `->`) | `update available`, plus ` (notable)` when the `released` backend and the bump is notable |
 
@@ -116,7 +120,7 @@ Follows `translateExit` ([cli/commands §exit-code translation](/cli/commands.md
 | Usage error: unknown `--source` value, unknown flag/arg | 2 (`errExitCode{code: usageExitCode}`) |
 | `github`-backend per-tool fetch failure | degrade per-tool (row omitted / `unavailable` note), run still exits 0 |
 
-There is **no distinct exit code for "notable updates exist"** — verdicts are data, not exit codes; a third code would overload run-kit's skip-on-nonzero contract (it treats any non-zero/unparseable exit as "skip silently this pass"). The asymmetry — the `released` backend fails the whole check while `github` degrades per-tool — follows from cardinality: `released` has exactly one fetch, `github` has N (Constitution V). The unknown-`--source`-value usage error is pinned by `TestCheckUpdates_UnknownSourceValueUsageError` (probes with `"bogus"`; also asserts zero recorded subprocess calls — the usage error fires before any network/brew access).
+There is **no distinct exit code for "notable updates exist"** — verdicts are data, not exit codes; a third code would overload HexoKit's update-check skip-on-nonzero contract (it treats any non-zero/unparseable exit as "skip silently this pass"). The asymmetry — the `released` backend fails the whole check while `github` degrades per-tool — follows from cardinality: `released` has exactly one fetch, `github` has N (Constitution V). The unknown-`--source`-value usage error is pinned by `TestCheckUpdates_UnknownSourceValueUsageError` (probes with `"bogus"`; also asserts zero recorded subprocess calls — the usage error fires before any network/brew access).
 
 ## Design Decisions
 
@@ -137,6 +141,12 @@ There is **no distinct exit code for "notable updates exist"** — verdicts are 
 **Why**: the contract requires `"notable": false` to be emitted on released rows (the worked example) while the key is omitted entirely on github rows — a plain `bool` + `omitempty` would wrongly drop `false` everywhere.
 **Rejected**: two row struct types per backend (more code, same bytes); always emitting `notable` with an invented default on github rows (the intake chose honest omission).
 *Introduced by*: 260720-puxw-check-updates-command
+
+### Legacy-name manifest-key fallback
+**Decision**: the released backend resolves a tool's manifest row by roster `Name`, then by each `LegacyNames` entry in order (`manifestEntry`), preferring the current name when several keys are present.
+**Why**: `versions.json` is published by the hexokit-site repo on its own deploy schedule, independent of shll releases, so across a rename the manifest can still key a tool under a prior name (hexokit's row is `run-kit`). Tolerating both keys lets shll and the site ship in either order without a window where the tool reads `not in manifest`.
+**Rejected**: coupling release order (requiring the site to rename its row before or in lockstep with shll — a cross-repo sequencing constraint for a lookup a loop absorbs); a manifest-side alias table (a schema change for a shll-side concern); inlining the loop in `resolveOneTarget` (a named helper keeps the lookup testable and single-sourced).
+*Introduced by*: 260928-guq7-hexokit-roster-rename
 
 ## Cross-references
 

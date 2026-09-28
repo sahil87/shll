@@ -36,7 +36,7 @@ wt is not installed. Install it: brew install sahil87/tap/wt
 `shll install` does not stop at brew: it ends by running the machine setup **in-process** (Go function calls into the same internals the CLI faces wrap — no subprocesses) at the end of every non-`--dry-run` install:
 
 1. **The shell half** — the `eval "$(shll shell-init <shell>)"` block is appended to the rc file (sentinel-managed, idempotent).
-2. **The agent half** — the `shll-toolkit` Agent Skill is placed at the harnesses' global skill paths, and run-kit's dashboard-hook wiring is delegated to `run-kit agent setup --yes` (`--yes` forwarded so nothing can prompt on an unattended `curl | sh` bootstrap).
+2. **The agent half** — the `shll-toolkit` Agent Skill is placed at the harnesses' global skill paths, and HexoKit's dashboard-hook wiring is delegated to `hexokit agent setup --yes` (`--yes` forwarded so nothing can prompt on an unattended `curl | sh` bootstrap).
 
 Both steps are **best-effort**: a failure warns on stderr and prints the step's manual nudge, and never changes the install's exit code — a setup failure must not fail an install. Opt-outs: `--no-shell-setup` (dotfile-manager users) and `--no-agent-setup`.
 

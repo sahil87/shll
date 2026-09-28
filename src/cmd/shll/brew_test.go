@@ -184,14 +184,14 @@ func TestBrewTrustList_DegradesOnGarbageJSON(t *testing.T) {
 
 func TestProbeInstalledVersion_ReturnsInstallFactAndVersion(t *testing.T) {
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" && req.Args[3] == formulaPrefix+"run-kit" {
-			return proc.Result{Stdout: []byte("run-kit 3.0.0\n")}
+		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" && req.Args[3] == formulaPrefix+"hexokit" {
+			return proc.Result{Stdout: []byte("hexokit 3.0.0\n")}
 		}
 		return proc.Result{Err: errors.New("not installed")}
 	}}
 	installFakeRunner(t, f)
 
-	installed, version := probeInstalledVersion(context.Background(), formulaPrefix+"run-kit")
+	installed, version := probeInstalledVersion(context.Background(), formulaPrefix+"hexokit")
 	if !installed {
 		t.Fatal("installed = false, want true (brew list exited 0)")
 	}

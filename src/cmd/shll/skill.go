@@ -175,7 +175,7 @@ func writeSkillGlossary(ctx context.Context, stdout io.Writer) error {
 }
 
 // writeSkillBundle serves one tool's bundle. It resolves `name` against the Roster
-// (inheriting the `rk` → `run-kit` legacy alias via the shared resolver) plus the
+// (inheriting the `rk`/`run-kit` → `hexokit` legacy aliases via the shared resolver) plus the
 // `shll` self-token:
 //   - unknown name → actionable stderr diagnostic + errExitCode{code: 2} (usage).
 //   - `shll` self → serve the embedded bundle in-process, byte-identical (a subprocess
@@ -185,7 +185,7 @@ func writeSkillGlossary(ctx context.Context, stdout io.Writer) error {
 //     stdout byte-identical on success; on ErrNotFound / non-zero exit write ONE
 //     stderr notice + errSilent (exit 1), suppressing the child's own raw stderr.
 func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string) error {
-	// Legacy alias (rk → run-kit) via the same map resolveTargets consults, so skill
+	// Legacy aliases (rk, run-kit → hexokit) via the same map resolveTargets consults, so skill
 	// carries no bespoke alias logic (intake: name-matching reuses the shared helper).
 	if canonical, ok := legacyAliases[name]; ok && rosterHas(canonical) {
 		name = canonical
@@ -254,7 +254,7 @@ func writeSkillBundle(ctx context.Context, stdout, stderr io.Writer, name string
 // skillReservedTopic prints the empty list (zero bytes, exit 0 — the standard binds
 // every adopting tool), and any other topic is a usage error (exit 2).
 func writeSkillTopic(ctx context.Context, stdout, stderr io.Writer, name, topic string) error {
-	// Legacy alias (rk → run-kit) via the same map resolveTargets consults, applied
+	// Legacy aliases (rk, run-kit → hexokit) via the same map resolveTargets consults, applied
 	// before any dispatch so a topic invocation targets the canonical binary.
 	if canonical, ok := legacyAliases[name]; ok && rosterHas(canonical) {
 		name = canonical

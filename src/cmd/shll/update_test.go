@@ -530,9 +530,9 @@ func TestUpdate_FlagSupported(t *testing.T) {
 	// run-kit is installed and `run-kit update --help` advertises
 	// --skip-brew-update → run-kit is upgraded via `run-kit update --skip-brew-update`,
 	// NOT brew upgrade.
-	base := installedOnly(formulaPrefix + "run-kit")
+	base := installedOnly(formulaPrefix + "hexokit")
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && isUpdateHelpProbe(req) {
+		if req.Name == "hexokit" && isUpdateHelpProbe(req) {
 			return helpAdvertisesSkipFlag()
 		}
 		return base(req)
@@ -544,14 +544,14 @@ func TestUpdate_FlagSupported(t *testing.T) {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
-	if !invocationsContain(calls, "run-kit", "update", skipBrewUpdateFlag) {
-		t.Fatalf("expected `run-kit update %s`, calls: %+v", skipBrewUpdateFlag, calls)
+	if !invocationsContain(calls, "hexokit", "update", skipBrewUpdateFlag) {
+		t.Fatalf("expected `hexokit update %s`, calls: %+v", skipBrewUpdateFlag, calls)
 	}
-	if invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"run-kit") {
-		t.Fatal("should NOT brew upgrade run-kit — must delegate to `run-kit update --skip-brew-update`")
+	if invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"hexokit") {
+		t.Fatal("should NOT brew upgrade hexokit — must delegate to `hexokit update --skip-brew-update`")
 	}
-	if invocationsContain(calls, "run-kit", "update") {
-		t.Fatal("expected the flagged form, not a bare `run-kit update`")
+	if invocationsContain(calls, "hexokit", "update") {
+		t.Fatal("expected the flagged form, not a bare `hexokit update`")
 	}
 }
 
@@ -628,7 +628,7 @@ func TestUpdate_BrewUpdateRunsExactlyOnce(t *testing.T) {
 	// With multiple roster tools installed, the hoisted `brew update --quiet`
 	// runs exactly once for the whole run.
 	f := &fakeRunner{respond: installedOnly(
-		formulaPrefix+"run-kit",
+		formulaPrefix+"hexokit",
 		formulaPrefix+"hop",
 		formulaPrefix+"wt",
 	)}
@@ -673,7 +673,7 @@ func TestUpdate_HeadersAndTail(t *testing.T) {
 	// default), so the seven are shll + the six brew tools in roster order.
 	want := updateStatusLine + "\n" +
 		"==> [1/7] shll (self)\n" +
-		"\n==> [2/7] run-kit\n" +
+		"\n==> [2/7] hexokit\n" +
 		"\n==> [3/7] fab-kit\n" +
 		"\n==> [4/7] wt\n" +
 		"\n==> [5/7] idea\n" +
@@ -792,13 +792,13 @@ func TestUpdate_DryRunPreview(t *testing.T) {
 	// with the exact per-tool argv, in roster order.
 	base := installedOnly(
 		formulaPrefix+"wt", formulaPrefix+"idea", formulaPrefix+"tu",
-		formulaPrefix+"run-kit", formulaPrefix+"hop", formulaPrefix+"fab-kit",
+		formulaPrefix+"hexokit", formulaPrefix+"hop", formulaPrefix+"fab-kit",
 	)
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if isRkDesktopProbe(req) {
 			return rkDesktopStatusResult(false) // keep rk-desktop out of the preview golden
 		}
-		if (req.Name == "run-kit" || req.Name == "hop") && isUpdateHelpProbe(req) {
+		if (req.Name == "hexokit" || req.Name == "hop") && isUpdateHelpProbe(req) {
 			return helpAdvertisesSkipFlag()
 		}
 		return base(req)
@@ -809,11 +809,11 @@ func TestUpdate_DryRunPreview(t *testing.T) {
 	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, true, false, nil); err != nil {
 		t.Fatalf("runUpdate --dry-run err = %v, want nil", err)
 	}
-	// Longest label is "fab-kit"/"run-kit" (7) since shll (self) is absent here;
+	// Longest label is "fab-kit"/"hexokit" (7) since shll (self) is absent here;
 	// labels are padded to 7. run-kit and hop carry the flag; the rest do not.
 	want := updateStatusLine + "\n" +
 		"Would update 6 tools (brew metadata refresh first):\n" +
-		"  run-kit  run-kit update --skip-brew-update\n" +
+		"  hexokit  hexokit update --skip-brew-update\n" +
 		"  fab-kit  fab-kit update\n" +
 		"  wt       wt update\n" +
 		"  idea     idea update\n" +
@@ -843,7 +843,7 @@ func TestUpdate_DryRunPreviewWithSelf(t *testing.T) {
 	want := updateStatusLine + "\n" +
 		"Would update 7 tools (brew metadata refresh first):\n" +
 		"  shll (self)  brew upgrade sahil87/tap/shll\n" +
-		"  run-kit      run-kit update\n" +
+		"  hexokit      hexokit update\n" +
 		"  fab-kit      fab-kit update\n" +
 		"  wt           wt update\n" +
 		"  idea         idea update\n" +
@@ -989,19 +989,19 @@ func TestUpdate_SubsetNamedNotInstalledErrors(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"run-kit"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"hexokit"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent for named-not-installed", err)
 	}
-	if !strings.Contains(stderr.String(), "run-kit: not installed") {
-		t.Fatalf("stderr = %q, want to report `run-kit: not installed`", stderr.String())
+	if !strings.Contains(stderr.String(), "hexokit: not installed") {
+		t.Fatalf("stderr = %q, want to report `hexokit: not installed`", stderr.String())
 	}
 	calls := f.recordedCalls()
 	// No write: no brew update, no upgrade of any kind.
 	if invocationsContain(calls, brewBinary, "update", "--quiet") {
 		t.Error("brew update --quiet must NOT run when a named target is not installed")
 	}
-	if invocationsContain(calls, "run-kit", "update") || invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"run-kit") {
+	if invocationsContain(calls, "hexokit", "update") || invocationsContain(calls, brewBinary, "upgrade", formulaPrefix+"hexokit") {
 		t.Error("nothing should be upgraded when a named target is not installed")
 	}
 }
@@ -1131,7 +1131,7 @@ func TestUpdate_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 	if invocationsContain(calls, brewBinary, "upgrade", shllFormula) {
 		t.Error("shll self-upgrade must NOT run when shll is not named")
 	}
-	for _, name := range []string{"idea", "tu", "run-kit", "hop"} {
+	for _, name := range []string{"idea", "tu", "hexokit", "hop"} {
 		if invocationsContain(calls, name, "update") {
 			t.Errorf("unnamed tool %s must NOT be upgraded", name)
 		}
@@ -1478,7 +1478,7 @@ func TestUpdate_NoDigestWhenNothingBumped(t *testing.T) {
 	}
 	want := updateStatusLine + "\n" +
 		"==> [1/7] shll (self)\n" +
-		"\n==> [2/7] run-kit\n" +
+		"\n==> [2/7] hexokit\n" +
 		"\n==> [3/7] fab-kit\n" +
 		"\n==> [4/7] wt\n" +
 		"\n==> [5/7] idea\n" +
@@ -1576,8 +1576,8 @@ func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
 	// bump, not a migration.
 	r := &versionTransitionRunner{
 		seen:   map[string]int{},
-		before: map[string]string{formulaPrefix + "wt": "1.0.0", formulaPrefix + "run-kit": "0.1.0"},
-		after:  map[string]string{formulaPrefix + "wt": "1.1.0", formulaPrefix + "run-kit": "0.2.0"},
+		before: map[string]string{formulaPrefix + "wt": "1.0.0", formulaPrefix + "hexokit": "0.1.0"},
+		after:  map[string]string{formulaPrefix + "wt": "1.1.0", formulaPrefix + "hexokit": "0.2.0"},
 	}
 	f := &fakeRunner{respond: r.respond}
 	installFakeRunner(t, f)
@@ -1598,19 +1598,19 @@ func TestUpdate_DigestMixedAvailableAndUnavailable(t *testing.T) {
 		t.Fatalf("out missing available wt entry:\n%s", out)
 	}
 	// run-kit: compare-URL fallback (run-kit slug) — no bodies exist to inline.
-	if !strings.Contains(out, "run-kit 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("run-kit", "0.1.0", "0.2.0")) {
-		t.Fatalf("out missing unavailable run-kit fallback:\n%s", out)
+	if !strings.Contains(out, "hexokit 0.1.0 -> 0.2.0 -- see "+changelog.CompareURL("run-kit", "0.1.0", "0.2.0")) {
+		t.Fatalf("out missing unavailable hexokit fallback:\n%s", out)
 	}
 	// run-kit precedes wt (roster order).
-	if strings.Index(out, "run-kit 0.1.0") > strings.Index(out, "wt 1.0.0") {
-		t.Fatalf("digest must render run-kit before wt (roster order):\n%s", out)
+	if strings.Index(out, "hexokit 0.1.0") > strings.Index(out, "wt 1.0.0") {
+		t.Fatalf("digest must render hexokit before wt (roster order):\n%s", out)
 	}
 	// Tool blocks are blank-line separated (mirroring runChangelog's per-tool
 	// separation): run-kit's transition line is followed by a blank line before
 	// wt's — tools are never separated more weakly than the releases within one
 	// tool.
 	if !strings.Contains(out, "\n\n  wt 1.0.0") {
-		t.Fatalf("out missing blank line between run-kit and wt digest blocks:\n%s", out)
+		t.Fatalf("out missing blank line between hexokit and wt digest blocks:\n%s", out)
 	}
 }
 
@@ -1708,7 +1708,7 @@ func TestMakeBump_NormalizesVersions(t *testing.T) {
 
 // --- legacy-only machines after the migration-guard retirement (change h3f6) ---
 
-const runKitFormula = formulaPrefix + "run-kit"
+const hexokitFormula = formulaPrefix + "hexokit"
 
 // assertNoLegacyFormulaReference fails the test if any recorded subprocess call
 // references the retired legacy formula `sahil87/tap/rk`. shll never probes or
@@ -1726,9 +1726,9 @@ func assertNoLegacyFormulaReference(t *testing.T, calls []proc.Request) {
 	}
 }
 
-func TestUpdate_LegacyOnlyMachineSkipsRunKit(t *testing.T) {
+func TestUpdate_LegacyOnlyMachineSkipsHexokit(t *testing.T) {
 	// A never-migrated machine (legacy `rk` keg only — invisible to shll, which
-	// probes only sahil87/tap/run-kit): whole-roster `shll update` treats run-kit
+	// probes only sahil87/tap/hexokit): whole-roster `shll update` treats run-kit
 	// as not installed and skips it gracefully (Constitution V), and NO call ever
 	// references sahil87/tap/rk.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
@@ -1749,15 +1749,15 @@ func TestUpdate_LegacyOnlyMachineSkipsRunKit(t *testing.T) {
 	}
 	calls := f.recordedCalls()
 	assertNoLegacyFormulaReference(t, calls)
-	if invocationsContain(calls, "run-kit", "update") || invocationsContain(calls, "rk", "update") {
-		t.Fatal("a legacy-only machine's run-kit is not installed — it must not be upgraded")
+	if invocationsContain(calls, "hexokit", "update") || invocationsContain(calls, "rk", "update") {
+		t.Fatal("a legacy-only machine's hexokit is not installed — it must not be upgraded")
 	}
 	if !invocationsContain(calls, "hop", "update") {
 		t.Fatal("the installed roster tool (hop) must still be upgraded")
 	}
 }
 
-func TestUpdate_LegacyOnlyMachineNamedRunKitErrorsNotInstalled(t *testing.T) {
+func TestUpdate_LegacyOnlyMachineNamedHexokitErrorsNotInstalled(t *testing.T) {
 	// Naming run-kit explicitly on a legacy-only machine errors named-but-not-
 	// installed — the same contract as any absent named tool (the guard that once
 	// counted the legacy keg as installed is retired).
@@ -1770,12 +1770,12 @@ func TestUpdate_LegacyOnlyMachineNamedRunKitErrorsNotInstalled(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"run-kit"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"hexokit"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("runUpdate err = %v, want errSilent (named-but-not-installed)", err)
 	}
-	if !strings.Contains(stderr.String(), "run-kit: not installed") {
-		t.Fatalf("stderr missing `run-kit: not installed`: %q", stderr.String())
+	if !strings.Contains(stderr.String(), "hexokit: not installed") {
+		t.Fatalf("stderr missing `hexokit: not installed`: %q", stderr.String())
 	}
 	assertNoLegacyFormulaReference(t, f.recordedCalls())
 }
@@ -1947,8 +1947,8 @@ func TestUpdate_RefreshShllNotOnPathSkipsSilently(t *testing.T) {
 // Concurrency-safe (probes run in parallel).
 type unlinkedDelegationRunner struct {
 	mu        sync.Mutex
-	linkFails bool // `brew link run-kit` exits non-zero
-	linked    bool // set once `brew link run-kit` succeeds
+	linkFails bool // `brew link hexokit` exits non-zero
+	linked    bool // set once `brew link hexokit` succeeds
 }
 
 func (r *unlinkedDelegationRunner) respond(req proc.Request) proc.Result {
@@ -1961,17 +1961,17 @@ func (r *unlinkedDelegationRunner) respond(req proc.Request) proc.Result {
 		// The formula IS installed per brew — that is the whole point of the
 		// pathology (probe says installed, binary off PATH). Same version before and
 		// after so the digest re-query records no bump.
-		if req.Args[3] == runKitFormula {
-			return proc.Result{Stdout: []byte("run-kit 3.8.2\n")}
+		if req.Args[3] == hexokitFormula {
+			return proc.Result{Stdout: []byte("hexokit 3.8.2\n")}
 		}
 		return proc.Result{Err: errors.New("not installed")}
-	case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "link" && req.Args[1] == "run-kit":
+	case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "link" && req.Args[1] == "hexokit":
 		if r.linkFails {
 			return proc.Result{ExitCode: 1}
 		}
 		r.linked = true
 		return proc.Result{}
-	case req.Name == "run-kit":
+	case req.Name == "hexokit":
 		// EVERY run-kit invocation — the `update --help` probe and the delegated
 		// `update` alike — is off PATH until the keg is linked.
 		if !r.linked {
@@ -2016,23 +2016,23 @@ func TestUpdate_DelegationUnlinkedKegSelfHeal(t *testing.T) {
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 
 	var stdout, stderr bytes.Buffer
-	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"run-kit"}); err != nil {
+	if err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"hexokit"}); err != nil {
 		t.Fatalf("runUpdate err = %v, want nil (self-heal should rescue the run)", err)
 	}
 	calls := f.recordedCalls()
-	if !invocationsContain(calls, brewBinary, "link", "run-kit") {
-		t.Fatalf("expected `brew link run-kit` for the unlinked delegation, calls: %+v", calls)
+	if !invocationsContain(calls, brewBinary, "link", "hexokit") {
+		t.Fatalf("expected `brew link hexokit` for the unlinked delegation, calls: %+v", calls)
 	}
 	// The delegation ran twice: the ErrNotFound first attempt, then the post-link
 	// retry. (No --skip-brew-update: the help probe also hit the unlinked binary, so
 	// the flag was correctly not detected.)
-	if got := countInvocations(calls, "run-kit", "update"); got != 2 {
-		t.Fatalf("`run-kit update` invocations = %d, want 2 (attempt + post-link retry), calls: %+v", got, calls)
+	if got := countInvocations(calls, "hexokit", "update"); got != 2 {
+		t.Fatalf("`hexokit update` invocations = %d, want 2 (attempt + post-link retry), calls: %+v", got, calls)
 	}
 	// The link must land BETWEEN the two delegation attempts.
 	firstUpdate, link := -1, -1
 	for i, c := range calls {
-		if c.Name == "run-kit" && len(c.Args) == 1 && c.Args[0] == "update" && firstUpdate == -1 {
+		if c.Name == "hexokit" && len(c.Args) == 1 && c.Args[0] == "update" && firstUpdate == -1 {
 			firstUpdate = i
 		}
 		if c.Name == brewBinary && len(c.Args) == 2 && c.Args[0] == "link" {
@@ -2042,11 +2042,11 @@ func TestUpdate_DelegationUnlinkedKegSelfHeal(t *testing.T) {
 	if link < firstUpdate {
 		t.Fatalf("`brew link` at call %d must FOLLOW the failed delegation at call %d (heal on evidence, not preemptively)", link, firstUpdate)
 	}
-	if !strings.Contains(stdout.String(), "brew link run-kit") {
+	if !strings.Contains(stdout.String(), "brew link hexokit") {
 		t.Fatalf("stdout missing the relink note:\n%s", stdout.String())
 	}
 	// The healed retry succeeded, so the delegation-failure fallback must NOT fire.
-	if invocationsContain(calls, brewBinary, "upgrade", runKitFormula) {
+	if invocationsContain(calls, brewBinary, "upgrade", hexokitFormula) {
 		t.Fatal("no fallback brew upgrade after a successful self-heal retry")
 	}
 }
@@ -2062,13 +2062,13 @@ func TestUpdate_DelegationUnlinkedKegLinkFails(t *testing.T) {
 	installFakeClock(t, time.Unix(1000, 0), time.Unix(1000, 0))
 
 	var stdout, stderr bytes.Buffer
-	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"run-kit"})
+	err := runUpdate(context.Background(), envFunc(nil), &stdout, &stderr, false, false, []string{"hexokit"})
 	if err != nil {
 		t.Fatalf("runUpdate err = %v, want nil (the brew fallback should rescue the run)", err)
 	}
 	calls := f.recordedCalls()
-	if got := countInvocations(calls, "run-kit", "update"); got != 1 {
-		t.Fatalf("`run-kit update` invocations = %d, want 1 (a failed link must NOT retry)", got)
+	if got := countInvocations(calls, "hexokit", "update"); got != 1 {
+		t.Fatalf("`hexokit update` invocations = %d, want 1 (a failed link must NOT retry)", got)
 	}
 	if !strings.Contains(stderr.String(), "brew link exited 1") {
 		t.Fatalf("stderr missing the link-failure surface:\n%s", stderr.String())
@@ -2076,10 +2076,10 @@ func TestUpdate_DelegationUnlinkedKegLinkFails(t *testing.T) {
 	if strings.Contains(stdout.String(), "retrying") {
 		t.Fatalf("the relink note must NOT print when the link failed:\n%s", stdout.String())
 	}
-	if !invocationsContain(calls, brewBinary, "upgrade", runKitFormula) {
-		t.Fatalf("expected the fallback `brew upgrade %s` after the failed heal, calls: %+v", runKitFormula, calls)
+	if !invocationsContain(calls, brewBinary, "upgrade", hexokitFormula) {
+		t.Fatalf("expected the fallback `brew upgrade %s` after the failed heal, calls: %+v", hexokitFormula, calls)
 	}
-	if !strings.Contains(stdout.String(), "falling back to 'brew upgrade "+runKitFormula+"'") {
+	if !strings.Contains(stdout.String(), "falling back to 'brew upgrade "+hexokitFormula+"'") {
 		t.Fatalf("stdout missing the fallback note:\n%s", stdout.String())
 	}
 }
@@ -2233,9 +2233,9 @@ func TestUpdate_YesLeavesToolArgvsUntouched(t *testing.T) {
 	// run-kit is installed and advertises --skip-brew-update; --yes must not leak
 	// into the delegated per-tool update argv (its only consumption point is the
 	// end-of-run agent-skill refresh, which the missing placement suppresses here).
-	base := installedOnly(formulaPrefix + "run-kit")
+	base := installedOnly(formulaPrefix + "hexokit")
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && isUpdateHelpProbe(req) {
+		if req.Name == "hexokit" && isUpdateHelpProbe(req) {
 			return helpAdvertisesSkipFlag()
 		}
 		return base(req)
@@ -2248,8 +2248,8 @@ func TestUpdate_YesLeavesToolArgvsUntouched(t *testing.T) {
 		t.Fatalf("runUpdate err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
-	if !invocationsContain(calls, "run-kit", "update", skipBrewUpdateFlag) {
-		t.Fatalf("expected the unchanged `run-kit update %s` argv, calls: %+v", skipBrewUpdateFlag, calls)
+	if !invocationsContain(calls, "hexokit", "update", skipBrewUpdateFlag) {
+		t.Fatalf("expected the unchanged `hexokit update %s` argv, calls: %+v", skipBrewUpdateFlag, calls)
 	}
 	for _, c := range calls {
 		if c.Name != shllTargetToken {

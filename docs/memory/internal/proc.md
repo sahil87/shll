@@ -104,7 +104,7 @@ func installFakeRunner(t *testing.T, f *fakeRunner) {
 }
 ```
 
-The fake records every `Request` it receives and returns canned `Result` values (matched by binary name + args). This is how the `src/cmd/shll/*_test.go` files avoid spawning real `brew` or per-tool subprocesses — including `skill_test.go` (fakes `<tool> skill` via `TransportCaptureAll`) and `agent_setup_test.go` (fakes the `run-kit agent setup` delegation), both agst.
+The fake records every `Request` it receives and returns canned `Result` values (matched by binary name + args). This is how the `src/cmd/shll/*_test.go` files avoid spawning real `brew` or per-tool subprocesses — including `skill_test.go` (fakes `<tool> skill` via `TransportCaptureAll`) and `agent_setup_test.go` (fakes the `hexokit agent setup` delegation), both agst.
 
 The proc package's own `proc_test.go` uses the same pattern (`withFakeRunner`) — the only test that actually spawns subprocesses is `TestDefaultRunner_RealBinary`, which uses `true`/`false` POSIX builtins (never project tools).
 
@@ -213,6 +213,6 @@ If a future shll subcommand needs cwd scoping, the path forward is to either (a)
 ## Cross-references
 
 - All consumers in `src/cmd/shll/*.go` — see [cli/commands](/cli/commands.md), [cli/update](/cli/update.md), [cli/shell-init](/cli/shell-init.md), [cli/version](/cli/version.md). The `RunStreamedTail`/`TransportStreamTail` consumers are the `shll install`/`shll update` write-phase children (brew trust/install/update/upgrade/link, delegated `<tool> update`, `rk desktop install|update`), all routed through the shared `runStreamedChild` helper in `brew.go` (yud0): [cli/update §null-stdin streamed children](/cli/update.md#null-stdin-streamed-children), [cli/install §determinate OSC 9;4](/cli/install.md#determinate-osc-94-tty-write-phase).
-- The sole `RunCaptured`/`TransportCaptureAll` consumer, `shll skill` — byte-identical stdout passthrough, with the one-arg form suppressing the child's stderr ([cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured)) and the two-arg topic form propagating it + mirroring the child's exit code ([cli/skill §a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)). The `run-kit agent setup` delegation uses `RunForeground`: [cli/setup §run-kit delegation](/cli/setup.md#run-kit-delegation).
+- The sole `RunCaptured`/`TransportCaptureAll` consumer, `shll skill` — byte-identical stdout passthrough, with the one-arg form suppressing the child's stderr ([cli/skill §the byte-identical passthrough](/cli/skill.md#the-byte-identical-passthrough-procruncaptured)) and the two-arg topic form propagating it + mirroring the child's exit code ([cli/skill §a topic page](/cli/skill.md#shll-skill-tool-topic--a-topic-page-verbatim-passthrough)). The `hexokit agent setup` delegation uses `RunForeground`: [cli/setup §hexokit delegation](/cli/setup.md#hexokit-delegation).
 - Constitution I (Security First) — the principle this package enforces.
 - spec.md Design Decision #7 — package-level `Runner` is the chosen test seam.

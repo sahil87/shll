@@ -403,16 +403,16 @@ func TestChangelog_NamedNotInstalledErrorsNoRangeOnly(t *testing.T) {
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	err := runChangelog(context.Background(), &stdout, &stderr, []string{"run-kit"})
+	err := runChangelog(context.Background(), &stdout, &stderr, []string{"hexokit"})
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent for no-range not-installed", err)
 	}
-	if !strings.Contains(stderr.String(), "shll changelog: run-kit: not installed") {
+	if !strings.Contains(stderr.String(), "shll changelog: hexokit: not installed") {
 		t.Fatalf("stderr = %q, want not-installed error", stderr.String())
 	}
 }
 
-func TestChangelog_LegacyAliasResolvesToRunKit(t *testing.T) {
+func TestChangelog_LegacyAliasResolvesToHexokit(t *testing.T) {
 	// `shll changelog rk` resolves the alias to run-kit (canonicalized in
 	// parseChangelogSpecs), so the not-installed error names the canonical run-kit.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
@@ -425,8 +425,8 @@ func TestChangelog_LegacyAliasResolvesToRunKit(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
-	if !strings.Contains(stderr.String(), "shll changelog: run-kit: not installed") {
-		t.Fatalf("stderr = %q, want the alias to resolve to canonical run-kit", stderr.String())
+	if !strings.Contains(stderr.String(), "shll changelog: hexokit: not installed") {
+		t.Fatalf("stderr = %q, want the alias to resolve to canonical hexokit", stderr.String())
 	}
 }
 

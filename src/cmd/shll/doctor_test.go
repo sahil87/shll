@@ -281,7 +281,7 @@ func TestDoctor_UnwiredShellInitWarnsExitZero(t *testing.T) {
 			t.Errorf("%s not WARN when unwired:\n%s", name, out)
 		}
 	}
-	for _, name := range []string{"idea", "run-kit", "fab-kit"} {
+	for _, name := range []string{"idea", "hexokit", "fab-kit"} {
 		if lineHas(out, name, markerWarn) || lineHas(out, name, markerFail) {
 			t.Errorf("%s should be OK (no wiring check):\n%s", name, out)
 		}
@@ -568,7 +568,7 @@ func TestDoctor_InstalledUntrustedWarns(t *testing.T) {
 		t.Errorf("hop is individually trusted; should not WARN:\n%s", out)
 	}
 	// The other installed roster tools are untrusted → WARN with the suggestion.
-	for _, name := range []string{"wt", "idea", "tu", "run-kit", "fab-kit"} {
+	for _, name := range []string{"wt", "idea", "tu", "hexokit", "fab-kit"} {
 		if !lineHas(out, name, markerWarn) {
 			t.Errorf("%s untrusted should WARN:\n%s", name, out)
 		}
@@ -724,7 +724,7 @@ func TestDoctor_LegacyOnlyMachineNoMigrationFindings(t *testing.T) {
 	base := doctorFakeTrust(map[string]doctorVersionState{}, trustState{available: true, tapTrusted: true})
 	inner := base.respond
 	base.respond = func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+		if req.Name == "hexokit" && len(req.Args) == 1 && req.Args[0] == "--version" {
 			return proc.Result{Err: proc.ErrNotFound} // new-name binary absent
 		}
 		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
@@ -745,21 +745,21 @@ func TestDoctor_LegacyOnlyMachineNoMigrationFindings(t *testing.T) {
 		t.Fatalf("doctor must emit no migration findings after the guard retirement:\n%s", out)
 	}
 	// The legacy-name fallback reported a version → an ordinary non-FAIL row.
-	if lineHas(out, "run-kit", markerFail) {
-		t.Fatalf("run-kit must not FAIL when the legacy `rk` binary is on PATH (PATH fallback):\n%s", out)
+	if lineHas(out, "hexokit", markerFail) {
+		t.Fatalf("hexokit must not FAIL when the legacy `rk` binary is on PATH (PATH fallback):\n%s", out)
 	}
 	// The retired legacy formula is never probed (doctor runs no migration facts).
 	assertNoLegacyFormulaReference(t, base.recordedCalls())
 }
 
-func TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail(t *testing.T) {
+func TestDoctor_MigratedHexokitLegacyBinaryOnPathNotFail(t *testing.T) {
 	// A run-kit whose binary is on PATH only under the legacy `rk` name must NOT
-	// FAIL — the PATH-probe legacy fallback (a kept LegacyName surface) finds it:
+	// FAIL — the PATH-probe legacy fallback (a kept LegacyNames surface) finds it:
 	// `run-kit --version` fails ErrNotFound but `rk --version` succeeds → OK.
 	base := doctorFakeTrust(map[string]doctorVersionState{}, trustState{available: true, tapTrusted: true})
 	inner := base.respond
 	base.respond = func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+		if req.Name == "hexokit" && len(req.Args) == 1 && req.Args[0] == "--version" {
 			return proc.Result{Err: proc.ErrNotFound} // not on PATH under the new name
 		}
 		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
@@ -777,8 +777,8 @@ func TestDoctor_MigratedRunKitLegacyBinaryOnPathNotFail(t *testing.T) {
 	out := stdout.String()
 	// run-kit is migrated (current formula installed) and the fallback probe found
 	// the `rk` binary → OK, never FAIL.
-	if lineHas(out, "run-kit", markerFail) {
-		t.Fatalf("run-kit must not FAIL when the legacy `rk` binary is on PATH (PATH fallback):\n%s", out)
+	if lineHas(out, "hexokit", markerFail) {
+		t.Fatalf("hexokit must not FAIL when the legacy `rk` binary is on PATH (PATH fallback):\n%s", out)
 	}
 }
 

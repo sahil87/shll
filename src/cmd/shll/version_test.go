@@ -294,15 +294,15 @@ func TestRootVersionFlag_VersionStandardConformance(t *testing.T) {
 
 // --- legacy-name PATH-probe fallback (rk→run-kit, change 9bak) ----------------
 
-// runKitTool returns the live run-kit roster entry (which carries LegacyName "rk").
-func runKitTool(t *testing.T) Tool {
+// hexokitTool returns the live hexokit roster entry (LegacyNames {"rk", "run-kit"}).
+func hexokitTool(t *testing.T) Tool {
 	t.Helper()
 	for _, tool := range Roster {
-		if tool.Name == "run-kit" {
+		if tool.Name == "hexokit" {
 			return tool
 		}
 	}
-	t.Fatal("run-kit not found in Roster")
+	t.Fatal("hexokit not found in Roster")
 	return Tool{}
 }
 
@@ -311,7 +311,7 @@ func TestProbeToolVersion_LegacyNameFallbackOnErrNotFound(t *testing.T) {
 	// new name), but the legacy `rk` binary IS present → the fallback finds it and
 	// returns its output. Display name stays run-kit (the caller uses tool.Name).
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+		if req.Name == "hexokit" && len(req.Args) == 1 && req.Args[0] == "--version" {
 			return proc.Result{Err: proc.ErrNotFound}
 		}
 		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
@@ -321,7 +321,7 @@ func TestProbeToolVersion_LegacyNameFallbackOnErrNotFound(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 
-	rk := runKitTool(t)
+	rk := hexokitTool(t)
 	out, err := probeToolVersion(context.Background(), rk)
 	if err != nil {
 		t.Fatalf("probeToolVersion err = %v, want nil (legacy fallback should succeed)", err)
@@ -345,8 +345,8 @@ func TestProbeToolVersion_NoFallbackOnNonErrNotFound(t *testing.T) {
 	// returned; `rk` is never probed.
 	rkProbed := false
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == "run-kit" && len(req.Args) == 1 && req.Args[0] == "--version" {
-			return proc.Result{Err: errors.New("run-kit: boom")}
+		if req.Name == "hexokit" && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Err: errors.New("hexokit: boom")}
 		}
 		if req.Name == "rk" && len(req.Args) == 1 && req.Args[0] == "--version" {
 			rkProbed = true
@@ -356,7 +356,7 @@ func TestProbeToolVersion_NoFallbackOnNonErrNotFound(t *testing.T) {
 	}}
 	installFakeRunner(t, f)
 
-	rk := runKitTool(t)
+	rk := hexokitTool(t)
 	if _, err := probeToolVersion(context.Background(), rk); err == nil {
 		t.Fatal("probeToolVersion err = nil, want the primary non-ErrNotFound error (no fallback)")
 	}
@@ -364,7 +364,7 @@ func TestProbeToolVersion_NoFallbackOnNonErrNotFound(t *testing.T) {
 		t.Fatal("the legacy `rk` binary must NOT be probed on a non-ErrNotFound primary error")
 	}
 	if toolInstalled(context.Background(), rk) {
-		t.Error("toolInstalled = true, want false (present-but-broken run-kit is not installed via fallback)")
+		t.Error("toolInstalled = true, want false (present-but-broken hexokit is not installed via fallback)")
 	}
 }
 
@@ -550,5 +550,73 @@ func TestNormalizeVersion_PrefixStripCase(t *testing.T) {
 	got := normalizeVersion("shll Version dev")
 	if got != "dev" {
 		t.Fatalf("got %q, want %q (case-insensitive prefix-strip)", got, "dev")
+	}
+}
+
+// --- multi-name legacy chain (hexokit → rk → run-kit, change guq7) ------------
+
+func TestProbeToolVersion_LegacyChainReachesRunKit(t *testing.T) {
+	// Neither `hexokit` nor `rk` is on PATH, but `run-kit` is — the chain walks both
+	// legacy names in order and reports run-kit's version under the hexokit identity.
+	var probed []string
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if len(req.Args) == 1 && req.Args[0] == "--version" {
+			probed = append(probed, req.Name)
+			if req.Name == "run-kit" {
+				return proc.Result{Stdout: []byte("run-kit version v3.20.21\n")}
+			}
+			return proc.Result{Err: proc.ErrNotFound}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	tool := hexokitTool(t)
+	if got := toolVersion(context.Background(), tool); got != "v3.20.21" {
+		t.Errorf("toolVersion = %q, want v3.20.21 via the run-kit legacy name", got)
+	}
+	if got := strings.Join(probed, ","); got != "hexokit,rk,run-kit" {
+		t.Errorf("probe order = %q, want hexokit,rk,run-kit", got)
+	}
+}
+
+func TestProbeToolVersion_LegacyChainStopsAtBrokenIntermediate(t *testing.T) {
+	// `hexokit` is missing, `rk` is present-but-broken (non-ErrNotFound): the chain
+	// stops at rk's error and never tries run-kit.
+	hexokitProbed := false
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		if len(req.Args) != 1 || req.Args[0] != "--version" {
+			return proc.Result{}
+		}
+		switch req.Name {
+		case "hexokit":
+			return proc.Result{Err: proc.ErrNotFound}
+		case "rk":
+			return proc.Result{Err: errors.New("rk: boom")}
+		case "run-kit":
+			hexokitProbed = true
+			return proc.Result{Stdout: []byte("run-kit version v3.20.21\n")}
+		}
+		return proc.Result{}
+	}}
+	installFakeRunner(t, f)
+
+	_, err := probeToolVersion(context.Background(), hexokitTool(t))
+	if err == nil || errors.Is(err, proc.ErrNotFound) {
+		t.Fatalf("probeToolVersion err = %v, want rk's non-ErrNotFound error", err)
+	}
+	if hexokitProbed {
+		t.Fatal("run-kit must NOT be probed after a present-but-broken rk")
+	}
+}
+
+func TestProbeToolVersion_AllNamesMissingIsErrNotFound(t *testing.T) {
+	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
+		return proc.Result{Err: proc.ErrNotFound}
+	}}
+	installFakeRunner(t, f)
+
+	if _, err := probeToolVersion(context.Background(), hexokitTool(t)); !errors.Is(err, proc.ErrNotFound) {
+		t.Fatalf("probeToolVersion err = %v, want proc.ErrNotFound when every name is missing", err)
 	}
 }

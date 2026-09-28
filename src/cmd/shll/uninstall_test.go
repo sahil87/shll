@@ -27,7 +27,7 @@ func installStdinTTY(t *testing.T, tty bool) {
 // <formula>` reports installed (with a version line) exactly for the formulas in
 // `installed`, and not-installed otherwise. brew --version succeeds. brew
 // uninstall/install succeed (exit 0). The keg name reported for a formula is its
-// last path segment (so sahil87/tap/run-kit → `run-kit`).
+// last path segment (so sahil87/tap/hexokit → `run-kit`).
 func installedFormulasFake(installed map[string]bool) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		if req.Name != brewBinary {
@@ -77,7 +77,7 @@ func TestUninstall_NoArgsSweepReverseOrderSkipsMissing(t *testing.T) {
 	if !invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+"wt") {
 		t.Errorf("expected brew uninstall of wt")
 	}
-	for _, name := range []string{"idea", "tu", "run-kit", "fab-kit"} {
+	for _, name := range []string{"idea", "tu", "hexokit", "fab-kit"} {
 		if invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+name) {
 			t.Errorf("did not expect brew uninstall of not-installed %s", name)
 		}
@@ -140,7 +140,7 @@ func TestUninstall_UnknownTargetHardErrors(t *testing.T) {
 		t.Errorf("stderr = %q, want unknown-target diagnostic", stderr.String())
 	}
 	// Valid-target list includes shll (allowShll=true) but never rk.
-	if !strings.Contains(stderr.String(), "shll, run-kit, rk-desktop, fab-kit, wt, idea, tu, hop") {
+	if !strings.Contains(stderr.String(), "shll, hexokit, rk-desktop, fab-kit, wt, idea, tu, hop") {
 		t.Errorf("stderr = %q, want the canonical valid-target list", stderr.String())
 	}
 	// No brew work at all — resolution happens before hasBrew.
@@ -155,7 +155,7 @@ func TestUninstall_UnknownTargetHardErrors(t *testing.T) {
 
 func TestUninstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 	// A migrated machine: run-kit installed (leaf run-kit), no residual rk keg.
-	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "hexokit": true})
 	installFakeRunner(t, f)
 	fixedClock(t)
 
@@ -163,11 +163,11 @@ func TestUninstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"rk"}); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
-	if !strings.Contains(stdout.String(), "note: rk is now run-kit") {
-		t.Errorf("expected rk→run-kit alias notice, stdout: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "note: rk is now hexokit") {
+		t.Errorf("expected rk→hexokit alias notice, stdout: %q", stdout.String())
 	}
-	if !invocationsContain(f.recordedCalls(), brewBinary, "uninstall", formulaPrefix+"run-kit") {
-		t.Errorf("expected brew uninstall of run-kit via the rk alias")
+	if !invocationsContain(f.recordedCalls(), brewBinary, "uninstall", formulaPrefix+"hexokit") {
+		t.Errorf("expected brew uninstall of hexokit via the rk alias")
 	}
 }
 
@@ -309,24 +309,24 @@ func TestUninstall_DryRunPreviewNoWritesBypassesGate(t *testing.T) {
 
 // --- run-kit after the migration-guard retirement (change h3f6) ---
 
-func TestUninstall_RunKitPlainRemoval(t *testing.T) {
+func TestUninstall_HexokitPlainRemoval(t *testing.T) {
 	// run-kit is a plain reverse-roster target: one `brew uninstall
-	// sahil87/tap/run-kit`, and NO reference to the retired legacy formula or a
+	// sahil87/tap/hexokit`, and NO reference to the retired legacy formula or a
 	// residual `rk` keg (orphan cleanup is manual per run-kit's README).
-	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "hexokit": true})
 	installFakeRunner(t, f)
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"run-kit"}); err != nil {
+	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"hexokit"}); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
-	if !invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+"run-kit") {
-		t.Errorf("expected brew uninstall of run-kit")
+	if !invocationsContain(calls, brewBinary, "uninstall", formulaPrefix+"hexokit") {
+		t.Errorf("expected brew uninstall of hexokit")
 	}
 	if invocationsContain(calls, brewBinary, "uninstall", "rk") {
-		t.Errorf("run-kit is a plain target — must not issue a residual `brew uninstall rk`")
+		t.Errorf("hexokit is a plain target — must not issue a residual `brew uninstall rk`")
 	}
 	assertNoLegacyFormulaReference(t, calls)
 }
@@ -336,16 +336,16 @@ func TestUninstall_LegacyOnlyMachineReportsNotInstalled(t *testing.T) {
 	// run-kit formula absent): `shll uninstall run-kit` reports `not installed`
 	// and skips it — repair-path semantics, exit 0 — and never probes or removes
 	// the retired legacy formula.
-	f := installedFormulasFake(map[string]bool{}) // run-kit formula not installed
+	f := installedFormulasFake(map[string]bool{}) // hexokit formula not installed
 	installFakeRunner(t, f)
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"run-kit"}); err != nil {
+	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"hexokit"}); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil (named-but-absent is a success)", err)
 	}
-	if !strings.Contains(stdout.String(), "run-kit: "+notInstalledLabel) {
-		t.Errorf("expected `run-kit: not installed` skip line, stdout: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "hexokit: "+notInstalledLabel) {
+		t.Errorf("expected `hexokit: not installed` skip line, stdout: %q", stdout.String())
 	}
 	calls := f.recordedCalls()
 	for _, c := range calls {
@@ -481,7 +481,7 @@ func TestUninstall_PostRunHintsPrintOnly(t *testing.T) {
 	// A no-args sweep with hop (shell-integrated) and run-kit installed.
 	f := installedFormulasFake(map[string]bool{
 		formulaPrefix + "hop":     true,
-		formulaPrefix + "run-kit": true,
+		formulaPrefix + "hexokit": true,
 	})
 	installFakeRunner(t, f)
 	fixedClock(t)
@@ -492,8 +492,8 @@ func TestUninstall_PostRunHintsPrintOnly(t *testing.T) {
 	}
 	out := stdout.String()
 	// run-kit daemon stop hint (print-only).
-	if !strings.Contains(out, "run-kit serve --stop") {
-		t.Errorf("expected the run-kit daemon-stop hint, stdout: %q", out)
+	if !strings.Contains(out, "hexokit serve --stop") {
+		t.Errorf("expected the hexokit daemon-stop hint, stdout: %q", out)
 	}
 	// rc-file unwire hint (roster-wide shell-integrated removal).
 	if !strings.Contains(out, "shll setup shell --uninstall") {
@@ -501,7 +501,7 @@ func TestUninstall_PostRunHintsPrintOnly(t *testing.T) {
 	}
 	// Neither hint is executed — no `run-kit serve` and no `shll setup shell` subprocess.
 	for _, c := range f.recordedCalls() {
-		if c.Name == "run-kit" || c.Name == "shll" {
+		if c.Name == "hexokit" || c.Name == "shll" {
 			t.Errorf("post-run hints must be print-only, got a subprocess %+v", c)
 		}
 	}
@@ -536,7 +536,7 @@ func TestUninstall_NamedFullRosterSweepPrintsShellHint(t *testing.T) {
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
-	args := []string{"run-kit", "rk-desktop", "fab-kit", "wt", "idea", "tu", "hop"}
+	args := []string{"hexokit", "rk-desktop", "fab-kit", "wt", "idea", "tu", "hop"}
 	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, args); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
@@ -582,25 +582,25 @@ func TestUninstall_ShellHintSuppressedOnFailedRemoval(t *testing.T) {
 
 // --- R14 (A-019): the run-kit daemon hint fires on the roster entry's removal ---
 
-func TestUninstall_RunKitDaemonHintUsesToolName(t *testing.T) {
+func TestUninstall_HexokitDaemonHintUsesToolName(t *testing.T) {
 	// The daemon-stop hint is keyed on the run-kit roster entry by name (the
-	// runKitToolName constant) and fires when run-kit is removed successfully.
-	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
+	// hexokitToolName constant) and fires when run-kit is removed successfully.
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "hexokit": true})
 	installFakeRunner(t, f)
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"run-kit"}); err != nil {
+	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"hexokit"}); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
-	if !strings.Contains(stdout.String(), "run-kit serve --stop") {
-		t.Errorf("expected the run-kit daemon-stop hint naming the tool, stdout: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "hexokit serve --stop") {
+		t.Errorf("expected the hexokit daemon-stop hint naming the tool, stdout: %q", stdout.String())
 	}
 }
 
 // --- R14 (A-013b): the run-kit daemon hint is suppressed when the removal FAILED ---
 
-func TestUninstall_RunKitDaemonHintSuppressedOnFailure(t *testing.T) {
+func TestUninstall_HexokitDaemonHintSuppressedOnFailure(t *testing.T) {
 	// run-kit installed but its `brew uninstall` fails → the daemon hint (success-gated)
 	// must NOT print.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
@@ -610,12 +610,12 @@ func TestUninstall_RunKitDaemonHintSuppressedOnFailure(t *testing.T) {
 		switch {
 		case len(req.Args) > 0 && req.Args[0] == "list":
 			formula := req.Args[len(req.Args)-1]
-			if formula == formulaPrefix+"run-kit" {
-				return proc.Result{Stdout: []byte("run-kit 1.0.0\n")}
+			if formula == formulaPrefix+"hexokit" {
+				return proc.Result{Stdout: []byte("hexokit 1.0.0\n")}
 			}
 			return proc.Result{Err: errors.New("not installed")}
-		case len(req.Args) == 2 && req.Args[0] == "uninstall" && req.Args[1] == formulaPrefix+"run-kit":
-			return proc.Result{ExitCode: 1} // run-kit fails to uninstall
+		case len(req.Args) == 2 && req.Args[0] == "uninstall" && req.Args[1] == formulaPrefix+"hexokit":
+			return proc.Result{ExitCode: 1} // hexokit fails to uninstall
 		}
 		return proc.Result{}
 	}}
@@ -623,30 +623,30 @@ func TestUninstall_RunKitDaemonHintSuppressedOnFailure(t *testing.T) {
 	fixedClock(t)
 
 	var stdout, stderr bytes.Buffer
-	err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"run-kit"})
+	err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, false, true, []string{"hexokit"})
 	if !errors.Is(err, errSilent) {
-		t.Fatalf("runUninstall err = %v, want errSilent (run-kit uninstall failed)", err)
+		t.Fatalf("runUninstall err = %v, want errSilent (hexokit uninstall failed)", err)
 	}
-	if strings.Contains(stdout.String(), "run-kit serve --stop") {
-		t.Errorf("the daemon hint must be success-gated — a FAILED run-kit removal must not print it, stdout: %q", stdout.String())
+	if strings.Contains(stdout.String(), "hexokit serve --stop") {
+		t.Errorf("the daemon hint must be success-gated — a FAILED hexokit removal must not print it, stdout: %q", stdout.String())
 	}
 }
 
 // --- run-kit --dry-run preview is a single plain row (change h3f6) ---
 
-func TestUninstall_DryRunRunKitPreviewSingleRow(t *testing.T) {
-	// The run-kit preview is one plain `brew uninstall sahil87/tap/run-kit` row —
+func TestUninstall_DryRunHexokitPreviewSingleRow(t *testing.T) {
+	// The run-kit preview is one plain `brew uninstall sahil87/tap/hexokit` row —
 	// no residual `brew uninstall rk` row exists anymore — with no write.
-	f := installedFormulasFake(map[string]bool{formulaPrefix + "run-kit": true})
+	f := installedFormulasFake(map[string]bool{formulaPrefix + "hexokit": true})
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, true, false, []string{"run-kit"}); err != nil {
+	if err := runUninstall(context.Background(), strings.NewReader(""), &stdout, &stderr, true, false, []string{"hexokit"}); err != nil {
 		t.Fatalf("runUninstall err = %v, want nil", err)
 	}
 	out := stdout.String()
-	if !strings.Contains(out, "brew uninstall "+formulaPrefix+"run-kit") {
-		t.Errorf("preview must include the run-kit formula uninstall, stdout: %q", out)
+	if !strings.Contains(out, "brew uninstall "+formulaPrefix+"hexokit") {
+		t.Errorf("preview must include the hexokit formula uninstall, stdout: %q", out)
 	}
 	if strings.Contains(out, "brew uninstall rk") {
 		t.Errorf("preview must not show a residual `brew uninstall rk` row, stdout: %q", out)

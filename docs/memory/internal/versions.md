@@ -6,7 +6,7 @@ description: "`internal/versions` — shll's \"latest version per tool\" resolve
 
 The "latest version per tool" resolver seam — the single surface behind `shll check-updates` (both backends) and the GitHub anchor of `shll changelog`'s no-range resolution. It owns the versions-manifest fetch (hexokit.com, with shll.ai as the fallback host) and the notify-threshold (`notable`) computation, and delegates the GitHub backend to [internal/changelog](/internal/changelog.md)'s existing fetch — no duplicated GitHub code.
 
-Together with `internal/changelog` it keeps `net/http` isolated in internal packages (Constitution I spirit): command code in `src/cmd/shll` never talks to `net/http` directly. It holds no state (Constitution II): every call re-fetches. **Future `versions.json` schema evolution is absorbed here**, so consumers (run-kit exec'ing `shll check-updates --json`, `shll changelog`) never compile in manifest or version-comparison policy.
+Together with `internal/changelog` it keeps `net/http` isolated in internal packages (Constitution I spirit): command code in `src/cmd/shll` never talks to `net/http` directly. It holds no state (Constitution II): every call re-fetches. **Future `versions.json` schema evolution is absorbed here**, so consumers (HexoKit's daemon — the run-kit repo's `internal/updatecheck` — exec'ing `shll check-updates --json`, and `shll changelog`) never compile in manifest or version-comparison policy.
 
 Source: `src/internal/versions/versions.go`, tests in `src/internal/versions/versions_test.go`. (puxw)
 
@@ -33,7 +33,7 @@ Every magic value is a named constant (code-quality.md):
 | Symbol | Contract |
 |--------|----------|
 | `ManifestTool{Latest, Notify, Formula}` | one tool's manifest entry (only the fields shll consumes decoded) |
-| `Manifest{Schema, GeneratedAt, Tools}` | the decoded `versions.json`; `Tools` is keyed by tool **name** (carries shll itself plus every roster tool) |
+| `Manifest{Schema, GeneratedAt, Tools}` | the decoded `versions.json`; `Tools` is keyed by tool **name** (carries shll itself plus every roster tool; the hexokit.com manifest keys HexoKit's row `run-kit`, which `check-updates` reaches through its [legacy-name fallback](/cli/check-updates.md#manifest-lookup-falls-back-to-legacy-names)) |
 | `FetchManifest(ctx) (Manifest, error)` | walks `manifestURLs` in order — one bounded GET + decode per URL (`fetchManifestFrom`) — returning the first intact manifest; wraps `ErrUnavailable` when every URL fails (see § Degradation) |
 | `Notable(notify, installed, latest) bool` | the notify-threshold policy mapping (see § Notify threshold) |
 | `LatestGitHub(ctx, repo) (latest string, rels []changelog.Release, err error)` | thin delegation to `changelog.LatestTag` (see § GitHub delegation) |

@@ -1,5 +1,5 @@
 // Command shll is the meta-CLI for the HexoKit toolkit. It composes operations
-// that span every per-tool CLI (hop, wt, fab-kit, run-kit, tu, idea) so users have
+// that span every per-tool CLI (hop, wt, fab-kit, hexokit, tu, idea) so users have
 // one entry point for cross-toolkit concerns.
 //
 // See `shll --help` for the user-facing surface; the canonical contract for this
