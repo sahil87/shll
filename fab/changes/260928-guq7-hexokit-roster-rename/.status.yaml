@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 5
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-28T16:02:38Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T16:05:52Z"}
     hydrate: {started_at: "2026-09-28T16:05:52Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T16:13:05Z"}
     ship: {started_at: "2026-09-28T16:13:05Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-28T16:13:57Z"}
-    review-pr: {started_at: "2026-09-28T16:13:57Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-28T16:13:57Z", driver: git-pr, iterations: 1, completed_at: "2026-09-28T16:18:27Z"}
 prs:
     - https://github.com/sahil87/shll/pull/103
 base_branch: main
@@ -56,4 +56,4 @@ change_type_source: explicit
 summary: Roster tool run-kit → hexokit (Formula sahil87/tap/hexokit, Repo stays run-kit); LegacyNames {rk, run-kit} probe chain + aliases; hexokit agent setup delegation; check-updates manifest legacy-key fallback
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-28T16:13:57Z
+last_updated: 2026-09-28T16:18:27Z
