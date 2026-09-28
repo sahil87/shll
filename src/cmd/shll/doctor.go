@@ -420,7 +420,7 @@ func shllDoctorResult(env func(string) string) doctorResult {
 // explanation); an unreportable probe (clean exit but no parseable status
 // line) → FAIL with the unreportable hint. No trust sub-check (no formula — the whole tap-trust
 // concern is brew's) and no wiring check (ShellInit is empty by construction,
-// so the row reports shell_init:false like idea/run-kit/fab-kit). The exit-code
+// so the row reports shell_init:false like idea/hexokit/fab-kit). The exit-code
 // contract is unchanged: a FAIL here sets anyFail in the caller exactly like a
 // brew tool's.
 func evaluateDelegatedTool(ctx context.Context, tool Tool) doctorResult {
@@ -460,16 +460,16 @@ func evaluateDelegatedTool(ctx context.Context, tool Tool) doctorResult {
 
 // probeVersion runs the shared `<tool> --version` probe (bounded by versionTimeout,
 // via probeToolVersion) and classifies the outcome into the three-way versionState.
-// It reuses version.go's probeToolVersion so the probe invocation AND the rk→run-kit
+// It reuses version.go's probeToolVersion so the probe invocation AND the
 // ErrNotFound-only LEGACY-NAME FALLBACK live in exactly one place (version.go); the
 // only thing doctor adds here is the three-way classification, because it keeps
 // missing and unreportable apart (toolVersion folds both into notInstalledLabel).
 //
-// The legacy-name fallback (retry `<tool.LegacyName> --version` when the primary
-// name is proc.ErrNotFound only) is inherited from probeToolVersion — an install
-// whose binary is on PATH only as `rk` reports a version rather than FAILing,
-// while a present-but-broken `run-kit` (non-zero exit / timeout) stays unreportable
-// and does NOT defer to `rk`. Constitution I: subprocess execution routes through
+// The legacy-name fallback (retry each `<tool.LegacyNames[i]> --version` while the
+// previous name is proc.ErrNotFound only) is inherited from probeToolVersion — an
+// install whose binary is on PATH only as `rk` or `run-kit` reports a version rather
+// than FAILing, while a present-but-broken `hexokit` (non-zero exit / timeout) stays
+// unreportable and does NOT defer to `rk`. Constitution I: subprocess execution routes through
 // proc (inside probeToolVersion).
 func probeVersion(ctx context.Context, tool Tool) (string, versionState) {
 	out, err := probeToolVersion(ctx, tool)

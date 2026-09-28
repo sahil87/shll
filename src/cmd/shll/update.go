@@ -75,14 +75,14 @@ a deadline on brew.
 When agent skills were previously placed via ` + "`shll setup agent`" + `, the run ends by
 re-running ` + "`shll setup agent`" + ` so the placed skills track the freshly upgraded
 binaries (best-effort; skipped entirely when no placement exists). Pass ` + "`--yes`" + `
-(or ` + "`-y`" + `) to forward ` + "`--yes`" + ` through that refresh into the run-kit delegation,
+(or ` + "`-y`" + `) to forward ` + "`--yes`" + ` through that refresh into the hexokit delegation,
 skipping its confirmation prompt — for unattended runs (an agent-driven pane, the
-run-kit dashboard's update button). Nothing else about the run prompts.
+HexoKit dashboard's update button). Nothing else about the run prompts.
 
 With no arguments, shll update processes the whole roster as above. Pass one or
-more tool names to update only that subset (valid targets: shll, run-kit,
-rk-desktop, fab-kit, wt, idea, tu, hop; the legacy alias ` + "`rk`" + ` still resolves to
-run-kit) — e.g. ` + "`shll update shll`" + ` to bump only shll itself, or
+more tool names to update only that subset (valid targets: shll, hexokit,
+rk-desktop, fab-kit, wt, idea, tu, hop; the legacy aliases ` + "`rk`" + ` and ` + "`run-kit`" + ` resolve to
+hexokit) — e.g. ` + "`shll update shll`" + ` to bump only shll itself, or
 ` + "`shll update hop wt`" + ` for a pair. The subset is always processed in roster order
 regardless of the order given. An unknown name, or a named tool that is not
 installed, is a hard error (a named tool, unlike the whole-roster sweep, is not
@@ -451,8 +451,8 @@ func runUpdate(ctx context.Context, env func(string) string, stdout, stderr io.W
 	// exists, re-run it as a subprocess so the placed skills track the freshly
 	// upgraded binaries (the running process still holds the OLD embedded skill
 	// content after a self-upgrade — only the new binary on PATH has the new
-	// bytes). Runs AFTER the roster loop so the run-kit hook delegation inside
-	// the refresh uses the just-upgraded run-kit. Placement-gated (no unsolicited
+	// bytes). Runs AFTER the roster loop so the hexokit hook delegation inside
+	// the refresh uses the just-upgraded hexokit. Placement-gated (no unsolicited
 	// writes), best-effort (never changes the exit code), and idempotent — a
 	// no-change run reports each path as "unchanged".
 	refreshPlacedAgentSkills(ctx, env, yes, stdout, stderr)

@@ -4,14 +4,14 @@
 
 [![Latest release](https://img.shields.io/github/v/release/sahil87/shll)](https://github.com/sahil87/shll/releases) [![Downloads](https://img.shields.io/github/downloads/sahil87/shll/total)](https://github.com/sahil87/shll/releases) [![Stars](https://img.shields.io/github/stars/sahil87/shll?style=social)](https://github.com/sahil87/shll/stargazers)
 
-One command to install, update, and shell-wire every tool in the [HexoKit toolkit](https://hexokit.com/toolkit/) (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). `shll` doesn't replace the per-tool CLIs — it composes them.
+One command to install, update, and shell-wire every tool in the [HexoKit toolkit](https://hexokit.com/toolkit/) (`hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). `shll` doesn't replace the per-tool CLIs — it composes them.
 
 ## Install
 
 From a clean machine to a fully wired toolkit:
 
 ```sh
-curl -fsSL https://hexokit.com/install | sh      # install shll + HexoKit (run-kit), then auto-wire shell + agent harnesses
+curl -fsSL https://hexokit.com/install | sh      # install shll + HexoKit (hexokit), then auto-wire shell + agent harnesses
 shll install                                     # the rest of the toolkit: rk-desktop, fab-kit, wt, idea, tu, hop
 exec $SHELL                                      # reload so the shell integration takes effect
 ```
@@ -26,7 +26,7 @@ The script preflights what the install needs — git (the Xcode Command Line Too
 
 One pitfall worth knowing: if the download itself fails, `curl -fsSL … | sh` still **exits 0** — `sh` runs the empty input happily — so an `&&`-chained next step proceeds as if the install worked. Check curl's stderr, or `command -v shll` after; details in the [install guide](docs/site/install.md).
 
-`shll install` ends by wiring the machine automatically: it runs the equivalent of `shll setup shell` (the rc-file eval line, sentinel-managed and idempotent) and `shll setup agent --yes` (one thin `shll-toolkit` Agent Skill at the harnesses' global skill paths — `~/.agents/skills/` always, `~/.claude/skills/` when the `claude` CLI is on PATH — plus run-kit's dashboard hooks). Both steps are best-effort — a failure warns and prints the step's manual nudge, and never fails the install. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup` (no agent wiring), which ride the bootstrap's argument passthrough: `curl -fsSL https://hexokit.com/install | sh -s -- --no-agent-setup`.
+`shll install` ends by wiring the machine automatically: it runs the equivalent of `shll setup shell` (the rc-file eval line, sentinel-managed and idempotent) and `shll setup agent --yes` (one thin `shll-toolkit` Agent Skill at the harnesses' global skill paths — `~/.agents/skills/` always, `~/.claude/skills/` when the `claude` CLI is on PATH — plus HexoKit's dashboard hooks). Both steps are best-effort — a failure warns and prints the step's manual nudge, and never fails the install. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup` (no agent wiring), which ride the bootstrap's argument passthrough: `curl -fsSL https://hexokit.com/install | sh -s -- --no-agent-setup`.
 
 Everything else — the manual brew bootstrap, from-source builds, shell-wiring detail, and tap-trust troubleshooting — lives in the [install guide](docs/site/install.md) on [hexokit.com](https://hexokit.com/shll/install/).
 
@@ -54,9 +54,9 @@ shll install --no-agent-setup  # skip the automatic agent-harness wiring
 shll install --dry-run       # preview the brew install plan, change nothing
 ```
 
-Iterates the roster (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) and, for each brew-managed one that's missing, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. Homebrew 6.0 makes tap-trust a hard install requirement, so this is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. `rk-desktop` is the one non-brew entry — it delegates to `rk desktop install` (skipped with a note when `rk` is missing or the platform is unsupported). Does NOT upgrade — use `shll update` for that.
+Iterates the roster (`hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) and, for each brew-managed one that's missing, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. Homebrew 6.0 makes tap-trust a hard install requirement, so this is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. `rk-desktop` is the one non-brew entry — it delegates to `rk desktop install` (skipped with a note when `rk` is missing or the platform is unsupported). Does NOT upgrade — use `shll update` for that.
 
-After the install outcome, `shll install` wires the machine automatically. It runs the equivalent of [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended) (appends the `eval "$(shll shell-init <shell>)"` block to your rc file — sentinel-managed and idempotent, so re-runs are no-ops), then [`shll setup agent --yes`](#shll-setup-agent--wire-agent-harnesses) (places the `shll-toolkit` agent skill and delegates run-kit's dashboard hooks, forwarding `--yes` so run-kit's hook prompt can't hang an unattended run). Both steps are best-effort: a failure warns and prints that step's manual nudge, and never changes the install's exit code. Neither runs under `--dry-run`. Opt out with `--no-shell-setup` and/or `--no-agent-setup`; after a fresh wire, restart your shell or run `exec $SHELL`.
+After the install outcome, `shll install` wires the machine automatically. It runs the equivalent of [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended) (appends the `eval "$(shll shell-init <shell>)"` block to your rc file — sentinel-managed and idempotent, so re-runs are no-ops), then [`shll setup agent --yes`](#shll-setup-agent--wire-agent-harnesses) (places the `shll-toolkit` agent skill and delegates HexoKit's dashboard hooks, forwarding `--yes` so hexokit's hook prompt can't hang an unattended run). Both steps are best-effort: a failure warns and prints that step's manual nudge, and never changes the install's exit code. Neither runs under `--dry-run`. Opt out with `--no-shell-setup` and/or `--no-agent-setup`; after a fresh wire, restart your shell or run `exec $SHELL`.
 
 Pass `--no-trust` to skip the trust step entirely (for users who manage trust themselves). If your Homebrew is too old to ship `brew trust` (pre-6.0, where trust isn't required anyway), the trust step is skipped gracefully and the install proceeds.
 
@@ -73,13 +73,13 @@ shll update hop wt           # upgrade only a named subset
 shll update --dry-run        # preview the upgrade plan, change nothing
 ```
 
-Runs `brew update --quiet` once, then `brew upgrade sahil87/tap/shll` (when shll itself was installed via brew), then delegates to each installed roster tool's **own `update` subcommand** (passing `--skip-brew-update` when the tool advertises it) so each tool's post-upgrade side effects — e.g. `run-kit`'s daemon restart — are preserved. A roster tool that exposes no `update` subcommand falls back to `brew upgrade sahil87/tap/<formula>`. Uninstalled tools are skipped silently, and the loop is best-effort — one tool's failure doesn't abort the rest. Brew and per-tool progress stream directly to your terminal. If a step goes quiet for 30 seconds — typically a slow or stalled download inside brew — shll prints a still-waiting line to stderr and keeps going, backing off between repeats; it never puts a deadline on brew.
+Runs `brew update --quiet` once, then `brew upgrade sahil87/tap/shll` (when shll itself was installed via brew), then delegates to each installed roster tool's **own `update` subcommand** (passing `--skip-brew-update` when the tool advertises it) so each tool's post-upgrade side effects — e.g. `hexokit`'s daemon restart — are preserved. A roster tool that exposes no `update` subcommand falls back to `brew upgrade sahil87/tap/<formula>`. Uninstalled tools are skipped silently, and the loop is best-effort — one tool's failure doesn't abort the rest. Brew and per-tool progress stream directly to your terminal. If a step goes quiet for 30 seconds — typically a slow or stalled download inside brew — shll prints a still-waiting line to stderr and keeps going, backing off between repeats; it never puts a deadline on brew.
 
 When agent skills were previously placed via [`shll setup agent`](#shll-setup-agent--wire-agent-harnesses), the run ends by re-running `shll setup agent` (as a subprocess, so the freshly upgraded binary places its own skill content) — the placed skills track the toolkit they describe without a manual follow-up. The refresh is placement-gated (a machine that never opted in gets no writes), best-effort (it never changes the run's exit code), and previewed by `--dry-run`.
 
-> **Legacy `rk` keg exception.** On a pre-rename machine still holding the old `rk` keg, `shll update` migrates `run-kit` **brew-direct** (`brew upgrade sahil87/tap/rk`, which resolves the rename) rather than delegating to `run-kit update`. Because that path skips `run-kit update`'s post-upgrade side effect, the daemon is **not** restarted automatically — shll prints a note suggesting `run-kit serve --restart` instead (Constitution III — shll never reimplements a tool's own logic). This is transitional; once legacy kegs are gone, updates always take the normal delegated path above.
+> **Renamed formula.** HexoKit's formula was `rk`, then `run-kit`, and is now `hexokit`. The tap's `formula_renames.json` migrates an old keg to `hexokit` on the next `brew update` / `brew upgrade`, so shll carries no migration path of its own: it manages `sahil87/tap/hexokit`, accepts `rk` and `run-kit` as target aliases, and — when `hexokit` isn't on `PATH` — probes the old binary names so `shll list`/`version`/`doctor` still report the install.
 
-Pass one or more tool names to scope the run to a subset (valid targets: `shll`, `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`; the legacy alias `rk` still resolves to `run-kit`), processed in roster order regardless of arg order. A named-but-not-installed target is a hard error here (unlike the whole-roster sweep, which silently skips it). `--dry-run` runs the read-only probes, prints the exact commands the real run would execute (`shll (self)` first when brew-installed), then exits without writing anything.
+Pass one or more tool names to scope the run to a subset (valid targets: `shll`, `hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`; the legacy aliases `rk` and `run-kit` resolve to `hexokit`), processed in roster order regardless of arg order. A named-but-not-installed target is a hard error here (unlike the whole-roster sweep, which silently skips it). `--dry-run` runs the read-only probes, prints the exact commands the real run would execute (`shll (self)` first when brew-installed), then exits without writing anything.
 
 Each tool gets a `[N/M]` progress header, and a timing summary tail (`Done — N of M tools succeeded in <dur>.`) closes the run. After the tail, a compact **"What changed:"** digest lists the release-note titles for every tool that actually bumped, followed by a copy-pasteable `shll changelog` command for the full notes.
 
@@ -87,7 +87,7 @@ Each tool gets a `[N/M]` progress header, and a timing summary tail (`Done — N
 
 ```sh
 shll check-updates                     # human table: installed → latest per tool
-shll check-updates --json              # machine contract (what run-kit's daemon runs)
+shll check-updates --json              # machine contract (what HexoKit's daemon runs)
 shll check-updates --source github     # compare against GitHub release tags instead
 ```
 
@@ -114,7 +114,7 @@ Valid targets are the roster names plus `shll` itself. A no-range form needs Hom
 
 ```sh
 shll setup                  # both halves: shell integration, then agent-harness wiring
-shll setup --yes            # unattended run (forwards --yes to the run-kit hook delegation)
+shll setup --yes            # unattended run (forwards --yes to the hexokit hook delegation)
 ```
 
 The consolidated, re-runnable entry point for machine wiring — the same two steps `shll install` runs automatically at the end of an install. Both halves are idempotent, so re-running is safe (e.g. after installing a new shell or a new agent harness). Both halves always run; the exit code is the worst of the two. The halves are also runnable individually as [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended) and [`shll setup agent`](#shll-setup-agent--wire-agent-harnesses) below.
@@ -151,14 +151,14 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-The output is the concatenation (in roster order — leaves-first: `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) of every installed shll tool's own shell-init, with a `# ── <tool> ──` comment separator before each block. What each roster tool is for, and what it adds to your shell:
+The output is the concatenation (in roster order — `hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`) of every installed shll tool's own shell-init, with a `# ── <tool> ──` comment separator before each block. What each roster tool is for, and what it adds to your shell:
 
 | Tool | What it's for | What it adds to your shell |
 |------|---------------|----------------------------|
 | `wt`  | git worktree manager — create, switch, and clean up worktrees | `wt` shell function wrapper (so the "Open here" menu option can `cd` your shell), completion |
 | `idea` | worktree-aware idea / backlog capture from the terminal (markdown-first) | completion |
 | `tu`  | AI coding-assistant cost/usage tracker (Claude Code, Codex, OpenCode) | completion |
-| `run-kit`  | web-based tmux orchestration for parallel agent workspaces (formerly `rk`, which stays as an alias) | completion |
+| `hexokit`  | web-based tmux orchestration for parallel agent workspaces (formerly `rk`, then `run-kit`; `rk` stays as the short command) | completion |
 | `hop` | fast directory navigation / bookmarks (`cd` on steroids) | `hop` shell function (bare-name `cd`, verb dispatch, tool-form), `h` / `hi` aliases, completion |
 | `fab-kit` | `fab` — spec-driven change workflow (this repo's own pipeline) | completion |
 
@@ -172,7 +172,7 @@ shll     v0.0.5
 wt       v0.0.5
 idea     v0.0.2
 tu       v0.4.13
-run-kit  v1.5.3
+hexokit  v1.5.3
 hop      v0.1.5
 fab-kit  v1.9.4
 ```
@@ -187,7 +187,7 @@ ok  shll     the manager for the HexoKit toolkit                                
 ok  wt       Git worktree management — create, list, open, delete worktrees                                                                      https://github.com/sahil87/wt
 ok  idea     Backlog idea management from the terminal                                                                                           https://github.com/sahil87/idea
 ok  tu       Token-usage tracker for AI coding tools (Claude Code, Codex, OpenCode)                                                              https://github.com/sahil87/tu
-ok  run-kit  Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)  https://github.com/sahil87/run-kit
+ok  hexokit  HexoKit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)  https://github.com/sahil87/run-kit
 ok  hop      Fast directory/project jumping across worktrees                                                                                     https://github.com/sahil87/hop
 ok  fab-kit  Spec-driven workspace & workflow toolkit (the `fab` CLI)                                                                            https://github.com/sahil87/fab-kit
 ```
@@ -208,7 +208,7 @@ shll     OK  v0.0.16
 wt       OK  v0.0.16  wired
 idea     OK  v0.0.7
 tu       OK  v0.4.17  wired
-run-kit  OK  v2.2.3
+hexokit  OK  v2.2.3
 hop      OK  v0.1.16  wired
 fab-kit  OK  v2.1.1
 ```
@@ -242,7 +242,7 @@ hop      Fast directory/project jumping across worktrees
 Run 'shll skill <tool>' for that tool's full agent skill bundle ('shll skill <tool> <topic>' for a topic page).
 
 $ shll skill hop              # print hop's full agent skill bundle (raw markdown)
-$ shll skill run-kit display  # print one of a tool's topic pages (passed through to `run-kit skill display`)
+$ shll skill hexokit display  # print one of a tool's topic pages (passed through to `hexokit skill display`)
 $ shll skill shll             # shll's own bundle (served from the embedded copy)
 ```
 
@@ -258,9 +258,9 @@ shll setup agent --print      # print the SKILL.md content and the target paths 
 shll setup agent --uninstall  # remove both placed skill directories
 ```
 
-Mechanically places one thin `shll-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/shll-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode — always written) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/` — written only when the `claude` CLI is on PATH) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates run-kit's dashboard-hook wiring to `run-kit agent setup` (skipped silently when run-kit isn't installed; `--uninstall` delegates `run-kit agent setup --uninstall`; `--print` never delegates). This graduates the toolkit's harness wiring from `run-kit agent setup`, where it was mis-homed on a leaf tool, up to the manager.
+Mechanically places one thin `shll-toolkit` Agent Skill into the harnesses' global skills directories — `~/.agents/skills/shll-toolkit/SKILL.md` (the [agentskills.io](https://agentskills.io) open-standard path, read by Codex and compat-read by Cursor and OpenCode — always written) and `~/.claude/skills/shll-toolkit/SKILL.md` (Claude Code, which doesn't read `~/.agents/` — written only when the `claude` CLI is on PATH) — so an agent driving this machine learns to load `shll skill` before reaching for a tool. The skill directories are shll-owned, so placement is idempotent by construction: install writes them, a re-run overwrites them, `--uninstall` deletes them — no merge, no prompt, no sentinel machinery. A per-path written/updated/unchanged summary is printed. Then it delegates HexoKit's dashboard-hook wiring to `hexokit agent setup` (skipped silently when hexokit isn't installed; `--uninstall` delegates `hexokit agent setup --uninstall`; `--print` never delegates). This graduates the toolkit's harness wiring from `run-kit agent setup`, where it was mis-homed on a leaf tool, up to the manager.
 
-Once placed, the skill maintains itself: [`shll update`](#shll-update--upgrade-everything) ends each run by re-running `shll setup agent` (so the placed content tracks the upgraded binaries), and [`shll doctor`](#shll-doctor--verify-install--wiring) flags a stale placement with a `WARN`. The skill's frontmatter description is generated from the tool roster — each tool contributes its name and a task-domain phrase ("git worktrees", "backlog ideas") so agents match on the task, not just the tool name, and run-kit additionally contributes an agent-proactive sentence (show visual content in a browser window, push notifications, run VS Code palette commands in the user's code editor via `rk code exec`) so agents reach for those capabilities unprompted.
+Once placed, the skill maintains itself: [`shll update`](#shll-update--upgrade-everything) ends each run by re-running `shll setup agent` (so the placed content tracks the upgraded binaries), and [`shll doctor`](#shll-doctor--verify-install--wiring) flags a stale placement with a `WARN`. The skill's frontmatter description is generated from the tool roster — each tool contributes its name and a task-domain phrase ("git worktrees", "backlog ideas") so agents match on the task, not just the tool name, and hexokit additionally contributes an agent-proactive sentence (show visual content in a browser window, push notifications, run VS Code palette commands in the user's code editor via `rk code exec`) so agents reach for those capabilities unprompted.
 
 ## How composition works
 
@@ -278,7 +278,7 @@ shll has no state, no database, and no special knowledge of the tools it wraps. 
 | `shll doctor` | probes `<tool> --version` + reads your rc file, reports install + wiring health |
 | `shll standards` | prints build-time-embedded copies of the canonical `docs/site/` standards (no subprocess, no network) |
 | `shll skill <tool>` | passes through the tool's own `<tool> skill` output byte-for-byte (`shll skill shll` serves an embedded copy) |
-| `shll setup agent` | places the `shll-toolkit` skill at the global skill paths (`~/.claude/skills/` only when `claude` is on PATH), then delegates `run-kit agent setup` for run-kit's hooks |
+| `shll setup agent` | places the `shll-toolkit` skill at the global skill paths (`~/.claude/skills/` only when `claude` is on PATH), then delegates `hexokit agent setup` for HexoKit's hooks |
 
 Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt shell-init`, etc. continue to work standalone. shll's only job is to fan-out, collect output, and degrade gracefully when a tool is missing.
 
@@ -297,7 +297,7 @@ Per Constitution Principle IV (Composition, Not Replacement): `hop update`, `wt 
 - **Command reference at [hexokit.com/shll/commands](https://hexokit.com/shll/commands/)** — a browsable, always-current command tree. [hexokit.com](https://hexokit.com) pulls shll's CLI help tree daily as a machine-readable `help/shll.json` and renders it at that page. The export is produced by a hidden `help-dump` subcommand (internal build tooling, not a user command).
 - Per-tool repos for the wrapped CLIs:
   [fab-kit](https://github.com/sahil87/fab-kit) ·
-  [run-kit](https://github.com/sahil87/run-kit) ·
+  [hexokit](https://github.com/sahil87/run-kit) ·
   [tu](https://github.com/sahil87/tu) ·
   [hop](https://github.com/sahil87/hop) ·
   [wt](https://github.com/sahil87/wt) ·

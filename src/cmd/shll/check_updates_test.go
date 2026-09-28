@@ -77,7 +77,7 @@ const happyManifest = `{
 	"tools": {
 		"shll":    {"latest": "0.1.6", "notify": "patch", "formula": "shll"},
 		"wt":      {"latest": "0.1.3", "notify": "minor", "formula": "wt"},
-		"run-kit": {"latest": "3.8.2", "notify": "minor", "formula": "run-kit"}
+		"hexokit": {"latest": "3.8.2", "notify": "minor", "formula": "hexokit"}
 	}
 }`
 
@@ -87,7 +87,7 @@ func happyBrew() map[string]string {
 	return map[string]string{
 		shllFormula:               "shll 0.1.5\n",
 		formulaPrefix + "wt":      "wt 0.1.3\n",
-		formulaPrefix + "run-kit": "run-kit 3.8.1\n",
+		formulaPrefix + "hexokit": "hexokit 3.8.1\n",
 	}
 }
 
@@ -115,11 +115,11 @@ func TestCheckUpdates_ReleasedHappyPathTable(t *testing.T) {
 	}
 	// run-kit (roster position 1): patch bump under notify:minor → update
 	// available but NOT notable (the intake's worked example).
-	if !strings.HasPrefix(lines[1], "run-kit") || !strings.Contains(lines[1], "3.8.1 -> 3.8.2") || !strings.Contains(lines[1], checkStatusUpdate) {
-		t.Errorf("run-kit row = %q, want 3.8.1 -> 3.8.2 update available", lines[1])
+	if !strings.HasPrefix(lines[1], "hexokit") || !strings.Contains(lines[1], "3.8.1 -> 3.8.2") || !strings.Contains(lines[1], checkStatusUpdate) {
+		t.Errorf("hexokit row = %q, want 3.8.1 -> 3.8.2 update available", lines[1])
 	}
 	if strings.Contains(lines[1], checkStatusNotableSuffix) {
-		t.Errorf("run-kit row = %q — a patch-only bump under notify:minor must NOT be notable", lines[1])
+		t.Errorf("hexokit row = %q — a patch-only bump under notify:minor must NOT be notable", lines[1])
 	}
 	// rk-desktop (roster position 2): the delegated probe can't reach `rk` in
 	// this fake → not installed, version column carries the label.
@@ -176,15 +176,15 @@ func TestCheckUpdates_JSONContractReleased(t *testing.T) {
 		t.Fatalf("tools len = %d, want 3 (unresolved rows omitted):\n%s", len(report.Tools), raw)
 	}
 	shll, rk, wt := report.Tools[0], report.Tools[1], report.Tools[2]
-	if shll.Name != "shll" || rk.Name != "run-kit" || wt.Name != "wt" {
-		t.Fatalf("row order = %s, %s, %s — want shll, run-kit, wt", shll.Name, rk.Name, wt.Name)
+	if shll.Name != "shll" || rk.Name != "hexokit" || wt.Name != "wt" {
+		t.Fatalf("row order = %s, %s, %s — want shll, hexokit, wt", shll.Name, rk.Name, wt.Name)
 	}
 	// The intake's worked example row, field by field.
-	if rk.Formula != "run-kit" || rk.Installed != "3.8.1" || rk.Latest != "3.8.2" || rk.Notify != "minor" {
-		t.Errorf("run-kit row = %+v", rk)
+	if rk.Formula != "hexokit" || rk.Installed != "3.8.1" || rk.Latest != "3.8.2" || rk.Notify != "minor" {
+		t.Errorf("hexokit row = %+v", rk)
 	}
 	if !rk.UpdateAvailable || rk.Notable == nil || *rk.Notable {
-		t.Errorf("run-kit verdicts = update_available %v notable %v, want true / false (patch bump, notify:minor)", rk.UpdateAvailable, rk.Notable)
+		t.Errorf("hexokit verdicts = update_available %v notable %v, want true / false (patch bump, notify:minor)", rk.UpdateAvailable, rk.Notable)
 	}
 	if !shll.UpdateAvailable || shll.Notable == nil || !*shll.Notable {
 		t.Errorf("shll verdicts = update_available %v notable %v, want true / true (patch bump, notify:patch)", shll.UpdateAvailable, shll.Notable)
@@ -418,5 +418,72 @@ func TestCheckUpdates_RegisteredInRoot(t *testing.T) {
 	}
 	if !strings.Contains(rootLong, "shll check-updates") {
 		t.Error("rootLong must list shll check-updates")
+	}
+}
+
+// --- manifest legacy-key fallback (run-kit → hexokit, change guq7) ------------
+
+func TestManifestEntry_LegacyKeyFallback(t *testing.T) {
+	var hexokit checkTarget
+	for _, tgt := range checkUpdateTargets() {
+		if tgt.name == "hexokit" {
+			hexokit = tgt
+		}
+	}
+	if hexokit.name == "" {
+		t.Fatal("hexokit check target missing")
+	}
+	legacy := versions.ManifestTool{Latest: "3.20.21", Notify: "minor", Formula: "run-kit"}
+	current := versions.ManifestTool{Latest: "3.20.22", Notify: "patch", Formula: "hexokit"}
+
+	// Pre-rename manifest: only the run-kit key → resolved through the legacy name.
+	got, ok := manifestEntry(versions.Manifest{Tools: map[string]versions.ManifestTool{"run-kit": legacy}}, hexokit)
+	if !ok || got != legacy {
+		t.Errorf("legacy-only manifest: got %+v, %v — want the run-kit row", got, ok)
+	}
+	// Both keys → the current name wins.
+	got, ok = manifestEntry(versions.Manifest{Tools: map[string]versions.ManifestTool{"run-kit": legacy, "hexokit": current}}, hexokit)
+	if !ok || got != current {
+		t.Errorf("both-keys manifest: got %+v, %v — want the hexokit row", got, ok)
+	}
+	// Neither → not in manifest.
+	if _, ok := manifestEntry(versions.Manifest{Tools: map[string]versions.ManifestTool{"wt": current}}, hexokit); ok {
+		t.Error("manifest without either key must report not-in-manifest")
+	}
+}
+
+func TestCheckUpdates_JSONResolvesHexokitFromLegacyManifestKey(t *testing.T) {
+	// The hexokit.com manifest still keys the tool `run-kit`: the JSON row is named
+	// hexokit (the roster name) but carries the run-kit row's latest/notify.
+	checkUpdatesManifestServer(t, http.StatusOK, `{
+	"schema": 1,
+	"generated_at": "2026-09-28T00:00:00Z",
+	"tools": {"run-kit": {"latest": "3.20.22", "notify": "minor", "formula": "run-kit"}}
+}`)
+	installFakeRunner(t, checkUpdatesBrewFake(map[string]string{
+		formulaPrefix + "hexokit": "hexokit 3.20.21\n",
+	}))
+
+	var stdout, stderr bytes.Buffer
+	if err := runCheckUpdates(context.Background(), &stdout, &stderr, sourceReleased, true); err != nil {
+		t.Fatalf("runCheckUpdates err = %v, stderr %q", err, stderr.String())
+	}
+	var report struct {
+		Tools []struct {
+			Name            string `json:"name"`
+			Formula         string `json:"formula"`
+			Latest          string `json:"latest"`
+			UpdateAvailable bool   `json:"update_available"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
+	}
+	if len(report.Tools) != 1 {
+		t.Fatalf("tools = %+v, want exactly the hexokit row", report.Tools)
+	}
+	row := report.Tools[0]
+	if row.Name != "hexokit" || row.Formula != "hexokit" || row.Latest != "3.20.22" || !row.UpdateAvailable {
+		t.Errorf("hexokit row = %+v, want name/formula hexokit, latest 3.20.22, update available", row)
 	}
 }

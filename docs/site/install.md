@@ -8,7 +8,7 @@ The deep guide to getting `shll` and the rest of the [HexoKit toolkit](https://h
 
 ## Bootstrap via Homebrew
 
-The recommended path is the one-liner — it bootstraps `shll` itself, then hands off to `shll install` and finishes with `shll update`, so what it installs converges to *complete and current*: missing tools are installed, and already-installed tools are upgraded. hexokit.com's copy is **product-first**: with no tool arguments it installs `shll` and HexoKit (`run-kit`) and prints the one command for the rest of the toolkit; name tools after `sh -s --` to pick exactly what you want. It needs curl to download: minimal Ubuntu/Debian images ship without it, so there run `sudo apt-get install -y curl` first.
+The recommended path is the one-liner — it bootstraps `shll` itself, then hands off to `shll install` and finishes with `shll update`, so what it installs converges to *complete and current*: missing tools are installed, and already-installed tools are upgraded. hexokit.com's copy is **product-first**: with no tool arguments it installs `shll` and HexoKit (`hexokit`) and prints the one command for the rest of the toolkit; name tools after `sh -s --` to pick exactly what you want. It needs curl to download: minimal Ubuntu/Debian images ship without it, so there run `sudo apt-get install -y curl` first.
 
 ```sh
 curl -fsSL https://hexokit.com/install | sh     # shll + HexoKit
@@ -33,12 +33,12 @@ An existing Homebrew is used as-is (≥ 6.0.4 — on 6.0.0–6.0.3, run `brew up
 
 The script hands off install-then-update: `shll install` with every arg verbatim, then `exec shll update` with the tool names. That has two consequences worth knowing:
 
-- **Updating installed tools runs their update contracts** — each tool's own `update` side effects included (e.g. run-kit restarts its daemon). Freshly installed tools are cheap no-op updates. A failed install stops the bootstrap, so the update pass never runs over a broken install.
+- **Updating installed tools runs their update contracts** — each tool's own `update` side effects included (e.g. hexokit restarts its daemon). Freshly installed tools are cheap no-op updates. A failed install stops the bootstrap, so the update pass never runs over a broken install.
 - **The shell integration and agent-harness steps below run automatically** at the end of every bootstrap (they belong to `shll install`) — **best-effort**: a step that fails warns and prints its manual nudge instead, never failing the install — and the opt-out flags ride the same argument passthrough (`curl -fsSL https://hexokit.com/install | sh -s -- --no-agent-setup`). Tool names ride **both** verbs (`sh -s -- hop` installs *and updates* only hop); flags reach `shll install` only — they are filtered out of the update pass.
 
 > **A failed download exits 0.** If the download itself fails, `curl -fsSL … | sh` still **exits 0 silently** — `sh` reads the empty input and succeeds — so an `&&`-chained next step proceeds as if the install worked. Curl's error does appear on stderr (that's the `-S`), but the pipeline's exit code cannot be trusted. (The script's `main()` wrapper protects against *partial* execution of a truncated download, not against a *failed* one.) After a run that seemed to do nothing, check `command -v shll` — or re-read stderr — before chaining on.
 
-> **Always tap-qualify formula names.** homebrew/core now carries an **unrelated** `run-kit` formula — a bare `brew install run-kit` installs someone else's software. Every toolkit formula is `sahil87/tap/<formula>` (`sahil87/tap/run-kit`, `sahil87/tap/shll`, …).
+> **Always tap-qualify formula names.** homebrew/core now carries an **unrelated** `run-kit` formula — a bare `brew install run-kit` installs someone else's software. Every toolkit formula is `sahil87/tap/<formula>` (`sahil87/tap/hexokit`, `sahil87/tap/shll`, …).
 
 If you'd rather bootstrap by hand, the manual equivalent is trust-then-install for `shll` itself:
 
@@ -54,9 +54,9 @@ The `brew trust` is required: shll's tap formula downloads a binary and runs a s
 shll install
 ```
 
-Iterates the hardcoded roster — `run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop` — and, for each brew-managed tool you don't already have, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. On Homebrew 6.0+ trust is a hard install requirement, so trusting first is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. It is **idempotent** — safe to re-run; a second run picks up only tools added since the first.
+Iterates the hardcoded roster — `hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop` — and, for each brew-managed tool you don't already have, records per-formula Homebrew trust (`brew trust --formula sahil87/tap/<formula>`) **before** running `brew install sahil87/tap/<formula>`. On Homebrew 6.0+ trust is a hard install requirement, so trusting first is what lets the install proceed; `brew trust` is idempotent, so re-runs stay clean. Already-installed tools are skipped silently. It is **idempotent** — safe to re-run; a second run picks up only tools added since the first.
 
-`rk-desktop` (the run-kit desktop viewer shell) is the roster's one non-brew entry: there is no formula, so there is no trust step — `shll install` delegates to `rk desktop install` instead. It is actionable only when `rk` (run-kit) is installed and the platform supports the desktop app; on an unsupported platform (or with `rk` missing) it is **skipped with a note**, never a failure — and a targeted `shll install rk-desktop` prints the refusal explicitly. In a whole-roster run it is processed right after run-kit, and if run-kit's install failed that run, rk-desktop is skipped too.
+`rk-desktop` (the HexoKit desktop viewer shell) is the roster's one non-brew entry: there is no formula, so there is no trust step — `shll install` delegates to `rk desktop install` instead. It is actionable only when `rk` (hexokit) is installed and the platform supports the desktop app; on an unsupported platform (or with `rk` missing) it is **skipped with a note**, never a failure — and a targeted `shll install rk-desktop` prints the refusal explicitly. In a whole-roster run it is processed right after hexokit, and if hexokit's install failed that run, rk-desktop is skipped too.
 
 This is Homebrew's recommended **per-formula** trust granularity for third-party taps — shll knows its exact roster, so it trusts only what it actually manages (not the whole tap).
 
@@ -69,7 +69,7 @@ If your Homebrew is too old to ship `brew trust` (pre-6.0, where trust isn't req
 When the installs finish (or there was nothing to do), `shll install` **wires the machine automatically** — no nudges to ignore, no prompts:
 
 1. **Shell integration** — the equivalent of [`shll setup shell`](#shll-setup-shell--wire-the-rc-file-recommended): the `eval "$(shll shell-init <shell>)"` block is appended to your rc file (sentinel-managed and idempotent, so a re-run is a no-op), followed by an `exec $SHELL` reminder. Already-wired, unresolvable-`$SHELL`, and corrupt-block states skip quietly.
-2. **Agent harnesses** — the equivalent of `shll setup agent --yes`: the `shll-toolkit` skill is placed at the global skill paths (`~/.agents/skills/` always; `~/.claude/skills/` when the `claude` CLI is on PATH) and run-kit's dashboard hooks are delegated, with `--yes` forwarded so run-kit's hook-wiring confirmation can't hang an unattended (`curl | sh`) run.
+2. **Agent harnesses** — the equivalent of `shll setup agent --yes`: the `shll-toolkit` skill is placed at the global skill paths (`~/.agents/skills/` always; `~/.claude/skills/` when the `claude` CLI is on PATH) and HexoKit's dashboard hooks are delegated, with `--yes` forwarded so hexokit's hook-wiring confirmation can't hang an unattended (`curl | sh`) run.
 
 Both steps are best-effort: a failure warns on stderr and prints that step's manual nudge as a fallback, and never changes the install's exit code. Neither step runs under `--dry-run`. Opt out with `--no-shell-setup` (dotfile-manager users) and/or `--no-agent-setup`:
 
@@ -151,11 +151,11 @@ eval "$(shll shell-init zsh)"   # in ~/.zshrc
 eval "$(shll shell-init bash)"  # in ~/.bashrc
 ```
 
-The output is the concatenation, in roster order (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`), of every installed shll tool's own `shell-init`. What each tool contributes:
+The output is the concatenation, in roster order (`hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`), of every installed shll tool's own `shell-init`. What each tool contributes:
 
 | Tool | What it adds to your shell |
 |------|----------------------------|
-| `run-kit` | completion |
+| `hexokit` | completion |
 | `rk-desktop` | — (no shell integration; the desktop app) |
 | `fab-kit` | completion |
 | `wt`  | `wt` shell function wrapper (so the "Open here" menu option can `cd` your shell), completion |

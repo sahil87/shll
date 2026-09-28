@@ -62,10 +62,10 @@ const notBrewManagedFmt = "shll uninstall: %s: not brew-managed"
 // this points at the reinstall path. Takes the reinstall command.
 const shllFarewellFmt = "shll has been uninstalled. Reinstall any time with: %s"
 
-// runKitDaemonStopHintFmt is the print-only post-run hint shown when run-kit was
-// removed: brew uninstall does not stop a running run-kit daemon (Constitution III —
+// hexokitDaemonStopHintFmt is the print-only post-run hint shown when hexokit was
+// removed: brew uninstall does not stop a running hexokit daemon (Constitution III —
 // shll never stops another tool's process; it only prints the hint). Takes the tool name.
-const runKitDaemonStopHintFmt = "note: a running %[1]s daemon (if any) was not stopped — run '%[1]s serve --stop' to stop it"
+const hexokitDaemonStopHintFmt = "note: a running %[1]s daemon (if any) was not stopped — run '%[1]s serve --stop' to stop it"
 
 // shellUnwireHint is the print-only post-run hint shown when shell-integrated tools
 // were removed roster-wide: their rc-file eval block is not touched by brew uninstall
@@ -91,7 +91,7 @@ func newUninstallCmd() *cobra.Command {
 that pairs with ` + "`shll install`" + `.
 
 With no arguments, shll uninstall removes every INSTALLED brew-managed roster tool
-(` + "`run-kit`, `fab-kit`, `wt`, `idea`, `tu`, `hop`" + `) in reverse-roster order.
+(` + "`hexokit`, `fab-kit`, `wt`, `idea`, `tu`, `hop`" + `) in reverse-roster order.
 rk-desktop is not a brew formula — it is skipped with a note (remove it via
 ` + "`rk desktop`" + ` itself), never ` + "`brew uninstall`" + `ed. Tools that are not installed
 are skipped silently — uninstall is idempotent and its goal state ("gone") is a
@@ -99,8 +99,8 @@ success even when a tool was already absent. shll itself is NOT part of the
 no-args sweep.
 
 Pass one or more tool names to uninstall only that subset (valid targets: shll,
-run-kit, rk-desktop, fab-kit, wt, idea, tu, hop; the legacy alias ` + "`rk`" + ` still resolves to
-run-kit). ` + "`shll uninstall shll`" + ` is legal and explicit-only — it removes shll
+hexokit, rk-desktop, fab-kit, wt, idea, tu, hop; the legacy aliases ` + "`rk`" + ` and ` + "`run-kit`" + ` resolve to
+hexokit). ` + "`shll uninstall shll`" + ` is legal and explicit-only — it removes shll
 itself (last, after the roster), and only when shll was installed via brew. The
 running process keeps working; a farewell note points at the reinstall command.
 
@@ -145,7 +145,7 @@ stop running processes (it prints hints for the daemon and rc-file cleanup inste
 //     bypassing the confirmation gate (a preview mutates nothing).
 //   - Best-effort removal loop: a per-tool failure is recorded and the loop continues;
 //     the overall exit code reflects whether any failed. Skips are not failures.
-//   - Post-run hints (print-only, Constitution III): run-kit daemon stop; rc-file unwire
+//   - Post-run hints (print-only, Constitution III): hexokit daemon stop; rc-file unwire
 //     when shell-integrated tools were removed roster-wide.
 //
 // stdin is the reader the confirmation prompt reads from (cmd.InOrStdin() in
@@ -172,7 +172,7 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 		return errSilent
 	}
 
-	// Legacy-alias notice (e.g. `shll uninstall rk` → run-kit), before any framing.
+	// Legacy-alias notice (e.g. `shll uninstall run-kit` → hexokit), before any framing.
 	// Shared wording with update/install via printAliasNotices.
 	printAliasNotices(stdout, aliased)
 
@@ -289,14 +289,14 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	start := nowFunc()
 
 	anyFailed := false
-	// runKitName is the display name of the run-kit tool once it is SUCCESSFULLY removed
+	// hexokitName is the display name of the hexokit tool once it is SUCCESSFULLY removed
 	// (empty otherwise). The daemon-stop hint is keyed on the roster entry by NAME —
-	// matched against the runKitToolName named constant (no magic string) — and
-	// success-gated: it fires only when the run-kit roster entry was actually removed.
+	// matched against the hexokitToolName named constant (no magic string) — and
+	// success-gated: it fires only when the hexokit roster entry was actually removed.
 	// shellIntegratedRemoved tracks whether any SUCCESSFULLY removed tool carries shell
-	// integration — the rc-unwire hint is success-gated on it (mirrors runKitName's
+	// integration — the rc-unwire hint is success-gated on it (mirrors hexokitName's
 	// success gating), never fired for a merely-attempted-but-failed removal.
-	runKitName := ""
+	hexokitName := ""
 	shellIntegratedRemoved := false
 	for i, a := range actionable {
 		// Section spacing: a blank line precedes every header EXCEPT the first.
@@ -318,8 +318,8 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 			anyFailed = true
 			continue
 		}
-		if a.tool.Name == runKitToolName {
-			runKitName = a.tool.Name
+		if a.tool.Name == hexokitToolName {
+			hexokitName = a.tool.Name
 		}
 		// Success-gate the shell-integration signal on an actually-removed tool (shll-self
 		// carries no ShellInit, so it never trips this).
@@ -336,15 +336,15 @@ func runUninstall(ctx context.Context, stdin io.Reader, stdout, stderr io.Writer
 	printSummaryTail(stdout, succeeded, total, nowFunc().Sub(start), color)
 
 	// Post-run hints — PRINT ONLY (Constitution III — shll never stops a daemon or edits
-	// the rc file here). run-kit daemon stop when run-kit was removed; rc-file unwire when
+	// the rc file here). hexokit daemon stop when hexokit was removed; rc-file unwire when
 	// shell-integrated tools were removed ROSTER-WIDE. "Roster-wide" keys on coverage of
 	// the roster SET — a no-args sweep OR a NAMED full-roster sweep (all six roster tools
 	// listed explicitly) both qualify — not on !subset, which would miss the named-all
 	// case. Scoping to roster-wide avoids a misleading rc-unwiring nudge on a partial
 	// subset that may leave other integrated tools present and still wired. Both hints are
 	// success-gated (they fire only on an actually-removed tool, never a failed attempt).
-	if runKitName != "" {
-		fmt.Fprintf(stdout, runKitDaemonStopHintFmt+"\n", runKitName)
+	if hexokitName != "" {
+		fmt.Fprintf(stdout, hexokitDaemonStopHintFmt+"\n", hexokitName)
 	}
 	if rosterWide && shellIntegratedRemoved {
 		fmt.Fprintln(stdout, shellUnwireHint)

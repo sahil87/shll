@@ -18,9 +18,9 @@ import (
 // agent_setup.go implements the agent half of `shll setup` (`shll setup agent`;
 // hidden compat spelling `shll agent-setup`) — mechanically place ONE thin Agent
 // Skill (the toolkit bootstrap) into the harnesses' global skills directories, then
-// delegate run-kit's dashboard-hook wiring to `run-kit agent setup` (Constitution
+// delegate HexoKit's dashboard-hook wiring to `hexokit agent setup` (Constitution
 // III/IV — compose, don't absorb). It graduates the cross-toolkit harness wiring from
-// run-kit (a leaf tool) to shll (the manager).
+// hexokit (a leaf tool) to shll (the manager).
 //
 // Placement is two-tiered (the skill standard's Placement-directories rule): the
 // open-standard ~/.agents/skills/ write is unconditional; the brand-surface
@@ -31,7 +31,7 @@ import (
 // The skill directories are shll-OWNED, so there is no merge, no sentinel, no
 // diff-and-confirm: install = write, re-run/upgrade = overwrite (idempotent by
 // construction), --uninstall = delete. This file performs plain file I/O plus ONE
-// subprocess (the run-kit delegation via internal/proc — Constitution I).
+// subprocess (the hexokit delegation via internal/proc — Constitution I).
 
 // agentSetupErrPrefix is the diagnostic prefix stamped on this command's stderr.
 const agentSetupErrPrefix = "shll setup agent"
@@ -82,28 +82,25 @@ This machine has the HexoKit toolkit installed. Before driving one of its tools:
    composition patterns, output and exit-code contracts, gotchas). A large-scope tool's
    core bundle lists topic pages; ` + "`shll skill <tool> <topic>`" + ` serves one on demand.
 
-Run-kit also has agent-proactive capabilities — visual display in a browser window (HTML, diagrams, reports, a local dev server), push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + ` — refresh a PR list, open a diff, focus a view); see ` + "`shll skill run-kit`" + ` (and ` + "`shll skill run-kit code`" + ` for the editor bridge). The user may be viewing the session remotely through run-kit's web dashboard, where ` + "`open`" + `/` + "`xdg-open`" + ` and localhost URLs never reach them and publishing to a hosted artifact page (e.g. claude.ai) forces them off the dashboard — ` + "`shll skill run-kit`" + ` carries the proxied-iframe recipe for both cases. When the user asks for a tutorial, tour, or onboarding of run-kit or its web dashboard, read ` + "`shll skill run-kit tutorial`" + ` and follow it.
+HexoKit also has agent-proactive capabilities — visual display in a browser window (HTML, diagrams, reports, a local dev server), push notifications, and running VS Code palette commands inside the user's code editor (` + "`rk code exec`" + ` — refresh a PR list, open a diff, focus a view); see ` + "`shll skill hexokit`" + ` (and ` + "`shll skill hexokit code`" + ` for the editor bridge). The user may be viewing the session remotely through HexoKit's web dashboard, where ` + "`open`" + `/` + "`xdg-open`" + ` and localhost URLs never reach them and publishing to a hosted artifact page (e.g. claude.ai) forces them off the dashboard — ` + "`shll skill hexokit`" + ` carries the proxied-iframe recipe for both cases. When the user asks for a tutorial, tour, or onboarding of HexoKit or its web dashboard, read ` + "`shll skill hexokit tutorial`" + ` and follow it.
 
 For toolkit-repo development, ` + "`shll standards`" + ` enumerates the binding CLI standards.
 `
 
 // agentSkillDescription builds the frontmatter description line from the Roster, one
 // `task-domain phrase (tool)` clause per tool, so both the tool names and the task
-// vocabulary act as activation triggers. A tool with a LegacyName renders both tokens
-// (`run-kit/rk`) — the alias is trigger vocabulary too. Each non-empty ProactiveHint
-// is then appended verbatim (Roster order) as an additional sentence AFTER the tool
-// clauses and BEFORE the closing two-step pointer — the extra per-tool trigger
-// vocabulary (today only run-kit carries one). Single-sourced with the Roster
+// vocabulary act as activation triggers. A tool with LegacyNames renders every token
+// (`hexokit/rk/run-kit`) — the aliases are trigger vocabulary too. Each non-empty
+// ProactiveHint is then appended verbatim (Roster order) as an additional sentence
+// AFTER the tool clauses and BEFORE the closing two-step pointer — the extra per-tool
+// trigger vocabulary (today only hexokit carries one). Single-sourced with the Roster
 // so the description cannot drift from the managed set; the output MUST stay a single
 // line (YAML frontmatter value — asserted by TestAgentSetup_DescriptionSingleLine).
 func agentSkillDescription() string {
 	clauses := make([]string, 0, len(Roster))
 	var proactive []string
 	for _, t := range Roster {
-		name := t.Name
-		if t.LegacyName != "" {
-			name += "/" + t.LegacyName
-		}
+		name := strings.Join(append([]string{t.Name}, t.LegacyNames...), "/")
 		clauses = append(clauses, fmt.Sprintf("%s (%s)", t.SkillHint, name))
 		if t.ProactiveHint != "" {
 			proactive = append(proactive, t.ProactiveHint)
@@ -175,35 +172,36 @@ func skillInstallRelDirs() []string {
 // `shll update` self-refresh executes `shll agent-setup --yes` against the NEW
 // binary across the release boundary. The new binary's own refreshArgv emits the
 // new spelling (`shll setup agent`, built from setupSub/setupAgentLeaf in
-// setup.go). The run-kit delegation never shared this token — run-kit renamed
-// its command family to the two-token `agent setup` (runKitAgentSetupArgs).
+// setup.go). The hexokit delegation never shared this token — run-kit renamed
+// its command family to the two-token `agent setup` (hexokitAgentSetupArgs).
 // Named per code-quality.md (no magic strings).
 const agentSetupSub = "agent-setup"
 
-// runKitAgentSetupArgs is the run-kit hook-wiring command family in its post-rename
-// two-token spelling `run-kit agent setup` (run-kit PR #620; first shipped in
-// v3.16.23). The prior `run-kit agent-setup` spelling is deprecated upstream and
+// hexokitAgentSetupArgs is the HexoKit hook-wiring command family in its post-rename
+// two-token spelling `hexokit agent setup` (run-kit PR #620; first shipped in
+// v3.16.23). The prior `agent-setup` spelling is deprecated upstream and
 // prints a deprecation warning on every delegation. Deliberately no version probe and
 // no old-spelling fallback: the delegation is a best-effort adjunct (warn-and-continue
 // below), and `shll update`'s refresh runs after the roster loop has just upgraded
-// run-kit, so the new family exists by construction there.
-var runKitAgentSetupArgs = []string{"agent", "setup"}
+// hexokit, so the new family exists by construction there.
+var hexokitAgentSetupArgs = []string{"agent", "setup"}
 
-// runKitToolName is the run-kit binary name — the subprocess target for
-// delegateRunKitAgentSetup's `run-kit agent setup` delegation (Constitution III/IV —
-// compose, don't absorb), and matched against Roster entry names by uninstall.go's
-// daemon-stop hint. Named per code-quality.md (no magic strings).
-const runKitToolName = "run-kit"
+// hexokitToolName is the HexoKit binary name (its roster Name) — the subprocess
+// target for delegateHexokitAgentSetup's `hexokit agent setup` delegation
+// (Constitution III/IV — compose, don't absorb), and matched against Roster entry
+// names by uninstall.go's daemon-stop hint. Named per code-quality.md (no magic
+// strings).
+const hexokitToolName = "hexokit"
 
 // agentSetupYesUsage is the cobra usage string for --yes/-y on the agent-setup
 // surface (`shll setup agent`, the hidden `shll agent-setup`, and bare
 // `shll setup`, whose --yes forwards to the same place).
 // Distinct from uninstall.go's yesFlagUsage because the prompt being skipped is not
 // shll's own (the skill placement is promptless by construction) — it belongs to the
-// delegated `run-kit agent setup`, whose hook-wiring confirmation would otherwise hang
+// delegated `hexokit agent setup`, whose hook-wiring confirmation would otherwise hang
 // an unattended run (a pane TTY with nobody attached is structurally undetectable, so
 // the consent must be explicit, never TTY-derived).
-const agentSetupYesUsage = "pass --yes to the run-kit agent setup delegation (assume yes — for unattended runs)"
+const agentSetupYesUsage = "pass --yes to the hexokit agent setup delegation (assume yes — for unattended runs)"
 
 // agentSetupCmdSpec carries the per-spelling surface differences between the new
 // `shll setup agent` subcommand and the hidden deprecated `shll agent-setup`
@@ -290,8 +288,8 @@ func skillTargetsUnder(env func(string) string, relDirs []string) []string {
 //
 //	env           resolves $HOME for skill-path derivation.
 //	printMode     print the content + paths, touch nothing, no delegation.
-//	uninstallMode delete both skill directories, then delegate run-kit's uninstall.
-//	yes           forward --yes to the run-kit delegation (skips its confirmation
+//	uninstallMode delete both skill directories, then delegate hexokit's uninstall.
+//	yes           forward --yes to the hexokit delegation (skips its confirmation
 //	              prompt for unattended runs). A no-op under printMode, which never
 //	              delegates — deliberately NOT a usage error, unlike --print+--uninstall,
 //	              because the combination is harmless rather than contradictory.
@@ -319,7 +317,7 @@ func runAgentSetup(ctx context.Context, env func(string) string, stdout, stderr 
 // runAgentPrint writes the canonical SKILL.md content followed by the target paths
 // it WOULD be written to — the gate-reflecting install set resolved by the caller,
 // so on a no-`claude` machine only the ~/.agents/skills/ path is listed — and
-// modifies nothing. It does not delegate to run-kit.
+// modifies nothing. It does not delegate to hexokit.
 func runAgentPrint(targets []string, stdout, stderr io.Writer) error {
 	if _, err := io.WriteString(stdout, agentSkillContent); err != nil {
 		fmt.Fprintf(stderr, "%s: write stdout: %v\n", agentSetupErrPrefix, err)
@@ -337,7 +335,7 @@ func runAgentPrint(targets []string, stdout, stderr io.Writer) error {
 // ~/.claude/skills/ target is absent, so no ~/.claude/ tree is created; the gate
 // never deletes a pre-existing one), creating the skill directory as needed (shll
 // owns it), printing a per-path written/updated/unchanged summary, then delegates
-// run-kit's harness hooks.
+// hexokit's harness hooks.
 func runAgentInstall(ctx context.Context, targets []string, yes bool, stdout, stderr io.Writer) error {
 	content := []byte(agentSkillContent)
 	anyFailed := false
@@ -347,9 +345,9 @@ func runAgentInstall(ctx context.Context, targets []string, yes bool, stdout, st
 		}
 	}
 
-	// Delegate run-kit's harness hooks (Constitution III/IV). Skip silently when
-	// run-kit is absent (Constitution V).
-	delegateRunKitAgentSetup(ctx, false, yes, stderr)
+	// Delegate hexokit's harness hooks (Constitution III/IV). Skip silently when
+	// hexokit is absent (Constitution V).
+	delegateHexokitAgentSetup(ctx, false, yes, stderr)
 
 	if anyFailed {
 		return errSilent
@@ -399,7 +397,7 @@ func placeSkill(path string, content []byte, stdout, stderr io.Writer) error {
 }
 
 // runAgentUninstall removes each placed skill DIRECTORY (the shll-toolkit dir under
-// each target, not just the SKILL.md file), then delegates `run-kit agent setup
+// each target, not just the SKILL.md file), then delegates `hexokit agent setup
 // --uninstall`. The caller passes the ALL-CANDIDATES set (both paths regardless of
 // the placement gate), so a pre-existing ~/.claude placement removes cleanly on a
 // machine where `claude` has since disappeared. Removing an shll-owned directory is
@@ -420,8 +418,8 @@ func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, 
 		fmt.Fprintf(stdout, "removed    %s\n", dir)
 	}
 
-	// Delegate run-kit's own uninstall.
-	delegateRunKitAgentSetup(ctx, true, yes, stderr)
+	// Delegate hexokit's own uninstall.
+	delegateHexokitAgentSetup(ctx, true, yes, stderr)
 
 	if anyFailed {
 		return errSilent
@@ -429,42 +427,42 @@ func runAgentUninstall(ctx context.Context, targets []string, yes bool, stdout, 
 	return nil
 }
 
-// delegateRunKitAgentSetup invokes `run-kit agent setup [--uninstall] [--yes]` as a
-// foreground subprocess (via internal/proc — Constitution I) for run-kit's dashboard
-// hooks. When run-kit is not on PATH (proc.ErrNotFound) the delegation is skipped
+// delegateHexokitAgentSetup invokes `hexokit agent setup [--uninstall] [--yes]` as a
+// foreground subprocess (via internal/proc — Constitution I) for hexokit's dashboard
+// hooks. When hexokit is not on PATH (proc.ErrNotFound) the delegation is skipped
 // silently (Constitution V — graceful degradation); its stdio is inherited
 // (proc.RunForeground always wires the real os.Stdout/os.Stderr) so the user sees
-// run-kit's own output — this helper only writes its own diagnostics to stderr, so it
-// takes no stdout writer. yes forwards --yes so run-kit's hook-wiring confirmation is
+// hexokit's own output — this helper only writes its own diagnostics to stderr, so it
+// takes no stdout writer. yes forwards --yes so hexokit's hook-wiring confirmation is
 // skipped (unattended runs) — appended on both the install and uninstall paths, the
 // delegation being the same helper either way. Only the default (install) and
-// --uninstall paths call this; --print never does. An installed run-kit older than
+// --uninstall paths call this; --print never does. An installed hexokit older than
 // v3.16.23 lacks the `agent` family and exits non-zero — that lands on the same
-// warn-and-continue path as any other delegation failure (see runKitAgentSetupArgs).
-func delegateRunKitAgentSetup(ctx context.Context, uninstall, yes bool, stderr io.Writer) {
-	args := append([]string{}, runKitAgentSetupArgs...)
+// warn-and-continue path as any other delegation failure (see hexokitAgentSetupArgs).
+func delegateHexokitAgentSetup(ctx context.Context, uninstall, yes bool, stderr io.Writer) {
+	args := append([]string{}, hexokitAgentSetupArgs...)
 	if uninstall {
 		args = append(args, "--uninstall")
 	}
 	if yes {
 		args = append(args, "--"+yesFlag)
 	}
-	code, err := proc.RunForeground(ctx, runKitToolName, args...)
+	code, err := proc.RunForeground(ctx, hexokitToolName, args...)
 	if errors.Is(err, proc.ErrNotFound) {
-		return // run-kit absent — skip silently.
+		return // hexokit absent — skip silently.
 	}
 	if err != nil {
 		// A real delegation error (not "absent") is worth surfacing, but it does not
 		// fail the skill placement shll already did — placement is agent-setup's core
-		// work; run-kit hooks are the optional adjunct.
-		fmt.Fprintf(stderr, "%s: run-kit agent setup: %v (continuing)\n", agentSetupErrPrefix, err)
+		// work; hexokit hooks are the optional adjunct.
+		fmt.Fprintf(stderr, "%s: hexokit agent setup: %v (continuing)\n", agentSetupErrPrefix, err)
 		return
 	}
 	if code != 0 {
 		// RunForeground returns err == nil when the child starts and exits non-zero
 		// (the code carries the outcome). Same adjunct rule: warn, never fail the
 		// placement (mirrors install's delegated-trust-step precedent).
-		fmt.Fprintf(stderr, "%s: run-kit agent setup exited %d (continuing)\n", agentSetupErrPrefix, code)
+		fmt.Fprintf(stderr, "%s: hexokit agent setup exited %d (continuing)\n", agentSetupErrPrefix, code)
 	}
 }
 
@@ -508,18 +506,18 @@ const agentSkillRefreshHeader = "Refreshing placed agent skills (shll setup agen
 // (resolved from PATH, via internal/proc — Constitution I) rather than calling
 // runAgentSetup in-process: after a brew self-upgrade the RUNNING binary still holds
 // the OLD embedded skill content, and only the freshly installed binary on PATH can
-// place the new bytes. The subprocess also re-runs the run-kit hook delegation, so a
-// run-kit upgrade's hook changes land too — which is why the caller runs this AFTER
+// place the new bytes. The subprocess also re-runs the hexokit hook delegation, so a
+// hexokit upgrade's hook changes land too — which is why the caller runs this AFTER
 // the roster loop.
 //
-// Best-effort adjunct, mirroring delegateRunKitAgentSetup: an `shll` binary missing
+// Best-effort adjunct, mirroring delegateHexokitAgentSetup: an `shll` binary missing
 // from PATH (a non-brew dev build) is a silent skip (Constitution V — `shll doctor`
 // still surfaces staleness), and any other failure warns and continues without
 // affecting the update's exit code — the tool upgrades are the run's core work.
 //
 // yes threads `shll update --yes` through to the subprocess (`shll setup agent --yes`),
-// which in turn forwards it to the run-kit delegation — the explicit consent chain
-// that keeps an unattended `shll update` from hanging on run-kit's hook prompt.
+// which in turn forwards it to the hexokit delegation — the explicit consent chain
+// that keeps an unattended `shll update` from hanging on hexokit's hook prompt.
 func refreshPlacedAgentSkills(ctx context.Context, env func(string) string, yes bool, stdout, stderr io.Writer) {
 	if placed, _ := agentSkillPlacementState(env); !placed {
 		return

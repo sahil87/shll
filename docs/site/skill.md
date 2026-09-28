@@ -1,6 +1,6 @@
 # shll skill
 
-The agent skill bundle for **shll** — the meta-CLI that installs, updates, wires, and inspects the [HexoKit toolkit](https://hexokit.com/toolkit/) (`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). shll is stateless and composes each tool's own CLI; it never replaces them.
+The agent skill bundle for **shll** — the meta-CLI that installs, updates, wires, and inspects the [HexoKit toolkit](https://hexokit.com/toolkit/) (`hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`). shll is stateless and composes each tool's own CLI; it never replaces them.
 
 ## When to use shll
 
@@ -23,9 +23,9 @@ One line each, keyed to the subcommand:
 - `shll uninstall [tool...]` — remove brew-managed roster tools via brew, reverse order with shll-self last (rk-desktop is non-brew: skipped with a note); confirm-gated (`--yes` skips, non-TTY refuses), `--dry-run` previews.
 - `shll changelog [tool[@old..new]...]` — GitHub release notes; no range = installed→latest ("what would an update bring?").
 - `shll shell-init <shell>` — emit one eval-safe shell-init blob composing every installed tool's shell-init. Stdout is meant to be `eval`'d.
-- `shll setup` — wire this machine: both halves (shell integration, then agent harnesses), idempotent. `--yes` forwards to the run-kit delegation.
+- `shll setup` — wire this machine: both halves (shell integration, then agent harnesses), idempotent. `--yes` forwards to the hexokit delegation.
 - `shll setup shell [shell]` — append the `eval "$(shll shell-init …)"` line to your rc file (idempotent, sentinel-wrapped). `--print` / `--uninstall`.
-- `shll setup agent` — place the `shll-toolkit` Agent Skill at the global skill paths (`~/.agents/skills/` for Codex/Cursor/OpenCode — always; `~/.claude/skills/` for Claude Code — only when the `claude` CLI is on PATH), then delegate run-kit's dashboard hooks to `run-kit agent setup`. Idempotent (overwrite). `--print` / `--uninstall`.
+- `shll setup agent` — place the `shll-toolkit` Agent Skill at the global skill paths (`~/.agents/skills/` for Codex/Cursor/OpenCode — always; `~/.claude/skills/` for Claude Code — only when the `claude` CLI is on PATH), then delegate HexoKit's dashboard hooks to `hexokit agent setup`. Idempotent (overwrite). `--print` / `--uninstall`.
 - `shll skill [tool] [topic]` — bare: one-line glossary of installed tools. `shll skill <tool>`: that tool's full agent skill bundle (this page is `shll skill shll`). `shll skill <tool> <topic>`: one of that tool's topic pages, delegated to `<tool> skill <topic>` byte-for-byte. `shll skill <tool> topics`: list that tool's topic names, one per line (empty if it ships none).
 - `shll version` — one paste-friendly version row per tool (for bug reports).
 - `shll list` — the roster with install status, descriptions, repo links (`--json`).
@@ -36,7 +36,7 @@ One line each, keyed to the subcommand:
 
 - shll shells out to each tool's own CLI — it has no per-tool logic of its own. `shll update` calls `<tool> update`; `shll shell-init` concatenates `<tool> shell-init`; `shll skill <tool>` passes through `<tool> skill` byte-for-byte.
 - shll shells out to `brew` for install/upgrade/trust, and to the public GitHub API (unauthenticated) for changelog notes.
-- `shll setup agent` delegates run-kit's hook wiring to `run-kit agent setup`; the per-tool CLIs keep working standalone.
+- `shll setup agent` delegates HexoKit's hook wiring to `hexokit agent setup`; the per-tool CLIs keep working standalone.
 - Missing tools are skipped, never errors — every command degrades gracefully.
 
 ## Output & exit-code contracts

@@ -59,7 +59,7 @@ func installUnwiredEnv(t *testing.T) func(string) string {
 // `->` on the non-TTY test writer. It GRADUATED from the former run-kit agent-setup
 // line (change agst); since the auto-run change (gjhx) it prints as the
 // --no-agent-setup / failed-step fallback.
-const agentSetupNudgeGolden = "  -> shll setup agent    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)\n"
+const agentSetupNudgeGolden = "  -> shll setup agent    # optional, once per machine — wire agent harnesses (toolkit context + HexoKit dashboard hooks)\n"
 
 // nextStepsAgentOnly is the whole "Next steps" block a golden test sees when the
 // shell step is quiet (wired env) and the agent step was opted out of
@@ -163,8 +163,8 @@ func TestInstall_NoneInstalled(t *testing.T) {
 	}
 	// The loop path also ran the post-install agent-setup auto-run (the wired env
 	// silent-skips the shell step): the run-kit delegation is forwarded --yes.
-	if !invocationsContain(f.calls, runKitToolName, "agent", "setup", "--yes") {
-		t.Errorf("expected the auto agent-setup delegation `run-kit agent setup --yes`, calls: %+v", f.calls)
+	if !invocationsContain(f.calls, hexokitToolName, "agent", "setup", "--yes") {
+		t.Errorf("expected the auto agent-setup delegation `hexokit agent setup --yes`, calls: %+v", f.calls)
 	}
 	// Sanity: stdout should NOT contain the "all already installed" message.
 	if strings.Contains(stdout.String(), "already installed") {
@@ -204,7 +204,7 @@ func TestInstall_PartialInstalled(t *testing.T) {
 	// Missing tools MUST receive an install call.
 	for _, formula := range []string{
 		formulaPrefix + "fab-kit",
-		formulaPrefix + "run-kit",
+		formulaPrefix + "hexokit",
 		formulaPrefix + "tu",
 		formulaPrefix + "idea",
 	} {
@@ -295,7 +295,7 @@ func TestInstall_HeadersAndTail(t *testing.T) {
 	// each header after the first is preceded by a blank line, and a blank line
 	// precedes the duration-bearing tail.
 	want := shllSelfInstallNote + "\n" +
-		"==> [1/4] run-kit\n" +
+		"==> [1/4] hexokit\n" +
 		"\n==> [2/4] fab-kit\n" +
 		"\n==> [3/4] idea\n" +
 		"\n==> [4/4] tu\n" +
@@ -329,7 +329,7 @@ func TestInstall_EmptyCaseNoHeaderNoTail(t *testing.T) {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if got, want := stdout.String(), shllSelfInstallNote+"\nAll shll tools already installed.\n"+nextStepsAgentOnly; got != want {
-		t.Fatalf("stdout = %q, want the shll-first note + one-line note + run-kit nudge (no header, no tail)", got)
+		t.Fatalf("stdout = %q, want the shll-first note + one-line note + hexokit nudge (no header, no tail)", got)
 	}
 	if strings.Contains(stdout.String(), "==>") || strings.Contains(stdout.String(), "Done —") {
 		t.Fatalf("empty case must emit no header and no tail, got %q", stdout.String())
@@ -387,11 +387,11 @@ func TestInstall_DryRunPreview(t *testing.T) {
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, true, false, false, false, nil); err != nil {
 		t.Fatalf("runInstall --dry-run err = %v, want nil", err)
 	}
-	// Longest missing label is "run-kit"/"fab-kit" (7); shorter labels pad to 7.
+	// Longest missing label is "hexokit"/"fab-kit" (7); shorter labels pad to 7.
 	// The shll-first informational line precedes the preview.
 	want := shllSelfInstallNote + "\n" +
 		"Would install 4 tools:\n" +
-		"  run-kit  brew install sahil87/tap/run-kit\n" +
+		"  hexokit  brew install sahil87/tap/hexokit\n" +
 		"  fab-kit  brew install sahil87/tap/fab-kit\n" +
 		"  idea     brew install sahil87/tap/idea\n" +
 		"  tu       brew install sahil87/tap/tu\n"
@@ -575,7 +575,7 @@ func TestInstall_SubsetArgOrderIndependentRosterOrder(t *testing.T) {
 		t.Fatalf("fab-kit (%d) must be installed before wt (%d) — roster order, not arg order", fabIdx, wtIdx)
 	}
 	// Unnamed tools are NOT installed.
-	for _, name := range []string{"idea", "tu", "run-kit", "hop"} {
+	for _, name := range []string{"idea", "tu", "hexokit", "hop"} {
 		if invocationsContain(calls, brewBinary, "install", formulaPrefix+name) {
 			t.Errorf("unnamed tool %s must NOT be installed", name)
 		}
@@ -611,7 +611,7 @@ func TestInstall_SubsetNamedAlreadyInstalled(t *testing.T) {
 	// opt-out fallback after the nothing-to-do note; the wired env silent-skips
 	// the shell step (change gjhx).
 	if got, want := stdout.String(), shllSelfInstallNote+"\n"+allInstalledMsg+"\n"+nextStepsAgentOnly; got != want {
-		t.Fatalf("stdout = %q, want the shll-first note + nothing-to-do note + run-kit nudge for a named-already-installed target", got)
+		t.Fatalf("stdout = %q, want the shll-first note + nothing-to-do note + hexokit nudge for a named-already-installed target", got)
 	}
 	if invocationsContain(f.recordedCalls(), brewBinary, "install", formulaPrefix+"hop") {
 		t.Fatal("already-installed named target must NOT be re-installed")
@@ -661,7 +661,7 @@ func TestInstall_CounterPartialInstall(t *testing.T) {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	want := shllSelfInstallNote + "\n" +
-		"==> [1/5] run-kit\n" +
+		"==> [1/5] hexokit\n" +
 		"\n==> [2/5] fab-kit\n" +
 		"\n==> [3/5] wt\n" +
 		"\n==> [4/5] tu\n" +
@@ -832,13 +832,13 @@ func TestInstall_TrustFailureContinues(t *testing.T) {
 
 // --- run-kit after the migration-guard retirement (change h3f6) ----------------
 
-// installRunKitMissingFake models a machine where every roster formula EXCEPT
-// run-kit is already installed and run-kit's formula (sahil87/tap/run-kit) is
+// installHexokitMissingFake models a machine where every roster formula EXCEPT
+// run-kit is already installed and run-kit's formula (sahil87/tap/hexokit) is
 // not — the shape of BOTH a fresh machine and a never-migrated legacy-only
 // machine (the legacy `rk` keg is invisible to shll: it never probes
 // sahil87/tap/rk anymore). Trust probes succeed so the default trust-then-install
 // path is exercised.
-func installRunKitMissingFake() *fakeRunner {
+func installHexokitMissingFake() *fakeRunner {
 	installed := false
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		switch {
@@ -846,45 +846,45 @@ func installRunKitMissingFake() *fakeRunner {
 			return proc.Result{Stdout: []byte("Usage: brew trust --formula <formula>\n")}
 		case req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list":
 			formula := req.Args[3]
-			if formula == formulaPrefix+"run-kit" {
+			if formula == formulaPrefix+"hexokit" {
 				if installed {
-					return proc.Result{Stdout: []byte("run-kit 3.0.0\n")}
+					return proc.Result{Stdout: []byte("hexokit 3.0.0\n")}
 				}
 				return proc.Result{Err: errors.New("not installed")}
 			}
 			// Every other roster tool is already installed.
 			return proc.Result{Stdout: []byte(strings.TrimPrefix(formula, formulaPrefix) + " 1.0.0\n")}
-		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "install" && req.Args[1] == formulaPrefix+"run-kit":
+		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "install" && req.Args[1] == formulaPrefix+"hexokit":
 			installed = true
 			return proc.Result{}
 		case isRkDesktopProbe(req):
-			return rkDesktopStatusResult(true) // installed — the targeted run installs run-kit only
+			return rkDesktopStatusResult(true) // installed — the targeted run installs hexokit only
 		}
 		return proc.Result{}
 	}}
 }
 
-func TestInstall_LegacyOnlyMachineBrewInstallsRunKit(t *testing.T) {
+func TestInstall_LegacyOnlyMachineBrewInstallsHexokit(t *testing.T) {
 	// A legacy-only machine classifies run-kit as MISSING (the plain
-	// isInstalled(sahil87/tap/run-kit) check): `shll install run-kit` records
+	// isInstalled(sahil87/tap/hexokit) check): `shll install run-kit` records
 	// per-formula trust then runs the normal bootstrap `brew install
-	// sahil87/tap/run-kit`. No call ever references the retired legacy formula and
+	// sahil87/tap/hexokit`. No call ever references the retired legacy formula and
 	// no migration upgrade runs (orphan `rk` keg cleanup is manual per run-kit's
 	// README).
-	f := installRunKitMissingFake()
+	f := installHexokitMissingFake()
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
-	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"run-kit"}); err != nil {
+	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"hexokit"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	calls := f.recordedCalls()
 	assertNoLegacyFormulaReference(t, calls)
-	if !invocationsContain(calls, brewBinary, "trust", "--formula", formulaPrefix+"run-kit") {
-		t.Fatalf("expected `brew trust --formula %s` before the install, calls: %+v", formulaPrefix+"run-kit", calls)
+	if !invocationsContain(calls, brewBinary, "trust", "--formula", formulaPrefix+"hexokit") {
+		t.Fatalf("expected `brew trust --formula %s` before the install, calls: %+v", formulaPrefix+"hexokit", calls)
 	}
-	if !invocationsContain(calls, brewBinary, "install", formulaPrefix+"run-kit") {
-		t.Fatalf("missing run-kit must be `brew install`ed, calls: %+v", calls)
+	if !invocationsContain(calls, brewBinary, "install", formulaPrefix+"hexokit") {
+		t.Fatalf("missing hexokit must be `brew install`ed, calls: %+v", calls)
 	}
 	for _, c := range calls {
 		if c.Name == brewBinary && len(c.Args) > 0 && c.Args[0] == "upgrade" {
@@ -896,18 +896,18 @@ func TestInstall_LegacyOnlyMachineBrewInstallsRunKit(t *testing.T) {
 func TestInstall_LegacyAliasResolvesWithNotice(t *testing.T) {
 	// `shll install rk` resolves the alias to run-kit, prints the rename notice, and
 	// bootstraps the new formula like any missing tool.
-	f := installRunKitMissingFake()
+	f := installHexokitMissingFake()
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
 	if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, false, []string{"rk"}); err != nil {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
-	if !strings.Contains(stdout.String(), "note: rk is now run-kit") {
-		t.Fatalf("out missing the `rk is now run-kit` alias notice:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "note: rk is now hexokit") {
+		t.Fatalf("out missing the `rk is now hexokit` alias notice:\n%s", stdout.String())
 	}
-	if !invocationsContain(f.calls, brewBinary, "install", formulaPrefix+"run-kit") {
-		t.Fatal("`shll install rk` must brew-install the canonical run-kit formula")
+	if !invocationsContain(f.calls, brewBinary, "install", formulaPrefix+"hexokit") {
+		t.Fatal("`shll install rk` must brew-install the canonical hexokit formula")
 	}
 	assertNoLegacyFormulaReference(t, f.recordedCalls())
 }
@@ -1006,14 +1006,14 @@ func TestInstall_RkDesktopTargetedInstallDelegates(t *testing.T) {
 	}
 }
 
-func TestInstall_RkDesktopRunKitFailedCascadeSkips(t *testing.T) {
+func TestInstall_RkDesktopHexokitFailedCascadeSkips(t *testing.T) {
 	// Whole-roster run where run-kit's install FAILS: rk-desktop (processed after
 	// run-kit) is skipped with a note — the prerequisite is absent, so no
 	// `rk desktop install` is attempted. run-kit's failure still drives exit 1.
 	// The probe is STATEFUL: once the run attempts the run-kit install (which
 	// fails), `rk` stays off PATH, so the delegated re-probe reports the
 	// prerequisite missing.
-	rkInstalled := true // pre-run: run-kit present (hypothetically), rk-desktop absent
+	rkInstalled := true // pre-run: hexokit present (hypothetically), rk-desktop absent
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
 		switch {
 		case req.Name == brewBinary && len(req.Args) > 0 && req.Args[0] == "list":
@@ -1023,8 +1023,8 @@ func TestInstall_RkDesktopRunKitFailedCascadeSkips(t *testing.T) {
 				return proc.Result{Err: proc.ErrNotFound} // rk binary absent → prerequisite unavailable
 			}
 			return rkDesktopStatusResult(false)
-		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "install" && req.Args[1] == formulaPrefix+"run-kit":
-			rkInstalled = false // the failed install leaves the machine without run-kit
+		case req.Name == brewBinary && len(req.Args) >= 2 && req.Args[0] == "install" && req.Args[1] == formulaPrefix+"hexokit":
+			rkInstalled = false // the failed install leaves the machine without hexokit
 			return proc.Result{ExitCode: 1}
 		}
 		return proc.Result{}
@@ -1034,10 +1034,10 @@ func TestInstall_RkDesktopRunKitFailedCascadeSkips(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true, nil)
 	if !errors.Is(err, errSilent) {
-		t.Fatalf("runInstall err = %v, want errSilent (run-kit failed)", err)
+		t.Fatalf("runInstall err = %v, want errSilent (hexokit failed)", err)
 	}
 	if invocationsContain(f.recordedCalls(), rkBinary, "desktop", "install") {
-		t.Fatal("`rk desktop install` must NOT run when run-kit's install failed this run")
+		t.Fatal("`rk desktop install` must NOT run when hexokit's install failed this run")
 	}
 	if !strings.Contains(stdout.String(), "rk-desktop") {
 		t.Fatalf("stdout = %q, want the rk-desktop cascade skip note", stdout.String())
@@ -1084,21 +1084,21 @@ func TestInstall_RkDesktopDryRunPreviewsDelegatedArgv(t *testing.T) {
 
 // --- post-install auto-run steps + "Next steps" block (93r2, agst, gjhx) --------
 
-// allInstalledRunKitState builds a fake where every roster formula is already
+// allInstalledHexokitState builds a fake where every roster formula is already
 // installed (brew list succeeds) so runInstall hits the all-already-installed
 // short-circuit — isolating the post-install steps from install-loop framing.
-// runKitOnPath drives the run-kit presence probe (`run-kit --version` and its `rk`
+// hexokitOnPath drives the run-kit presence probe (`run-kit --version` and its `rk`
 // legacy fallback). Note the agent-setup auto-run's DELEGATION call
-// (`run-kit agent setup --yes`) does not match the --version probe shape, so it
-// falls through to the default success regardless of runKitOnPath — tests that need
+// (`hexokit agent setup --yes`) does not match the --version probe shape, so it
+// falls through to the default success regardless of hexokitOnPath — tests that need
 // the delegation itself to fail or be absent build a dedicated fake.
-func allInstalledRunKitState(runKitOnPath bool) *fakeRunner {
+func allInstalledHexokitState(hexokitOnPath bool) *fakeRunner {
 	return &fakeRunner{respond: func(req proc.Request) proc.Result {
 		// run-kit / rk PATH probe (toolInstalled → probeToolVersion, incl. the
 		// ErrNotFound-only legacy fallback).
-		if (req.Name == "run-kit" || req.Name == "rk") && len(req.Args) == 1 && req.Args[0] == "--version" {
-			if runKitOnPath {
-				return proc.Result{Stdout: []byte("run-kit 3.0.0\n")}
+		if (req.Name == "hexokit" || req.Name == "rk") && len(req.Args) == 1 && req.Args[0] == "--version" {
+			if hexokitOnPath {
+				return proc.Result{Stdout: []byte("hexokit 3.0.0\n")}
 			}
 			return proc.Result{Err: proc.ErrNotFound}
 		}
@@ -1118,7 +1118,7 @@ func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
 	// Both opt-outs restore the nudge-era block: with --no-shell-setup and
 	// --no-agent-setup on an unwired machine, BOTH nudge lines appear after the
 	// nothing-to-do note — and neither step writes anything (change gjhx).
-	f := allInstalledRunKitState(false /* run-kit absent — irrelevant to the nudges */)
+	f := allInstalledHexokitState(false /* hexokit absent — irrelevant to the nudges */)
 	installFakeRunner(t, f)
 
 	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
@@ -1137,8 +1137,8 @@ func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
 		t.Fatalf("expected the agent-setup nudge, got %q", out)
 	}
 	// The former run-kit agent-setup wording is gone.
-	if strings.Contains(out, "run-kit agent-setup") {
-		t.Fatalf("the nudge must point at 'shll setup agent', not 'run-kit agent-setup', got %q", out)
+	if strings.Contains(out, "hexokit agent-setup") {
+		t.Fatalf("the nudge must point at 'shll setup agent', not 'hexokit agent-setup', got %q", out)
 	}
 	// No writes: the rc file is untouched, no skill files exist under $HOME, and
 	// no run-kit delegation ran.
@@ -1152,8 +1152,8 @@ func TestInstall_ShellSetupNudgeShownWhenUnwired(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".agents")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("--no-agent-setup must write no skill files under $HOME")
 	}
-	if invocationsContain(f.recordedCalls(), runKitToolName, "agent", "setup", "--yes") {
-		t.Fatalf("--no-agent-setup must not invoke the run-kit delegation")
+	if invocationsContain(f.recordedCalls(), hexokitToolName, "agent", "setup", "--yes") {
+		t.Fatalf("--no-agent-setup must not invoke the hexokit delegation")
 	}
 }
 
@@ -1161,7 +1161,7 @@ func TestInstall_ShellSetupNudgeHiddenWhenWired(t *testing.T) {
 	// Wired rc + both steps opted out → the shell-setup line is suppressed (its
 	// gate is closed), so the "Next steps" block prints with the agent-setup
 	// opt-out fallback line only (change gjhx).
-	f := allInstalledRunKitState(false /* run-kit absent — irrelevant to the nudges */)
+	f := allInstalledHexokitState(false /* hexokit absent — irrelevant to the nudges */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -1183,13 +1183,13 @@ func TestInstall_AgentSetupNudgeOnOptOut(t *testing.T) {
 	// prints whether or not run-kit is on PATH (the nudge points at `shll
 	// agent-setup`, and shll is by definition present). Wired rc isolates it from
 	// the shell-setup line.
-	for _, runKitPresent := range []bool{true, false} {
-		name := "run-kit absent"
-		if runKitPresent {
-			name = "run-kit present"
+	for _, hexokitPresent := range []bool{true, false} {
+		name := "hexokit absent"
+		if hexokitPresent {
+			name = "hexokit present"
 		}
 		t.Run(name, func(t *testing.T) {
-			f := allInstalledRunKitState(runKitPresent)
+			f := allInstalledHexokitState(hexokitPresent)
 			installFakeRunner(t, f)
 			var stdout, stderr bytes.Buffer
 			if err := runInstall(context.Background(), installWiredEnv(t), &stdout, &stderr, false, false, false, true /*noAgentSetup*/, nil); err != nil {
@@ -1212,8 +1212,8 @@ func TestInstall_NoNudgesOnDryRun(t *testing.T) {
 	// hop+wt installed so the dry-run reaches the preview table (not the
 	// short-circuit).
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if (req.Name == "run-kit" || req.Name == "rk") && len(req.Args) == 1 && req.Args[0] == "--version" {
-			return proc.Result{Stdout: []byte("run-kit 3.0.0\n")} // present
+		if (req.Name == "hexokit" || req.Name == "rk") && len(req.Args) == 1 && req.Args[0] == "--version" {
+			return proc.Result{Stdout: []byte("hexokit 3.0.0\n")} // present
 		}
 		if req.Name == brewBinary && len(req.Args) >= 4 && req.Args[0] == "list" {
 			formula := req.Args[3]
@@ -1260,8 +1260,8 @@ func assertDryRunNoSetupWrites(t *testing.T, f *fakeRunner, dir string) {
 		t.Fatalf("dry-run must write no skill files under $HOME")
 	}
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName {
-			t.Fatalf("dry-run must not invoke run-kit, got %+v", c)
+		if c.Name == hexokitToolName {
+			t.Fatalf("dry-run must not invoke hexokit, got %+v", c)
 		}
 	}
 }
@@ -1271,7 +1271,7 @@ func TestInstall_DryRunEmptyCaseNoNudge(t *testing.T) {
 	// --dry-run it must still print NO nudge and run NEITHER auto-run step
 	// (--dry-run is write-free by contract), even with an unwired rc and run-kit
 	// present.
-	f := allInstalledRunKitState(true /* run-kit present */)
+	f := allInstalledHexokitState(true /* hexokit present */)
 	installFakeRunner(t, f)
 
 	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
@@ -1291,7 +1291,7 @@ func TestInstall_ShortCircuitPathNudgesWhenUnwired(t *testing.T) {
 	// both nudge lines (change gjhx — the nudge-era "re-runner still gets nudged"
 	// decision becomes "opted-out re-runner still gets nudged"; by default the
 	// short-circuit path WIRES them instead — see TestInstall_AutoShellSetupWiresRcFile).
-	f := allInstalledRunKitState(true /* run-kit present */)
+	f := allInstalledHexokitState(true /* hexokit present */)
 	installFakeRunner(t, f)
 
 	var stdout, stderr bytes.Buffer
@@ -1322,7 +1322,7 @@ func TestInstall_AutoShellSetupWiresRcFile(t *testing.T) {
 	// rc → the auto shell-setup appends the sentinel block (shell-setup's own
 	// output announces the wire) and the Next steps block carries the exec $SHELL
 	// reminder instead of the nudge. --no-agent-setup isolates the shell step.
-	f := allInstalledRunKitState(false)
+	f := allInstalledHexokitState(false)
 	installFakeRunner(t, f)
 
 	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
@@ -1353,7 +1353,7 @@ func TestInstall_AutoShellSetupIdempotentRewire(t *testing.T) {
 	// The auto-run inherits shell-setup's idempotency: running install twice wires
 	// the first time and silent-skips the second (the gate re-reads the now-wired
 	// rc) — the file is byte-identical and no reminder prints on the second run.
-	f := allInstalledRunKitState(false)
+	f := allInstalledHexokitState(false)
 	installFakeRunner(t, f)
 
 	env, dir := installEnvDir(t, "/bin/zsh", "export FOO=bar\n")
@@ -1397,7 +1397,7 @@ func TestInstall_AutoShellSetupQuietSkips(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			f := allInstalledRunKitState(false)
+			f := allInstalledHexokitState(false)
 			installFakeRunner(t, f)
 
 			env, dir := installEnvDir(t, tc.shell, tc.rcContent)
@@ -1428,7 +1428,7 @@ func TestInstall_AutoShellSetupFailureDegrades(t *testing.T) {
 	// (shellResolved && !wired — resolveWiringFact reads a missing rc as unwired),
 	// the auto-run fails with the actionable exit-2 message, the warning fires, the
 	// gated nudge is the fallback, and the install exit code is unchanged.
-	f := allInstalledRunKitState(false)
+	f := allInstalledHexokitState(false)
 	installFakeRunner(t, f)
 
 	dir := t.TempDir() // no .zshrc inside — the meaningful-signal case
@@ -1454,9 +1454,9 @@ func TestInstall_AutoShellSetupFailureDegrades(t *testing.T) {
 func TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes(t *testing.T) {
 	// Wired rc (the shell step silent-skips) + default flags → the agent step
 	// places both skill files with the canonical bytes and delegates
-	// `run-kit agent setup --yes` foregrounded; the fully-wired happy path prints
+	// `hexokit agent setup --yes` foregrounded; the fully-wired happy path prints
 	// NO Next steps block at all (empty-block suppression).
-	f := allInstalledRunKitState(true /* run-kit present */)
+	f := allInstalledHexokitState(true /* hexokit present */)
 	installFakeRunner(t, f)
 	forceClaudeGate(t, true)
 
@@ -1479,13 +1479,13 @@ func TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes(t *testing.T) {
 	// confirmation cannot hang an unattended install).
 	found := false
 	for _, c := range f.recordedCalls() {
-		if c.Name == runKitToolName && c.Transport == proc.TransportForeground &&
+		if c.Name == hexokitToolName && c.Transport == proc.TransportForeground &&
 			len(c.Args) == 3 && c.Args[0] == "agent" && c.Args[1] == "setup" && c.Args[2] == "--yes" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected a foreground `run-kit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
+		t.Fatalf("expected a foreground `hexokit agent setup --yes` delegation, calls: %+v", f.recordedCalls())
 	}
 	out := stdout.String()
 	if strings.Contains(out, "shll setup agent") {
@@ -1496,12 +1496,12 @@ func TestInstall_AutoAgentSetupPlacesSkillsAndDelegatesYes(t *testing.T) {
 	}
 }
 
-func TestInstall_AutoAgentSetupRunKitAbsentSilentSkip(t *testing.T) {
+func TestInstall_AutoAgentSetupHexokitAbsentSilentSkip(t *testing.T) {
 	// run-kit absent → the delegation skips silently (inherited Constitution V
 	// behavior); the placement still happens and the step counts as success — no
 	// nudge, no stderr.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == runKitToolName || req.Name == "rk" {
+		if req.Name == hexokitToolName || req.Name == "rk" {
 			return proc.Result{Err: proc.ErrNotFound}
 		}
 		return proc.Result{}
@@ -1514,13 +1514,13 @@ func TestInstall_AutoAgentSetupRunKitAbsentSilentSkip(t *testing.T) {
 		t.Fatalf("runInstall err = %v, want nil", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".agents", "skills", skillDirName, skillFileName)); err != nil {
-		t.Fatalf("skill files must still be placed when run-kit is absent: %v", err)
+		t.Fatalf("skill files must still be placed when hexokit is absent: %v", err)
 	}
 	if stderr.Len() != 0 {
-		t.Fatalf("run-kit-absent delegation must be silent, stderr = %q", stderr.String())
+		t.Fatalf("hexokit-absent delegation must be silent, stderr = %q", stderr.String())
 	}
 	if strings.Contains(stdout.String(), "shll setup agent") {
-		t.Fatalf("run-kit-absent delegation must not fall back to the nudge, got %q", stdout.String())
+		t.Fatalf("hexokit-absent delegation must not fall back to the nudge, got %q", stdout.String())
 	}
 }
 
@@ -1531,7 +1531,7 @@ func TestInstall_AutoAgentSetupDelegationFailureContinues(t *testing.T) {
 	// would hit the same delegation failure, so a nudge would dead-end), and the
 	// install is unaffected.
 	f := &fakeRunner{respond: func(req proc.Request) proc.Result {
-		if req.Name == runKitToolName && len(req.Args) >= 2 && req.Args[0] == "agent" && req.Args[1] == "setup" {
+		if req.Name == hexokitToolName && len(req.Args) >= 2 && req.Args[0] == "agent" && req.Args[1] == "setup" {
 			return proc.Result{ExitCode: 1}
 		}
 		return proc.Result{}
@@ -1555,7 +1555,7 @@ func TestInstall_AutoAgentSetupFailureDegrades(t *testing.T) {
 	// Unwritable skill target: the placement fails (agent-setup's own per-path
 	// diagnostic reaches stderr), the install warns and falls back to the
 	// agent-setup nudge, and the exit code is unchanged.
-	f := allInstalledRunKitState(true /* run-kit present */)
+	f := allInstalledHexokitState(true /* hexokit present */)
 	installFakeRunner(t, f)
 
 	env, dir := installWiredEnvDir(t)

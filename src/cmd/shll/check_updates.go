@@ -28,7 +28,7 @@ const (
 
 // checkUpdatesJSONFlagUsage is the --json usage string for `shll check-updates`
 // (the flag NAME is the shared jsonFlag constant from list.go).
-const checkUpdatesJSONFlagUsage = "emit the machine contract as JSON (for scripting; run-kit's consumer surface)"
+const checkUpdatesJSONFlagUsage = "emit the machine contract as JSON (for scripting; HexoKit's consumer surface)"
 
 // checkUpdatesSchema is the version tag of the `--json` machine contract's
 // envelope. Evolution is additive-only (consumers tolerate unknown fields), so
@@ -104,7 +104,7 @@ type checkUpdatesReport struct {
 // checkTarget is one tool the sweep covers: shll itself first (anchored on its
 // brew formula, mirroring `shll changelog`'s bare-sweep precedent), then every
 // Roster tool in roster order. formulaLeaf is the tap-relative formula
-// name (`run-kit`, `shll`) emitted as the JSON `formula` field, matching the
+// name (`hexokit`, `shll`) emitted as the JSON `formula` field, matching the
 // manifest's own formula values. A DELEGATED (non-brew) roster tool carries
 // its Probe instead: brewFormula stays empty and its installed anchor comes
 // from the probe spec (`rk desktop status`), never a brew read.
@@ -146,7 +146,7 @@ One backend, selected by --source:
                       no notify policy in this backend)
 
   shll check-updates                          human table: installed → latest per tool
-  shll check-updates --json                   machine contract (what run-kit's daemon runs)
+  shll check-updates --json                   machine contract (what HexoKit's daemon runs)
   shll check-updates --source github          compare against GitHub release tags
 
 Installed versions are read from Homebrew, so brew must be present. Exit codes:
@@ -286,7 +286,7 @@ func resolveOneTarget(ctx context.Context, tgt checkTarget, source string, manif
 
 	switch source {
 	case sourceReleased:
-		mt, ok := manifest.Tools[tgt.name]
+		mt, ok := manifestEntry(manifest, tgt)
 		row.inManifest = ok
 		if ok {
 			row.latest = changelog.NormalizeVer(mt.Latest)
@@ -301,6 +301,21 @@ func resolveOneTarget(ctx context.Context, tgt checkTarget, source string, manif
 		row.latest = changelog.NormalizeVer(latest)
 	}
 	return row
+}
+
+// manifestEntry looks a target's row up in the versions manifest by its roster
+// name first, then by each of the tool's LegacyNames in order. The manifest is
+// published by the site on its own schedule, so across a rename it may still key
+// the tool under a prior name (hexokit's row was `run-kit`); the current name wins
+// when both are present. shll-self carries no LegacyNames (zero Tool), so its
+// lookup is by name only.
+func manifestEntry(m versions.Manifest, tgt checkTarget) (versions.ManifestTool, bool) {
+	for _, key := range append([]string{tgt.name}, tgt.tool.LegacyNames...) {
+		if mt, ok := m.Tools[key]; ok {
+			return mt, true
+		}
+	}
+	return versions.ManifestTool{}, false
 }
 
 // rowResolved reports whether both sides of a row resolved — the JSON

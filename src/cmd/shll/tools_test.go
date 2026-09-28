@@ -15,7 +15,7 @@ import (
 // contract — a comment cannot fail CI, so this test guards against an
 // accidental reorder.
 func TestRosterOrder(t *testing.T) {
-	want := []string{"run-kit", "rk-desktop", "fab-kit", "wt", "idea", "tu", "hop"}
+	want := []string{"hexokit", "rk-desktop", "fab-kit", "wt", "idea", "tu", "hop"}
 	if len(Roster) != len(want) {
 		t.Fatalf("len(Roster) = %d, want %d", len(Roster), len(want))
 	}
@@ -77,7 +77,7 @@ func TestRkDesktopEntry(t *testing.T) {
 		t.Errorf("rk-desktop Probe = %+v, want LinePrefix %q / AbsentValue %q", tool.Probe, "Installed:", "not installed")
 	}
 	if tool.Repo != "run-kit" {
-		t.Errorf("rk-desktop Repo = %q, want %q (it ships with run-kit)", tool.Repo, "run-kit")
+		t.Errorf("rk-desktop Repo = %q, want %q (it ships in the run-kit repo)", tool.Repo, "run-kit")
 	}
 	if len(tool.ShellInit) != 0 {
 		t.Errorf("rk-desktop must not carry ShellInit (no shell integration)")
@@ -244,8 +244,8 @@ func TestResolveTargets_LegacyAliasResolvesToCanonical(t *testing.T) {
 			t.Fatalf("resolveTargets([rk], allowShll=%v) err = %v, want nil", allowShll, err)
 		}
 		got := toolNames(selected)
-		if len(got) != 1 || got[0] != "run-kit" {
-			t.Fatalf("resolveTargets([rk]) selected = %v, want [run-kit]", got)
+		if len(got) != 1 || got[0] != "hexokit" {
+			t.Fatalf("resolveTargets([rk]) selected = %v, want [hexokit]", got)
 		}
 		if len(aliased) != 1 || aliased[0] != "rk" {
 			t.Fatalf("resolveTargets([rk]) aliased = %v, want [rk]", aliased)
@@ -262,8 +262,8 @@ func TestResolveTargets_RepeatedAliasRecordedOnce(t *testing.T) {
 		t.Fatalf("resolveTargets([rk rk]) err = %v, want nil", err)
 	}
 	got := toolNames(selected)
-	if len(got) != 1 || got[0] != "run-kit" {
-		t.Fatalf("resolveTargets([rk rk]) selected = %v, want [run-kit]", got)
+	if len(got) != 1 || got[0] != "hexokit" {
+		t.Fatalf("resolveTargets([rk rk]) selected = %v, want [hexokit]", got)
 	}
 	if len(aliased) != 1 || aliased[0] != "rk" {
 		t.Fatalf("resolveTargets([rk rk]) aliased = %v, want [rk] (recorded once)", aliased)
@@ -277,8 +277,8 @@ func TestResolveTargets_ValidTargetsListsCanonicalOnly(t *testing.T) {
 	if err == nil {
 		t.Fatal("resolveTargets with unknown arg should error")
 	}
-	if !strings.Contains(err.Error(), "run-kit") {
-		t.Errorf("err = %v, want valid-targets to include canonical run-kit", err)
+	if !strings.Contains(err.Error(), "hexokit") {
+		t.Errorf("err = %v, want valid-targets to include canonical hexokit", err)
 	}
 	// The bare legacy token `rk` must NOT appear as a valid target (it appears only
 	// inside `run-kit`). Guard against a bare `, rk,` / `: rk,` listing.
@@ -290,7 +290,7 @@ func TestResolveTargets_ValidTargetsListsCanonicalOnly(t *testing.T) {
 func TestPrintAliasNotices(t *testing.T) {
 	var buf bytes.Buffer
 	printAliasNotices(&buf, []string{"rk"})
-	if got, want := buf.String(), "note: rk is now run-kit\n"; got != want {
+	if got, want := buf.String(), "note: rk is now hexokit\n"; got != want {
 		t.Errorf("printAliasNotices = %q, want %q", got, want)
 	}
 	// Empty slice prints nothing.
@@ -304,7 +304,64 @@ func TestPrintAliasNotices(t *testing.T) {
 	// legacyAliases is skipped (never a malformed `note: X is now ` line).
 	buf.Reset()
 	printAliasNotices(&buf, []string{"rk", "rk", "bogus"})
-	if got, want := buf.String(), "note: rk is now run-kit\n"; got != want {
+	if got, want := buf.String(), "note: rk is now hexokit\n"; got != want {
 		t.Errorf("printAliasNotices([rk rk bogus]) = %q, want %q", got, want)
+	}
+}
+
+// --- hexokit rename (run-kit → hexokit, change guq7) ---
+
+func TestRosterHexokitEntry(t *testing.T) {
+	tool, ok := rosterTool("hexokit")
+	if !ok {
+		t.Fatal("hexokit must be in the roster")
+	}
+	if tool.Formula != formulaPrefix+"hexokit" {
+		t.Errorf("hexokit Formula = %q, want %q", tool.Formula, formulaPrefix+"hexokit")
+	}
+	if got := strings.Join(tool.Update, " "); got != "hexokit update" {
+		t.Errorf("hexokit Update = %q, want %q", got, "hexokit update")
+	}
+	// The GitHub repo is renamed separately — Name and Repo diverge until then.
+	if tool.Repo != "run-kit" {
+		t.Errorf("hexokit Repo = %q, want %q", tool.Repo, "run-kit")
+	}
+	if got := strings.Join(tool.LegacyNames, ","); got != "rk,run-kit" {
+		t.Errorf("hexokit LegacyNames = %q, want %q", got, "rk,run-kit")
+	}
+	if rosterHas("run-kit") {
+		t.Error("run-kit must no longer be a canonical roster name (it is a legacy alias)")
+	}
+}
+
+func TestResolveTargets_RunKitAliasResolvesToHexokit(t *testing.T) {
+	// The prior canonical name `run-kit` is now a legacy alias of hexokit, on both
+	// update and install, and is recorded for the rename notice.
+	for _, allowShll := range []bool{true, false} {
+		selected, _, aliased, err := resolveTargets([]string{"run-kit"}, allowShll)
+		if err != nil {
+			t.Fatalf("resolveTargets([run-kit], allowShll=%v) err = %v, want nil", allowShll, err)
+		}
+		if got := toolNames(selected); len(got) != 1 || got[0] != "hexokit" {
+			t.Fatalf("resolveTargets([run-kit]) selected = %v, want [hexokit]", got)
+		}
+		if len(aliased) != 1 || aliased[0] != "run-kit" {
+			t.Fatalf("resolveTargets([run-kit]) aliased = %v, want [run-kit]", aliased)
+		}
+	}
+	// Both aliases together still select hexokit once and print one notice each.
+	selected, _, aliased, err := resolveTargets([]string{"run-kit", "rk"}, true)
+	if err != nil {
+		t.Fatalf("resolveTargets([run-kit rk]) err = %v", err)
+	}
+	if got := toolNames(selected); len(got) != 1 || got[0] != "hexokit" {
+		t.Fatalf("resolveTargets([run-kit rk]) selected = %v, want [hexokit]", got)
+	}
+	var buf bytes.Buffer
+	printAliasNotices(&buf, aliased)
+	if got, want := buf.String(), "note: run-kit is now hexokit\n"; got != want {
+		// Set semantics: rk maps to the already-wanted hexokit, so only the first
+		// alias seen is recorded.
+		t.Errorf("notices = %q, want %q", got, want)
 	}
 }

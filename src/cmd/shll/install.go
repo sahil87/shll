@@ -19,10 +19,10 @@ func newInstallCmd() *cobra.Command {
 		Short: "brew install every shll tool that isn't already installed",
 		Long: `Install every roster tool that isn't already installed.
 
-shll install iterates the roster (` + "`run-kit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`" + `).
+shll install iterates the roster (` + "`hexokit`, `rk-desktop`, `fab-kit`, `wt`, `idea`, `tu`, `hop`" + `).
 Brew-managed tools install via ` + "`brew install sahil87/tap/<formula>`" + `;
 rk-desktop is not a brew formula — it delegates to ` + "`rk desktop install`" + `
-(managed by run-kit, so it is actionable only when ` + "`rk`" + ` is installed
+(managed by hexokit, so it is actionable only when ` + "`rk`" + ` is installed
 and the platform supports it; otherwise it is skipped with a note, never a
 failure — on a targeted ` + "`shll install rk-desktop`" + ` the refusal is
 printed explicitly). Tools that are already installed are skipped silently —
@@ -32,8 +32,8 @@ stalled download inside brew), shll prints a still-waiting line to stderr and
 keeps waiting, backing off between repeats; it never imposes a deadline on brew.
 
 With no arguments, shll install processes the whole roster as above. Pass one or
-more tool names to install only that subset (valid targets: run-kit, rk-desktop,
-fab-kit, wt, idea, tu, hop; the legacy alias ` + "`rk`" + ` still resolves to run-kit) — e.g.
+more tool names to install only that subset (valid targets: hexokit, rk-desktop,
+fab-kit, wt, idea, tu, hop; the legacy aliases ` + "`rk`" + ` and ` + "`run-kit`" + ` resolve to hexokit) — e.g.
 ` + "`shll install hop wt`" + `. The subset is processed in roster order
 regardless of the order given; an unknown name is a hard error. Unlike
 ` + "`shll update`" + `, ` + "`shll`" + ` itself is NOT a valid install target — you cannot
@@ -52,7 +52,7 @@ After the install outcome, shll install also wires the machine automatically. It
 runs the equivalent of ` + "`shll setup shell`" + ` (adds the
 ` + "`eval \"$(shll shell-init <shell>)\"`" + ` line to your rc file — sentinel-managed and
 idempotent, so re-runs are no-ops), then ` + "`shll setup agent --yes`" + ` (places the
-shll-toolkit skill for agent harnesses and delegates run-kit's dashboard hooks,
+shll-toolkit skill for agent harnesses and delegates hexokit's dashboard hooks,
 forwarding --yes so nothing can prompt on an unattended run). Both steps are
 best-effort: a failure warns and prints the step's manual nudge instead, and
 never changes the install's exit code. Opt out with ` + "`--no-shell-setup`" + ` (e.g.
@@ -163,7 +163,7 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 		return errSilent
 	}
 
-	// Legacy-alias notice (e.g. `shll install rk` → run-kit), before any roster
+	// Legacy-alias notice (e.g. `shll install run-kit` → hexokit), before any roster
 	// framing. Shared wording with `shll update` via printAliasNotices.
 	printAliasNotices(stdout, aliased)
 
@@ -284,7 +284,7 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 
 	// pos is the running 1-based header position across BOTH install phases
 	// (brew-managed first, then delegated — the delegated tools sit behind their
-	// runtime prerequisite in roster order, and run-kit's brew install just ran).
+	// runtime prerequisite in roster order, and hexokit's brew install just ran).
 	pos := 0
 	installHeader := func(name string) {
 		pos++
@@ -339,9 +339,9 @@ func runInstall(ctx context.Context, env func(string) string, stdout, stderr io.
 	}
 
 	// Delegated (non-brew) phase: after every brew install, so a delegated tool's
-	// runtime prerequisite (run-kit for rk-desktop) is freshly installed when the
+	// runtime prerequisite (hexokit for rk-desktop) is freshly installed when the
 	// delegation runs. Per tool, RE-PROBE first: on a whole-roster run a failed
-	// prerequisite install (e.g. run-kit failed above) cascades to a skip-with-note
+	// prerequisite install (e.g. hexokit failed above) cascades to a skip-with-note
 	// rather than a doomed delegation attempt; the same re-probe also catches a
 	// platform that refuses only at install time. A refusal/unsuccessful probe is
 	// never a failure; the delegation's own non-zero exit IS. Skip notes print
@@ -478,8 +478,8 @@ const delegatedSkipRefusalFmt = "note: %s skipped — %s"
 // delegatedSkipPrereqFmt is the skip-with-note line printed when a delegated
 // tool's prerequisite cannot answer the probe (e.g. `rk` not installed, or the
 // probe failing for another reason). Takes (tool name, cause). On a
-// whole-roster run after a failed run-kit install this reads as the cascade
-// skip: rk-desktop is skipped because run-kit is unavailable.
+// whole-roster run after a failed hexokit install this reads as the cascade
+// skip: rk-desktop is skipped because hexokit is unavailable.
 const delegatedSkipPrereqFmt = "note: %s skipped — prerequisite unavailable (%s)"
 
 // allInstalledMsg is the nothing-to-do message for `shll install` (every roster tool
@@ -516,7 +516,7 @@ const shllSelfInstallNote = "shll — already present / self-managed"
 const (
 	nextStepsHeader      = "Next steps:"
 	shellSetupNudgeFmt   = "  %s shll setup shell    # wire shell integration into your rc file, then: exec $SHELL"
-	agentSetupNudgeFmt   = "  %s shll setup agent    # optional, once per machine — wire agent harnesses (toolkit context + run-kit dashboard hooks)"
+	agentSetupNudgeFmt   = "  %s shll setup agent    # optional, once per machine — wire agent harnesses (toolkit context + HexoKit dashboard hooks)"
 	execShellReminderFmt = "  %s exec $SHELL         # load the just-wired shll integration into your current shell (or open a new terminal)"
 )
 
@@ -554,10 +554,10 @@ const (
 //
 // Step 2 — agent wiring. Runs the equivalent of `shll setup agent --yes` in-process
 // via runAgentSetup (placing the shll-toolkit skill files, then delegating
-// `run-kit agent setup --yes` — forwarding --yes so the delegation cannot hang on
-// run-kit's hook-wiring prompt in an unattended install). The per-path
-// wrote/unchanged/updated summary plus run-kit's own output are the announcement.
-// A run-kit delegation failure stays non-fatal and does NOT trigger the nudge
+// `hexokit agent setup --yes` — forwarding --yes so the delegation cannot hang on
+// hexokit's hook-wiring prompt in an unattended install). The per-path
+// wrote/unchanged/updated summary plus hexokit's own output are the announcement.
+// A hexokit delegation failure stays non-fatal and does NOT trigger the nudge
 // (inherited standalone semantics — re-running would hit the same failure, so the
 // nudge would dead-end); only a placement failure (runAgentSetup's return) warns
 // and falls back to the agent-setup nudge. --no-agent-setup → skip and nudge.

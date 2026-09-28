@@ -70,27 +70,29 @@ type Tool struct {
 	// skill description: capabilities the AGENT should reach for UNPROMPTED
 	// (without the user naming a tool), and request-routing instructions whose
 	// trigger words would otherwise live only in a tool's own topic index (e.g.
-	// run-kit's tutorial/onboarding routing). Empty for every tool except
-	// run-kit (the sprawl guard: only vocabulary that cannot ride a SkillHint
+	// hexokit's tutorial/onboarding routing). Empty for every tool except
+	// hexokit (the sprawl guard: only vocabulary that cannot ride a SkillHint
 	// clause earns description space; reactive tools stay behind the two-step
 	// router because the user's words name them). Kept on the Roster
 	// (Constitution III) so the description cannot drift from the managed set.
 	// Optional-by-design — unlike SkillHint it is NOT required for every entry.
 	ProactiveHint string
 	// Repo is the github.com/sahil87/<Repo> slug for the tool's source
-	// repository. It defaults to Name for most tools. Historically it was NOT
-	// always equal to Name (rk's repo was `run-kit`); after the rk→run-kit rename
-	// Name and Repo match for run-kit, so today every roster entry's Repo equals
-	// its Name. The field stays explicit so `shll list` never emits a dead link
-	// if a future tool's binary name and repo slug diverge again.
+	// repository. It defaults to Name for most tools, but is NOT always equal to
+	// Name: hexokit's repo is still `run-kit` (the GitHub repo rename lands
+	// separately from the formula/binary rename), and rk-desktop lives in that same
+	// repo. The field stays explicit so `shll list` never emits a dead link when a
+	// tool's binary name and repo slug diverge.
 	Repo string
-	// LegacyName is the tool's PRIOR binary name, retained as a binary-alias/
-	// display surface: the run-kit formula still installs `rk` as an
-	// interchangeable command alias, and when `<Name> --version` returns
-	// proc.ErrNotFound, probeToolVersion retries `<LegacyName> --version` so an
-	// install whose binary is on PATH under the old name is shown as installed by
-	// list/version/doctor. Empty for every tool except run-kit ("rk").
-	LegacyName string
+	// LegacyNames are the tool's PRIOR binary names, oldest alias first, retained
+	// as binary-alias/display surfaces: the hexokit formula still installs `rk` as
+	// an interchangeable command alias, and Homebrew keeps a `run-kit` link after
+	// migrating the renamed formula. When `<Name> --version` returns
+	// proc.ErrNotFound, probeToolVersion retries each legacy name in order so an
+	// install whose binary is on PATH only under an old name is shown as installed
+	// by list/version/doctor; check-updates also looks a tool's manifest row up
+	// under these names. Empty for every tool except hexokit ({"rk", "run-kit"}).
+	LegacyNames []string
 	// Install is the argv of the tool's delegated install invocation (e.g.
 	// {"rk", "desktop", "install"}). Empty for brew-managed tools, whose install
 	// path is `brew install <Formula>`. A non-empty Install marks the NON-BREW
@@ -136,9 +138,9 @@ type ToolProbe struct {
 // and detection goes through Probe, with no formula for any brew helper.
 func (t Tool) brewManaged() bool { return t.Formula != "" }
 
-// rkBinary is the run-kit CLI binary name — the argv[0] every rk-desktop
+// rkBinary is the HexoKit short CLI binary name — the argv[0] every rk-desktop
 // delegation (`rk desktop install/update/status`) runs through. Named per
-// code-quality.md (no magic strings); distinct from runKitToolName
+// code-quality.md (no magic strings); distinct from hexokitToolName
 // (agent_setup.go), which is the ROSTER display name used for name matching.
 const rkBinary = "rk"
 
@@ -168,17 +170,17 @@ const githubOrgBase = "https://github.com/sahil87/"
 // open-code the string.
 const shellPlaceholder = "<shell>"
 
-// legacyAliases maps a retired tool token to its current canonical Roster name.
+// legacyAliases maps a prior tool token to its current canonical Roster name.
 // It is consulted by resolveTargets (before rosterHas) so `shll update rk` /
-// `shll install rk` keep working after the rk→run-kit rename — muscle memory and
-// existing scripts resolve to the canonical tool, and the caller prints a one-line
-// notice. Aliases NEVER appear in the valid-targets error diagnostic (that lists
-// canonical names only). Transitional for the rk→run-kit rename; retire when the
-// alias is no longer worth carrying.
-var legacyAliases = map[string]string{"rk": "run-kit"}
+// `shll install run-kit` keep working after the rk→run-kit→hexokit renames —
+// muscle memory and existing scripts resolve to the canonical tool, and the caller
+// prints a one-line notice. Aliases NEVER appear in the valid-targets error
+// diagnostic (that lists canonical names only). Retire an entry when the alias is
+// no longer worth carrying.
+var legacyAliases = map[string]string{"rk": "hexokit", "run-kit": "hexokit"}
 
 // aliasNoticeFmt is the one-line notice printed (to stdout) when the user named a
-// legacy alias token — e.g. `note: rk is now run-kit`. Takes (alias, canonical).
+// legacy alias token — e.g. `note: run-kit is now hexokit`. Takes (alias, canonical).
 // Named per code-quality.md (no magic strings).
 const aliasNoticeFmt = "note: %s is now %s"
 
@@ -207,7 +209,7 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 // Roster is the hardcoded HexoKit toolkit list. Order matters: it is declared
 // IMPORTANCE-DESCENDING with dependency adjacency — the tools a user reaches for
 // first lead the list, and a tool sits immediately after the runtime it depends
-// on (rk-desktop directly after run-kit, whose `rk desktop …` subcommands it
+// on (rk-desktop directly after hexokit, whose `rk desktop …` subcommands it
 // delegates to).
 //
 // Every roster-driven surface inherits this order from the single slice:
@@ -220,14 +222,14 @@ func printAliasNotices(stdout io.Writer, aliased []string) {
 // rk-desktop is the roster's first DELEGATED (non-brew) entry: it carries no
 // Formula — install/update delegate to `rk desktop install`/`rk desktop update`
 // (Constitution III/IV — wrap, don't reinvent), and its installed-probe parses
-// the `Installed:` line of `rk desktop status`. Its dependency on run-kit is
+// the `Installed:` line of `rk desktop status`. Its dependency on hexokit is
 // expressed as a runtime probe + this roster adjacency only (install-composition
 // standard, Policy A — no formula edge). The exact order is enforced by
 // TestRosterOrder — a comment cannot fail CI, so the test guards against an
 // accidental reorder.
 var Roster = []Tool{
-	{Name: "run-kit", Formula: formulaPrefix + "run-kit", Update: []string{"run-kit", "update"}, Repo: "run-kit", LegacyName: "rk", Description: "Run-kit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content in a browser window, to proxy a local http port to the user's browser, to push a notification to their devices, or to run a VS Code palette command in the user's code editor with `rk code exec` (run-kit). The user may be viewing this session remotely through run-kit's web dashboard — before opening any file or local port in a browser, read `shll skill run-kit`; the same applies before publishing an artifact or hosted page. When the user asks for a tutorial, tour, or onboarding of run-kit or its web dashboard, read `shll skill run-kit tutorial`."},
-	{Name: "rk-desktop", Update: []string{rkBinary, "desktop", "update"}, Install: []string{rkBinary, "desktop", "install"}, Probe: &ToolProbe{Argv: []string{rkBinary, "desktop", "status"}, LinePrefix: "Installed:", AbsentValue: "not installed"}, Repo: "run-kit", Description: "Run-kit desktop viewer shell — the macOS companion app, managed via `rk desktop install`/`rk desktop update`", SkillHint: "desktop viewer shell"},
+	{Name: "hexokit", Formula: formulaPrefix + "hexokit", Update: []string{"hexokit", "update"}, Repo: "run-kit", LegacyNames: []string{"rk", "run-kit"}, Description: "HexoKit — tmux session manager with a web UI; can display web pages/HTML to the user, push notifications, and run VS Code palette commands in its code editor via `rk code exec` (rk stays as an alias)", SkillHint: "tmux sessions", ProactiveHint: "Also use proactively — without the user naming a tool — to show the user visual content in a browser window, to proxy a local http port to the user's browser, to push a notification to their devices, or to run a VS Code palette command in the user's code editor with `rk code exec`. The user may be viewing this session remotely through HexoKit's web dashboard — before opening any file or local port in a browser, read `shll skill hexokit`; the same applies before publishing an artifact or hosted page. When the user asks for a tutorial, tour, or onboarding of HexoKit or its web dashboard, read `shll skill hexokit tutorial`."},
+	{Name: "rk-desktop", Update: []string{rkBinary, "desktop", "update"}, Install: []string{rkBinary, "desktop", "install"}, Probe: &ToolProbe{Argv: []string{rkBinary, "desktop", "status"}, LinePrefix: "Installed:", AbsentValue: "not installed"}, Repo: "run-kit", Description: "HexoKit desktop viewer shell — the macOS companion app, managed via `rk desktop install`/`rk desktop update`", SkillHint: "desktop viewer shell"},
 	{Name: "fab-kit", Formula: formulaPrefix + "fab-kit", Update: []string{"fab-kit", "update"}, Skill: []string{"fab", "skill"}, Repo: "fab-kit", Description: "Spec-driven workspace & workflow toolkit (the `fab` CLI)", SkillHint: "spec-driven workflows"},
 	{Name: "wt", Formula: formulaPrefix + "wt", ShellInit: []string{"wt", "shell-init", shellPlaceholder}, Update: []string{"wt", "update"}, Repo: "wt", Description: "Git worktree management — create, list, open, delete worktrees", SkillHint: "git worktrees"},
 	{Name: "idea", Formula: formulaPrefix + "idea", Update: []string{"idea", "update"}, Repo: "idea", Description: "Backlog idea management from the terminal", SkillHint: "backlog ideas"},
@@ -253,7 +255,7 @@ const shllSelfDescription = "the manager for the HexoKit toolkit"
 // the toolkit as a family (`list`, `doctor`, `install`; `version`/`update`
 // already lead with shll via their own self-handling). Each such command PREPENDS
 // this descriptor, rendering shll FIRST, then the Roster
-// (`shll, run-kit, rk-desktop, fab-kit, wt, idea, tu, hop`).
+// (`shll, hexokit, rk-desktop, fab-kit, wt, idea, tu, hop`).
 //
 // It reuses the Tool struct shape but is deliberately NOT a Roster entry: Roster
 // is the *managed sub-tool* list (Constitution III — Tool Roster Source of Truth),
@@ -291,13 +293,13 @@ func shllSelfVersion() string {
 //
 // Valid targets are the Roster names, plus shllTargetToken when allowShll is true
 // (`update` passes true; `install` passes false — shll is not installable), plus the
-// legacyAliases keys (e.g. `rk` → `run-kit`), which resolve to their canonical
+// legacyAliases keys (e.g. `run-kit` → `hexokit`), which resolve to their canonical
 // Roster tool. The args form a SET, not a sequence: selected Tools are returned in
 // Roster order regardless of the order they were supplied, and
 // selfSelected reports whether shll itself was named (the caller processes it first,
 // before the roster loop). aliased lists the legacy alias tokens the caller passed
-// (in the order encountered) so the caller can print a one-line "note: rk is now
-// run-kit" notice — resolveTargets stays IO-free and does no printing itself.
+// (in the order encountered) so the caller can print a one-line "note: run-kit is now
+// hexokit" notice — resolveTargets stays IO-free and does no printing itself.
 //
 // On ANY unknown arg, it returns a non-nil error naming ALL unknown args (a better
 // one-shot fix than reporting only the first) and listing the valid targets; the
@@ -359,7 +361,7 @@ func rosterHas(name string) bool {
 // rosterTool returns the Roster Tool with the given name and true, or the zero Tool
 // and false when name is not a roster tool. Source of truth is the live Roster
 // (Constitution III), so callers never hardcode a second Tool descriptor — e.g. the
-// `shll install` nudge resolves the run-kit Tool this way for its post-run install
+// `shll install` nudge resolves the hexokit Tool this way for its post-run install
 // probe, rather than open-coding a formula/name pair.
 func rosterTool(name string) (Tool, bool) {
 	for _, t := range Roster {

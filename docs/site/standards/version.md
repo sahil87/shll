@@ -4,7 +4,7 @@ How every binary in the [HexoKit toolkit](https://hexokit.com/toolkit/) reports 
 
 This page is the **producer-facing standard**: what your `--version` must emit. The consumer side — `shll version`'s aligned table, `shll doctor`'s health check, and the shared install probe — is shll's job and lives in its own memory. A tool author's entire obligation is keeping `--version` conformant to this page.
 
-Scope is **all seven binaries** — the six roster tools (`wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`) **and `shll` itself**. Unlike `update` and `shell-init`, shll is a producer here too: `shll version` prints its own row — read from the version string linked into the binary at build time (via `-ldflags`) and run through the exact same first-line parse this page requires of everyone else — so shll holds itself to the shape it enforces on the tools it probes.
+Scope is **all seven binaries** — the six roster tools (`wt`, `idea`, `tu`, `hexokit`, `hop`, `fab-kit`) **and `shll` itself**. Unlike `update` and `shell-init`, shll is a producer here too: `shll version` prints its own row — read from the version string linked into the binary at build time (via `-ldflags`) and run through the exact same first-line parse this page requires of everyone else — so shll holds itself to the shape it enforces on the tools it probes.
 
 This standard implements principle №4 of the [toolkit CLI principles](principles.md) (fail fast with actionable errors — an unparseable or slow `--version` makes a healthy tool read as broken or absent), and its stdout discipline serves principle №2 (stdout is data).
 
@@ -40,7 +40,7 @@ The version probe is also shll's **install-mechanism-agnostic install probe**: s
 
 - **The binary name on `PATH` MUST equal the tool name** shll knows the tool by (the same one-string identity the [update standard](update.md) requires across repo / formula / binary). A differently-named binary reads as **not installed** everywhere — `shll version`, `shll doctor`, and every install check — even when it is present and healthy.
 
-The one sanctioned exception is a **rename in flight**: when a tool declares a legacy name (the `rk` → `run-kit` precedent), shll retries the probe under the old binary name if the new one is absent from `PATH`, so a pre-rename install still reads as installed. This is transitional migration-guard machinery, not a licence for a lasting name mismatch — see the [update standard](update.md)'s `formula_renames.json` rule.
+The one sanctioned exception is a **rename in flight**: when a tool declares legacy names (the `rk` → `run-kit` → `hexokit` precedent), shll retries the probe under each old binary name in turn if the new one is absent from `PATH`, so a pre-rename install still reads as installed. This is transitional migration-guard machinery, not a licence for a lasting name mismatch — see the [update standard](update.md)'s `formula_renames.json` rule.
 
 ## Verifying conformance
 

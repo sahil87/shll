@@ -6,7 +6,7 @@ import (
 
 const rootLong = `shll — meta-CLI for the HexoKit toolkit.
 
-shll composes operations that span every per-tool CLI (hop, wt, fab-kit, run-kit, tu, idea)
+shll composes operations that span every per-tool CLI (hop, wt, fab-kit, hexokit, tu, idea)
 so you have one entry point for cross-toolkit concerns.
 
 Subcommands:

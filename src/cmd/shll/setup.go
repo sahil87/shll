@@ -38,13 +38,13 @@ const (
 // subcommands).
 const setupLong = `Wire this machine for the HexoKit toolkit — both halves, in order:
 shell integration (the ` + "`eval \"$(shll shell-init <shell>)\"`" + ` line in your rc file),
-then agent-harness wiring (the shll-toolkit skill plus run-kit's dashboard
+then agent-harness wiring (the shll-toolkit skill plus HexoKit's dashboard
 hooks). Both halves are idempotent — re-running is safe, e.g. after installing
 a new shell or a new agent harness.
 
 This is the same wiring ` + "`shll install`" + ` runs automatically at the end of an
 install; ` + "`shll setup`" + ` is the standalone re-run entry point. Pass ` + "`--yes`" + ` (or
-` + "`-y`" + `) to forward ` + "`--yes`" + ` to the run-kit delegation so nothing can prompt on an
+` + "`-y`" + `) to forward ` + "`--yes`" + ` to the hexokit delegation so nothing can prompt on an
 unattended run.
 
 Both halves always run — the agent half runs even when the shell half failed —
@@ -86,8 +86,8 @@ future release.`
 // setupAgentLong is the full help for `shll setup agent` — the agent-setup
 // surface under its new spelling.
 const setupAgentLong = `Mechanically place one thin Agent Skill — the HexoKit toolkit bootstrap — into the
-agent harnesses' global skills directories, then delegate run-kit's dashboard-hook
-wiring to ` + "`run-kit agent setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
+agent harnesses' global skills directories, then delegate HexoKit's dashboard-hook
+wiring to ` + "`hexokit agent setup`" + `. The skill teaches an agent to load ` + "`shll skill`" + ` before
 driving a toolkit tool.
 
 The skill is written to two global locations (covering all four harnesses):
@@ -105,7 +105,7 @@ Modes:
   shll setup agent --print     print the SKILL.md content and the target paths a real run would write
   shll setup agent --uninstall remove both placed skill directories
 
-Pass ` + "`--yes`" + ` (or ` + "`-y`" + `) to forward ` + "`--yes`" + ` to the run-kit delegation so its own
+Pass ` + "`--yes`" + ` (or ` + "`-y`" + `) to forward ` + "`--yes`" + ` to the hexokit delegation so its own
 confirmation prompt is skipped — for unattended runs (shll's skill placement itself
 never prompts). With ` + "`--print`" + ` the flag is a no-op (print never delegates).
 
@@ -114,7 +114,7 @@ cycle — hidden and silent — and will be removed in a future release.`
 
 // newSetupCmd builds the runnable `shll setup` parent: it runs the shell half
 // then the agent half via the existing internals (no logic moved), with
-// --yes/-y as its ONLY flag (forwarded to the agent half's run-kit delegation).
+// --yes/-y as its ONLY flag (forwarded to the agent half's hexokit delegation).
 func newSetupCmd() *cobra.Command {
 	var yesMode bool
 	cmd := &cobra.Command{
@@ -129,7 +129,7 @@ func newSetupCmd() *cobra.Command {
 		},
 	}
 	// The parent shares the agent half's --yes usage string: the consent chain is
-	// identical (the flag's only consumption point is the run-kit delegation).
+	// identical (the flag's only consumption point is the hexokit delegation).
 	cmd.Flags().BoolVarP(&yesMode, yesFlag, yesFlagShorthand, false, agentSetupYesUsage)
 	cmd.AddCommand(newSetupShellCmd(), newSetupAgentCmd())
 	return cmd
@@ -165,7 +165,7 @@ func newSetupAgentCmd() *cobra.Command {
 // install's quiet skip) then the agent half,
 // ALWAYS both (mirroring the halves' independence in install's auto-run), and
 // returns the worst of the two outcomes (worst-wins per the toolkit exit-code
-// convention). yes forwards to the agent half's run-kit delegation only.
+// convention). yes forwards to the agent half's hexokit delegation only.
 func runSetup(ctx context.Context, env func(string) string, stdout, stderr io.Writer, yes bool) error {
 	if ctx == nil {
 		ctx = context.Background()

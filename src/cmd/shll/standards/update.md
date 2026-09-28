@@ -4,7 +4,7 @@ How every CLI in the [HexoKit toolkit](https://hexokit.com/toolkit/) upgrades it
 
 This page is the **producer-facing standard**: what your tool's `update` must do. The consumer side — `shll update`'s probe-first ordering, the per-tool summary tail, and the post-upgrade release digest — is shll's job and lives in its own memory. A tool author's entire obligation is keeping `update` conformant to this page.
 
-Scope is the **six roster tools** — `wt`, `idea`, `tu`, `run-kit`, `hop`, `fab-kit`. `shll` itself is out of producer scope: inside the delegation loop it self-upgrades with a direct `brew upgrade sahil87/tap/shll` rather than calling an `update` subcommand on itself — shll is the *consumer* here, delegating to the tools below.
+Scope is the **six roster tools** — `wt`, `idea`, `tu`, `hexokit`, `hop`, `fab-kit`. `shll` itself is out of producer scope: inside the delegation loop it self-upgrades with a direct `brew upgrade sahil87/tap/shll` rather than calling an `update` subcommand on itself — shll is the *consumer* here, delegating to the tools below.
 
 This standard implements principle №7 of the [toolkit CLI principles](principles.md) (compose, don't reinvent — `shll update` delegates to your `update` instead of reaching into your keg), its brew-handling clause serves principle №6 (stateless, therefore retry-safe — a corrupted mid-swap keg is the antithesis of retry-safe), and its prompt-free clause tightens principle №1 (non-interactive by default) for this one subcommand.
 
@@ -12,7 +12,7 @@ This standard implements principle №7 of the [toolkit CLI principles](principl
 
 `<tool> update` is uniform across the six roster tools:
 
-- **MUST expose an `update` subcommand** that upgrades the tool **in place** and runs the tool's own post-upgrade side effects (e.g. run-kit restarts its daemon). This is why `shll update` delegates to you instead of running `brew upgrade` directly — only your `update` knows what has to happen after the binary is swapped.
+- **MUST expose an `update` subcommand** that upgrades the tool **in place** and runs the tool's own post-upgrade side effects (e.g. hexokit restarts its daemon). This is why `shll update` delegates to you instead of running `brew upgrade` directly — only your `update` knows what has to happen after the binary is swapped.
 - **MUST continue to work standalone.** `shll update` composes per-tool `update`; it never deprecates the direct invocation.
 
 ## Prompt-free, unconditionally
@@ -25,7 +25,7 @@ So:
 - **The obligation covers wrapped subprocesses too.** An `update` almost always wraps `brew` — the wrapped call MUST be invoked non-interactively; a prompt surfacing from a subprocess stalls the compose exactly like one from your own code.
 - **There is nothing to confirm.** An in-place upgrade is not a destructive write in the №5 sense — invoking `update` *is* the consent. A tool that wants a guard can offer `--dry-run`, never a prompt.
 
-**Failure mode.** An `update` that prompts only when a TTY is present is conformant to №1 and to every other rule on this page — yet it breaks the compose in both directions. On a real TTY with no human watching — an agent driving `shll update` in a tmux/run-kit pane — the prompt hangs invisibly until the harness times out. And when stdin is not a TTY, the tool refuses fast exactly as №1 requires — but `shll update`'s delegated argv is fixed (`<tool> update [--skip-brew-update]`; there is no way to thread `--yes` through), so the compose hard-fails with no recourse for the caller.
+**Failure mode.** An `update` that prompts only when a TTY is present is conformant to №1 and to every other rule on this page — yet it breaks the compose in both directions. On a real TTY with no human watching — an agent driving `shll update` in a tmux/HexoKit pane — the prompt hangs invisibly until the harness times out. And when stdin is not a TTY, the tool refuses fast exactly as №1 requires — but `shll update`'s delegated argv is fixed (`<tool> update [--skip-brew-update]`; there is no way to thread `--yes` through), so the compose hard-fails with no recourse for the caller.
 
 ## Advertise and honor `--skip-brew-update`
 
@@ -65,7 +65,7 @@ The update path is where a tool's brew/formula identity is load-bearing, so the 
 
 - **One name, four places.** The GitHub repo name, the roster/tool name shll knows it by, the tap formula leaf (`sahil87/tap/<leaf>`), and the binary name on `PATH` MUST all be the **same string**. `shll update` composes `brew upgrade sahil87/tap/<formula>` and delegates to the `<tool>` binary by that one name — a mismatch breaks the compose.
 - **`v{semver}` release tags.** Releases MUST be tagged `v{semver}` (e.g. `v1.4.2`), matching the brew formula version. `shll changelog` and the `shll update` post-upgrade digest consume these tags to render "what an upgrade brought" — an off-convention tag drops out of the digest.
-- **A rename MUST ship a `formula_renames.json` entry.** Renaming the tool (repo/formula/binary) MUST add a tap `formula_renames.json` entry so an installed old-name keg migrates on the next `brew upgrade` instead of orphaning. The `rk` → `run-kit` rename is the precedent, and it carries an ongoing migration-guard cost in shll (a legacy-name alias and a dual-keg sweep) — so a rename is a deliberate, tap-coordinated act, not a casual one.
+- **A rename MUST ship a `formula_renames.json` entry.** Renaming the tool (repo/formula/binary) MUST add a tap `formula_renames.json` entry so an installed old-name keg migrates on the next `brew upgrade` instead of orphaning. The `rk` → `run-kit` → `hexokit` renames are the precedent, and each carries an ongoing cost in shll (a legacy target alias and a legacy-name version probe per old name) — so a rename is a deliberate, tap-coordinated act, not a casual one.
 
 ## Verifying conformance
 

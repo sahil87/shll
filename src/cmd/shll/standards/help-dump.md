@@ -24,7 +24,7 @@ The tool emits an envelope wrapping a recursive node tree:
 
 ```jsonc
 {
-  "tool": "wt",           // invoked binary name (wt, run-kit, fab)
+  "tool": "wt",           // invoked binary name (wt, hexokit, fab)
   "version": "1.4.2",     // from the built binary (ldflags / rootCmd.Version) — never hardcoded
   "schema_version": 1,    // integer; current = 1
   "root": { /* recursive Node */ }
