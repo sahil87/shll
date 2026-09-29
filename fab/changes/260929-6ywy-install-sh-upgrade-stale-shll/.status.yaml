@@ -10,7 +10,7 @@ progress:
     review: done
     hydrate: done
     ship: done
-    review-pr: active
+    review-pr: done
 plan:
     generated: true
     task_count: 4
@@ -34,7 +34,7 @@ stage_metrics:
     review: {started_at: "2026-09-29T04:43:51Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-29T04:45:34Z"}
     hydrate: {started_at: "2026-09-29T04:45:34Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-29T04:47:04Z"}
     ship: {started_at: "2026-09-29T04:47:04Z", driver: fab-fff, iterations: 1, completed_at: "2026-09-29T04:48:01Z"}
-    review-pr: {started_at: "2026-09-29T04:48:01Z", driver: git-pr, iterations: 1}
+    review-pr: {started_at: "2026-09-29T04:48:01Z", driver: git-pr, iterations: 1, completed_at: "2026-09-29T04:53:32Z"}
 prs:
     - https://github.com/sahil87/shll/pull/105
 base_branch: main
@@ -55,4 +55,4 @@ true_impact:
 summary: install.sh brew-upgrades an already-installed brew-managed shll (trust-probed) before shll install, so a stale shll never drives the install
 # base_branch: written by /git-branch or /fab-new when the change's branch is created (no placeholder here).
 # true_impact: lazily created on first stage-finish that computes it (no placeholder here).
-last_updated: 2026-09-29T04:48:01Z
+last_updated: 2026-09-29T04:53:32Z
