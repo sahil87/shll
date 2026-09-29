@@ -10,7 +10,9 @@
 # This script owns the whole pre-brew phase: it preflights the tools the
 # install needs (git/CLT, curl, tmux), bootstraps Homebrew headlessly when
 # it's absent, and then solves the circularity that shll cannot trust/install
-# its own Homebrew formula before it exists. Everything else — the tool
+# its own Homebrew formula before it exists — and, when shll is already
+# brew-installed, upgrades it first so a stale shll never drives the
+# install. Everything else — the tool
 # roster, subset filtering, per-formula trust for the other tools, graceful
 # skips — lives in `shll install` / `shll update`, which this script hands
 # off to.
@@ -173,6 +175,17 @@ preflight() {
     # warning above (with its fix command) is the whole treatment.
 }
 
+# Homebrew 6.0+ requires a persisted trust record before a tap formula's
+# sandboxed install (or upgrade) may run. Detect the trust subcommand by
+# capability probe (never a version-floor check) — pre-6.0 brews have no
+# `brew trust` and no trust requirement, so skip the step silently there.
+# Re-trusting an already-trusted formula is a no-op.
+trust_shll() {
+    if "$BREW" trust --help >/dev/null 2>&1; then
+        "$BREW" trust --formula sahil87/tap/shll
+    fi
+}
+
 main() {
     phase_start "preflight"
     preflight
@@ -234,14 +247,19 @@ main() {
     phase_start "shll handoff"
     if ! command -v shll >/dev/null 2>&1; then
         echo "shll not found — installing sahil87/tap/shll via Homebrew..."
-        # Homebrew 6.0+ requires a persisted trust record before a tap formula's
-        # sandboxed install may run. Detect the trust subcommand by capability
-        # probe (never a version-floor check) — pre-6.0 brews have no `brew
-        # trust` and no trust requirement, so skip the step silently there.
-        if "$BREW" trust --help >/dev/null 2>&1; then
-            "$BREW" trust --formula sahil87/tap/shll
-        fi
+        trust_shll
         "$BREW" install sahil87/tap/shll
+    elif "$BREW" list --versions sahil87/tap/shll >/dev/null 2>&1; then
+        # shll is already installed: upgrade it first, so a stale shll never
+        # drives the install (an old shll rejects roster names it predates —
+        # shll <= v0.1.33 rejects `hexokit`). `shll update` below upgrades shll
+        # too, but only after `shll install` has already parsed the args. An
+        # already-current formula is a no-op (brew exits 0). Gated on brew
+        # managing shll: a non-brew shll on PATH (a `just install` dev build)
+        # is left alone.
+        echo "shll found — upgrading sahil87/tap/shll via Homebrew..."
+        trust_shll
+        "$BREW" upgrade sahil87/tap/shll
     fi
 
     # Hand off to shll for the rest of the roster — converge to complete and

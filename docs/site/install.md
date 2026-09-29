@@ -29,7 +29,7 @@ When Homebrew is absent the script **bootstraps it headlessly** — the official
 eval "$(/opt/homebrew/bin/brew shellenv)"   # Apple Silicon; /usr/local/bin/brew on Intel, /home/linuxbrew/.linuxbrew/bin/brew on Linux
 ```
 
-An existing Homebrew is used as-is (≥ 6.0.4 — on 6.0.0–6.0.3, run `brew update` first), and the script is idempotent — safe to re-run: a re-run fills any gaps and brings the installed tools current.
+An existing Homebrew is used as-is (≥ 6.0.4 — on 6.0.0–6.0.3, run `brew update` first), and the script is idempotent — safe to re-run: a re-run fills any gaps and brings the installed tools current. An already brew-installed `shll` is upgraded first (`brew upgrade sahil87/tap/shll`), so an out-of-date shll never runs the install.
 
 The script hands off install-then-update: `shll install` with every arg verbatim, then `exec shll update` with the tool names. That has two consequences worth knowing:
 
