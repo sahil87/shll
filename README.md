@@ -22,7 +22,7 @@ Install a subset by naming tools after `sh -s --`:
 curl -fsSL https://hexokit.com/install | sh -s -- hop wt
 ```
 
-The script preflights what the install needs — git (the Xcode Command Line Tools on macOS), curl, and tmux — and reports every miss at once with its per-platform fix command. On minimal Ubuntu/Debian images (which ship without curl), run `sudo apt-get install -y curl` first. When Homebrew is absent the script bootstraps it headlessly (official installer, `NONINTERACTIVE=1`) and prints the brew `shellenv` line to keep in your rc file; an existing Homebrew is used as-is (≥ 6.0.4 required — on 6.0.0–6.0.3, run `brew update` first). It's idempotent — safe to re-run, and a no-op for anything already installed.
+The script preflights what the install needs — git (the Xcode Command Line Tools on macOS), curl, and tmux — and reports every miss at once with its per-platform fix command. On minimal Ubuntu/Debian images (which ship without curl), run `sudo apt-get install -y curl` first. When Homebrew is absent the script bootstraps it headlessly (official installer, `NONINTERACTIVE=1`) and adds the brew `shellenv` line to your zsh/bash rc file; an existing Homebrew is used as-is (≥ 6.0.4 required — on 6.0.0–6.0.3, run `brew update` first). It's idempotent — safe to re-run, and a no-op for anything already installed.
 
 One pitfall worth knowing: if the download itself fails, `curl -fsSL … | sh` still **exits 0** — `sh` runs the empty input happily — so an `&&`-chained next step proceeds as if the install worked. Check curl's stderr, or `command -v shll` after; details in the [install guide](docs/site/install.md).
 
