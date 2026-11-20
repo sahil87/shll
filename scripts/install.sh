@@ -186,6 +186,43 @@ trust_shll() {
     fi
 }
 
+# Persist brew's shellenv into the rc file `shll setup shell` targets (same
+# table as resolveRcFile: zsh → ${ZDOTDIR:-$HOME}/.zshrc; bash →
+# ~/.bash_profile on macOS, ~/.bashrc elsewhere), so it precedes the shll
+# block that install appends next. Runs only after this script bootstrapped
+# Homebrew. Skips (printing the line instead) for other shells, a missing rc
+# file (shll never creates rc files), or an rc file that already mentions
+# `brew shellenv`.
+persist_shellenv() {
+    line="eval \"\$($BREW shellenv)\""
+    case "${SHELL:-}" in
+        */zsh)
+            rc="${ZDOTDIR:-$HOME}/.zshrc"
+            ;;
+        */bash)
+            if [ "$(uname -s)" = "Darwin" ]; then
+                rc="$HOME/.bash_profile"
+            else
+                rc="$HOME/.bashrc"
+            fi
+            ;;
+        *)
+            rc=""
+            ;;
+    esac
+
+    if [ -n "$rc" ] && [ -f "$rc" ]; then
+        if ! grep -q 'brew shellenv' "$rc"; then
+            printf '\n# >>> homebrew >>>\n%s\n# <<< homebrew <<<\n' "$line" >>"$rc"
+        fi
+        echo "Homebrew installed — added its shellenv line to $rc."
+        return
+    fi
+    echo "Homebrew installed. To make brew (and the installed tools) resolvable in future shells,"
+    echo "add this line to your shell rc file:"
+    echo "  $line"
+}
+
 main() {
     phase_start "preflight"
     preflight
@@ -202,7 +239,11 @@ main() {
     if ! command -v brew >/dev/null 2>&1; then
         echo "Homebrew not found — installing it with the official installer (NONINTERACTIVE=1)..."
         osc_progress 3
-        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # umask 022: brew.sh creates its prefix via sudo, and sudo ORs the
+        # caller's umask into its own — a restrictive login umask (Ubuntu
+        # 26.04 desktops ship 0007) leaves /home/linuxbrew root-owned 0750,
+        # and brew.sh then fails at its own `cd` into the prefix.
+        (umask 022 && NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)")
         osc_progress 0
         bootstrapped=1
     fi
@@ -235,12 +276,12 @@ main() {
         # run.
         eval "$("$BREW" shellenv)"
 
-        # Kill the brew-not-on-PATH trap for the user's *next* shell too:
-        # brew's shellenv line is the user's to keep (shll shell-setup wires
-        # shll's own init, not brew's).
-        echo "Homebrew installed. To make brew (and the installed tools) resolvable in future shells,"
-        echo "add this line to your shell rc file:"
-        echo "  eval \"\$($BREW shellenv)\""
+        # Kill the brew-not-on-PATH trap for the user's *next* shell too.
+        # `shll install` wires `eval "$(shll shell-init …)"` into the rc file,
+        # and shll lives in the brew prefix — so brew's shellenv must land in
+        # that same rc file, ahead of the shll block, or every new shell
+        # starts with `shll: command not found`.
+        persist_shellenv
     fi
     phase_done "brew bootstrap"
 
