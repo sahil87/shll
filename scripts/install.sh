@@ -186,18 +186,28 @@ trust_shll() {
     fi
 }
 
-# Persist brew's shellenv into the rc file `shll setup shell` targets (same
-# table as resolveRcFile: zsh → ${ZDOTDIR:-$HOME}/.zshrc; bash →
-# ~/.bash_profile on macOS, ~/.bashrc elsewhere), so it precedes the shll
-# block that install appends next. Runs only after this script bootstrapped
-# Homebrew. Skips (printing the line instead) for other shells, a missing rc
-# file (shll never creates rc files), or an rc file that already mentions
-# `brew shellenv`.
+# Persist brew's shellenv where the user's next shell reads it. On Linux that
+# is the rc file `shll setup shell` targets (same table as resolveRcFile: zsh →
+# ${ZDOTDIR:-$HOME}/.zshrc; bash → ~/.bashrc), so it precedes the shll block
+# that install appends next. On macOS, Terminal opens login shells: zsh gets
+# ${ZDOTDIR:-$HOME}/.zprofile — Homebrew's own recommendation, read before
+# .zshrc and by the daemon autostart's `zsh -lc` — created when missing, since
+# a fresh Mac has no zsh dotfiles at all; bash gets ~/.bash_profile, never
+# created (a new one would shadow ~/.profile). Runs only after this script
+# bootstrapped Homebrew. Skips (printing the line instead) for other shells, a
+# missing rc file (shll never creates rc files), or a file that already
+# mentions `brew shellenv`.
 persist_shellenv() {
     line="eval \"\$($BREW shellenv)\""
+    create=0
     case "${SHELL:-}" in
         */zsh)
-            rc="${ZDOTDIR:-$HOME}/.zshrc"
+            if [ "$(uname -s)" = "Darwin" ]; then
+                rc="${ZDOTDIR:-$HOME}/.zprofile"
+                create=1
+            else
+                rc="${ZDOTDIR:-$HOME}/.zshrc"
+            fi
             ;;
         */bash)
             if [ "$(uname -s)" = "Darwin" ]; then
@@ -211,8 +221,8 @@ persist_shellenv() {
             ;;
     esac
 
-    if [ -n "$rc" ] && [ -f "$rc" ]; then
-        if ! grep -q 'brew shellenv' "$rc"; then
+    if [ -n "$rc" ] && { [ -f "$rc" ] || [ "$create" -eq 1 ]; }; then
+        if ! grep -qs 'brew shellenv' "$rc"; then
             printf '\n# >>> homebrew >>>\n%s\n# <<< homebrew <<<\n' "$line" >>"$rc"
         fi
         echo "Homebrew installed — added its shellenv line to $rc."
